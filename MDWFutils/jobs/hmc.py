@@ -4,8 +4,7 @@ import random
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.dom import minidom
-from pathlib import Path
-from db import get_ensemble_details
+from MDWFutils.db import get_ensemble_details
 import sys
 
 def _make_default_tree(mode: str, seed_override: int = None):
@@ -69,13 +68,17 @@ def _make_default_tree(mode: str, seed_override: int = None):
 
 def _pretty_write(tree: ET.ElementTree, path: Path):
     """
-    Pretty-print the XML with indentation and write to `path`.
+    Pretty-print the XML with indentation and write to `path`,
+    but strip out any empty lines that minidom inserts.
     """
     raw = ET.tostring(tree.getroot(), encoding='utf-8')
     parsed = minidom.parseString(raw)
     pretty = parsed.toprettyxml(indent='  ')
-    path.write_text(pretty, encoding='utf-8')
-
+    # drop all-blank lines
+    lines = [ln for ln in pretty.splitlines() if ln.strip()]
+    # re-join and ensure trailing newline
+    out = '\n'.join(lines) + '\n'
+    path.write_text(out, encoding='utf-8')
 
 # -----------------------------------------------------------------------------
 def generate_hmc_parameters(
@@ -89,9 +92,6 @@ def generate_hmc_parameters(
     mode = 'tepid' | 'continue' | 'reseed'
     overrides = tag=value pairs (e.g. StartTrajectory=100, Trajectories=50,
     lvl_sizes='10,1,1', md_name='A,B,C', etc.)
-
-    An override for the <Seed> tag is only allowed if mode=='reseed'. 
-    In other modes it raises an error.
     """
     base    = Path(ensemble_dir)
     base.mkdir(parents=True, exist_ok=True)
@@ -173,11 +173,11 @@ def generate_hmc_slurm_gpu(
     gpus_per_task: str,
     gpu_bind: str,
     mail_user: str,
-    exec_path: str,
-    bind_script: str,
-    n_trajec: str,
-    cfg_max: str,
-    mpi: str,
+    exec_path: str = None,       # now optional
+    bind_script: str = None,     # now optional
+    n_trajec: str = None,        # now optional
+    cfg_max: str = None,
+    mpi: str = None,
     resubmit: str = 'true'
 ):
     """
@@ -188,6 +188,8 @@ def generate_hmc_slurm_gpu(
       - appends SLURM_JOB_ID at end of that log
       - re-queues if needed
     """
+
+    # fetch ensemble metadata & parameters
     ens = get_ensemble_details(db_file, ensemble_id)
     if not ens:
         raise RuntimeError(f"Ensemble {ensemble_id} not found")
@@ -195,6 +197,25 @@ def generate_hmc_slurm_gpu(
     L, T = int(p['L']), int(p['T'])
     VOL = f"{L}.{L}.{L}.{T}"
 
+    # ----------------------------------------------------------------
+    # Provide defaults for exec_path, bind_script, n_trajec if omitted
+    if exec_path is None:
+        # uses the same ens_name you pass in to the script
+        exec_path = (
+            f"/global/cfs/cdirs/{account}/cosmon/"
+            f"mdwf/software/install_gpu/Grid_{ens_name}/bin/Nf2p1p1"
+        )
+    if bind_script is None:
+        # place your bind‐script under a directory named by L
+        bind_script = f"/global/cfs/cdirs/{account}/cosmon/mdwf/L{L}/bind.sh"
+    if n_trajec is None:
+        # default # of trajectories = cfg_max
+        if cfg_max is None:
+            raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
+        n_trajec = cfg_max
+    # ----------------------------------------------------------------
+
+    # prepare output file
     script_file = Path(out_path)
     script_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -207,8 +228,8 @@ if (( start < {cfg_max} )); then
   sbatch --dependency=afterok:$SLURM_JOBID $batch
 fi
 """
-
-    # NB: we use {{ and }} around 'start' so that f-string emits "${start}"
+    ensemble_dir = Path(ens['directory']).resolve()
+    
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
 #SBATCH -C {constraint}
@@ -236,7 +257,7 @@ n_trajec={n_trajec}
 cfg_max={cfg_max}
 mpi="{mpi}"
 
-cd {base_dir}/$type/$ens_rel
+cd {ensemble_dir}
 mkdir -p cnfg log_hmc jlog
 
 # find last config index

@@ -6,6 +6,8 @@ Sub‐command “promote-ensemble”: move a TUNING ensemble under ENSEMBLES and
 Default BASE_DIR is the current directory.
 """
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from MDWFutils.db import get_ensemble_details, update_ensemble
 
@@ -14,7 +16,7 @@ def register(subparsers):
         'promote-ensemble',
         help='Move a TUNING ensemble into PRODUCTION (ENSEMBLES/)'
     )
-    p.add_argument('--ensemble-id', type=int, required=True,
+    p.add_argument('--ensemble-id','-e', type=int, required=True,
                    help='Which ensemble to promote')
     p.add_argument('--base-dir',
                    default='.',
@@ -63,12 +65,32 @@ def do_promote(args):
     new_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(old_dir), str(new_dir))
 
-    # update the DB record
+    # update the ensembles table
     ok = update_ensemble(
         args.db_file,
         args.ensemble_id,
         status='PRODUCTION',
         directory=str(new_dir)
     )
-    print("Promotion", "OK" if ok else "FAILED")
-    return 0 if ok else 1
+    if not ok:
+        print("Promotion FAILED")
+        return 1
+
+    # call existing CLI to record the PROMOTE_ENSEMBLE operation
+    cmd = [
+        'mdwf_db',               
+        'update',
+        '--db-file',    args.db_file,
+        '--ensemble-id', str(args.ensemble_id),
+        '--operation-type', 'PROMOTE_ENSEMBLE',
+        '--status',        'COMPLETED',
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr)
+        return result.returncode
+
+    sys.stdout.write(result.stdout)
+    print("Promotion OK")
+    return 0

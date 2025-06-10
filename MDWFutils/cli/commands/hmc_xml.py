@@ -10,7 +10,7 @@ from pathlib import Path
 import argparse
 
 from MDWFutils.db import get_ensemble_details
-from MDWFutils.jobs.hmc import generate_hmc_input
+from MDWFutils.jobs.hmc import generate_hmc_parameters
 
 def register(subparsers: argparse._SubParsersAction):
     p = subparsers.add_parser(
@@ -66,7 +66,7 @@ def do_hmc_xml(args):
 
     # generate the XML
     # This will produce HMCparameters.<mode>.xml under ens_dir
-    generate_hmc_input(
+    generate_hmc_parameters(
         ensemble_dir = str(ens_dir),
         mode         = args.mode,
         **xdict
