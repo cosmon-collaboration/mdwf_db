@@ -207,7 +207,7 @@ def generate_hmc_slurm_gpu(
         )
     if bind_script is None:
         # place your bind‐script under a directory named by L
-        bind_script = f"/global/cfs/cdirs/{account}/cosmon/mdwf/L{L}/bind.sh"
+        bind_script = f"/global/cfs/cdirs/m2986/cosmon/mdwf/L{L}/bind.sh"
     if n_trajec is None:
         # default # of trajectories = cfg_max
         if cfg_max is None:
