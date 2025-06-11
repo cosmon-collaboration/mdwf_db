@@ -235,11 +235,10 @@ def generate_hmc_slurm_gpu(
             conn.commit()
             conn.close()
 
-    if n_trajec is None:
-        # default # of trajectories = cfg_max
-        if cfg_max is None:
-            raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
+    if n_trajec is None and cfg_max is not None:
         n_trajec = cfg_max
+    elif n_trajec is None and cfg_max is None:
+        raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
 
     # prepare output file
     script_file = Path(out_path)
