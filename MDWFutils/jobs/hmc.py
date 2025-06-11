@@ -165,7 +165,6 @@ def generate_hmc_slurm_gpu(
     account: str,
     mode: str,              # "tepid"|"continue"|"reseed"
     constraint: str,
-    queue: str,
     time_limit: str,
     cpus_per_task: str,
     nodes: str,
@@ -178,7 +177,8 @@ def generate_hmc_slurm_gpu(
     n_trajec: str = None,        
     cfg_max: str = None,
     mpi: str = None,
-    resubmit: str = 'true'
+    resubmit: str = 'true',
+    queue: str = 'regular'
 ):
     """
     Write a GPU SBATCH script that:
