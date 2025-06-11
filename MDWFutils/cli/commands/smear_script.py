@@ -11,7 +11,7 @@ import click
 from MDWFutils.db           import get_ensemble_details
 from MDWFutils.jobs.smear   import generate_smear_sbatch
 
-REQUIRED_JOB_PARAMS = ['queue', 'time_limit', 'nodes', 'cpus_per_task']
+REQUIRED_JOB_PARAMS = ['mail_user']
 DEFAULT_PARAMS = {
     'account': 'm2986_g',
     'constraint': 'gpu',
