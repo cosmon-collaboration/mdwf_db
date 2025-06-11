@@ -246,6 +246,8 @@ def generate_hmc_slurm_gpu(
 
     ensemble_dir = Path(ens['directory']).resolve()
     
+    ens_name = f"b{ens['parameters']['beta']}_b{ens['parameters']['b']}Ls{ens['parameters']['Ls']}_mc{ens['parameters']['mc']}_ms{ens['parameters']['ms']}_ml{ens['parameters']['ml']}_L{ens['parameters']['L']}_T{ens['parameters']['T']}"
+
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
 #SBATCH -C {constraint}
@@ -333,7 +335,7 @@ export OMP_NUM_THREADS=8
 echo "Nthreads $OMP_NUM_THREADS"
 
 echo "START `date`"
-srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_${ens}.$start
+srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_{ens_name}.$start
 EXIT_CODE=$?
 echo "STOP `date`"
 
@@ -365,7 +367,6 @@ if [[ $EXIT_CODE -eq 0 && "{resubmit}" == "true" && $mode != "reseed" ]]; then
     fi
 fi
 
-exit $EXIT_CODE
-"""
+exit $EXIT_CODE"""
     script_file.write_text(txt, encoding='utf-8')
     return True

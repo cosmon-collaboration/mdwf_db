@@ -16,7 +16,7 @@ batch="$0"
 DB="/Users/wyatt/Development/mdwf_db/mdwf_ensembles.db"
 EID=1
 mode="tepid"
-ens="TUNING_b6.0_b1.8Ls24_mc0.85_ms0.07_ml0.02_L32_T64"
+ens="b6.0_b1.8Ls24_mc0.85_ms0.07_ml0.02_L32_T64"
 ens_rel="TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64"
 VOL="32.32.32.64"
 EXEC="none"
@@ -85,7 +85,7 @@ export OMP_NUM_THREADS=8
 echo "Nthreads $OMP_NUM_THREADS"
 
 echo "START `date`"
-srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_${'id': 1, 'directory': '/Users/wyatt/Development/mdwf_db/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64', 'creation_time': '2025-06-11T16:32:37.884581', 'description': 'Test ensemble for workflow', 'status': 'TUNING', 'parameters': {'L': '32', 'Ls': '24', 'T': '64', 'b': '1.8', 'beta': '6.0', 'hmc_bind_script': 'none', 'hmc_exec_path': 'none', 'mc': '0.85', 'ml': '0.02', 'ms': '0.07'}, 'operation_count': 0}.$start
+srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_b6.0_b1.8Ls24_mc0.85_ms0.07_ml0.02_L32_T64.$start
 EXIT_CODE=$?
 echo "STOP `date`"
 

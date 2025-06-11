@@ -76,7 +76,7 @@ def do_hmc_script(args):
         return 1
     root     = rel.parts[0]           # "TUNING" or "ENSEMBLES"
     ens_rel  = str(rel)               # e.g. "TUNING/b6.0/.../T32"
-    ens_name = ens_rel.replace('/','_')
+    ens_name = ens_rel.replace('TUNING/', '').replace('ENSEMBLES/', '').replace('/', '_')
 
     #  Ensure slurm folder & output path
     slurm_dir = ens_dir / 'slurm'
