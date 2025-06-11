@@ -6,8 +6,6 @@ The MDWF Database Tool is a command-line utility designed to manage and automate
 **Note:** The examples in this README are run from the `test_cli` folder. On Perlmutter, commands should generally be run from the `mdwf` folder.
 
 ## Installation
-To install the MDWF Database Tool, follow these steps:
-
 1. Clone the repository:
    ```bash
    git clone https://github.com/smithwya/mdwf_db.git
@@ -20,14 +18,10 @@ To install the MDWF Database Tool, follow these steps:
    ```
 
 ## Usage
-The MDWF Database Tool provides several commands for managing your workflow:
-
-### Initialize the Database
-To initialize a new MDWF database in your working directory, use the following command:
-
+### Initialize Database
 **Command:**
 ```bash
-mdwf_db init-db
+mdwf_db init --db-file=mdwf_ensembles.db
 ```
 
 **Available Options:**
@@ -36,28 +30,18 @@ mdwf_db init-db
 
 **Sample Command:**
 ```bash
-mdwf_db init-db
+mdwf_db init --db-file=mdwf_ensembles.db
 ```
 
 **Expected Output:**
 ```
-Ensured directory: /Users/wyatt/Development/mdwf_db/test_cli
-Ensured directory: /Users/wyatt/Development/mdwf_db/test_cli/TUNING
-Ensured directory: /Users/wyatt/Development/mdwf_db/test_cli/ENSEMBLES
-init_database returned: True
+Database initialized at mdwf_ensembles.db.
 ```
 
-**Files and Directories Created:**
-- `mdwf_ensembles.db` (SQLite database file)
-- `TUNING/` (directory for tuning ensembles)
-- `ENSEMBLES/` (directory for production ensembles)
-
-### Add an Ensemble
-To add a new ensemble to the database, use the following command:
-
+### Add Ensemble
 **Command:**
 ```bash
-mdwf_db add-ensemble -p "beta=6.0 b=1.8 Ls=24 mc=0.85 ms=0.07 ml=0.02 L=32 T=64" -s TUNING --description "Test ensemble for workflow"
+mdwf_db add-ensemble -p "<parameters>" -s <status> --description "<description>"
 ```
 
 **Available Options:**
@@ -70,42 +54,23 @@ mdwf_db add-ensemble -p "beta=6.0 b=1.8 Ls=24 mc=0.85 ms=0.07 ml=0.02 L=32 T=64"
 mdwf_db add-ensemble -p "beta=6.0 b=1.8 Ls=24 mc=0.85 ms=0.07 ml=0.02 L=32 T=64" -s TUNING --description "Test ensemble for workflow"
 ```
 
-**Output:**
+**Expected Output:**
 ```
 Ensemble added: ID=1
 ```
 
-**Resulting Directory Structure:**
-```
-TUNING/
-└── b6.0/
-    └── b1.8Ls24/
-        └── mc0.85/
-            └── ms0.07/
-                └── ml0.02/
-                    └── L32/
-                        └── T64/
-                            ├── cnfg/
-                            ├── jlog/
-                            ├── log_hmc/
-                            └── slurm/
-```
-
-### Promote an Ensemble
-To promote an ensemble, use the following command:
-
+### Promote Ensemble
 **Command:**
 ```bash
-mdwf_db promote --db-file=/path/to/mdwf_ensembles.db --ensemble-id=<ensemble_id>
+mdwf_db promote-ensemble -e <ensemble_id>
 ```
 
-**Parameters:**
-- `--db-file=<db_file>`: Path to the database file.
-- `--ensemble-id=<ensemble_id>`: The ID of the ensemble to promote.
+**Available Options:**
+- `-e <ensemble_id>`: The ID of the ensemble to promote.
 
 **Sample Command:**
 ```bash
-mdwf_db promote --db-file=/path/to/mdwf_ensembles.db --ensemble-id=1
+mdwf_db promote-ensemble -e 1
 ```
 
 **Expected Output:**
@@ -114,14 +79,12 @@ Ensemble promoted successfully.
 ```
 
 ### Print History
-To print the history of an ensemble, use the following command:
-
 **Command:**
 ```bash
 mdwf_db query -e <ensemble_id>
 ```
 
-**Parameters:**
+**Available Options:**
 - `-e <ensemble_id>`: The ID of the ensemble to query for history.
 
 **Sample Command:**
@@ -152,80 +115,21 @@ Op 1: ADD_ENSEMBLE [COMPLETED]
   Updated: 2025-06-11T15:32:53.297052
 ```
 
-### Generate Smearing Script for an Ensemble
-You can generate a smearing SLURM script for an ensemble using the following command. The script will generate both a GLU input file and an SBATCH script.
-
+### Update Ensemble
 **Command:**
 ```bash
-mdwf_db smear-script -e 1 -j "queue=regular config_start=0 config_end=10 mail_user=wyatt@example.com"
+mdwf_db update --ensemble-id=<ensemble_id> --operation-type=<operation_type> --status=<status> --params="<params>"
 ```
 
-**Output:**
-```
-Generated GLU input file: /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/cnfg_STOUT8/glu_smear.in
-Wrote smearing SBATCH script → /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/slurm/glu_smear_STOUT8_0_10.sh
-```
-
-**Generated Files:**
-- GLU Input File: `/Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/cnfg_STOUT8/glu_smear.in`
-- SBATCH Script: `/Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/slurm/glu_smear_STOUT8_0_10.sh`
-
-### Generate Meson 2pt Script for an Ensemble
-You can generate a meson 2pt SLURM script for an ensemble using the following command. The script will generate both a WIT input file and an SBATCH script.
-
-**Command:**
-```bash
-mdwf_db meson-2pt -e 1 -j "queue=regular time_limit=1:00:00 nodes=1 cpus_per_task=16 mail_user=wyatt@example.com" -w "Configurations.first=0 Configurations.last=10"
-```
-
-**Output:**
-```
-Generated WIT input file: /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/meson2pt/DWF.in
-Wrote meson 2pt SBATCH script → /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/meson2pt/meson2pt_0_10.sh
-```
-
-**Generated Files:**
-- WIT Input File: `/Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/meson2pt/DWF.in`
-- SBATCH Script: `/Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/meson2pt/meson2pt_0_10.sh`
-
-### Generate HMC Script for an Ensemble
-You can generate an HMC SLURM script for an ensemble using the following command. The script will prompt for the HMC executable and core binding script if not already set.
-
-**Command:**
-```bash
-mdwf_db hmc-script -e 1 -a m2986_g -m tepid -j "queue=regular cfg_max=10 mail_user=wyatt@example.com"
-```
-
-**Output:**
-```
-Please enter the path to the HMC executable: test/hmc_exec
-Please enter the path to the core binding script: test/bind
-Wrote HMC sbatch -> /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/slurm/hmc_1_tepid.sbatch
-```
-
-**Generated Script Location:**
-```
-/Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/slurm/hmc_1_tepid.sbatch
-```
-
-### Manage Ensemble Parameters
-Use the `mdwf_db` command to update and manage ensemble parameters.
-
-**Command:**
-```bash
-mdwf_db update --db-file=<db_file> --ensemble-id=<ensemble_id> --operation-type=<operation> --status=<status> --params=<params>
-```
-
-**Parameters:**
-- `--db-file=<db_file>`: Path to the database file.
+**Available Options:**
 - `--ensemble-id=<ensemble_id>`: The ID of the ensemble to update.
-- `--operation-type=<operation>`: The type of operation (e.g., "WIT_MESON2PT").
-- `--status=<status>`: The status to set (e.g., "RUNNING", "COMPLETED", "FAILED").
-- `--params=<params>`: Additional parameters to include.
+- `--operation-type=<operation_type>`: Type of operation (e.g., NOTE, UPDATE).
+- `--status=<status>`: New status of the ensemble.
+- `--params="<params>"`: Parameters for the update in the format "param1=value1 param2=value2 ...".
 
 **Sample Command:**
 ```bash
-mdwf_db update --db-file=/path/to/mdwf_ensembles.db --ensemble-id=1 --operation-type="WIT_MESON2PT" --status="RUNNING" --params="slurm_job=12345 host=node1"
+mdwf_db update --ensemble-id=1 --operation-type=NOTE --status=COMPLETED --params="note=Testing update command"
 ```
 
 **Expected Output:**
@@ -233,8 +137,68 @@ mdwf_db update --db-file=/path/to/mdwf_ensembles.db --ensemble-id=1 --operation-
 Ensemble parameters updated successfully.
 ```
 
-## Contributing
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+### Generate Smearing Script
+**Command:**
+```bash
+mdwf_db smear-script -e <ensemble_id> -j "<job_params>" -w "<wit_params>"
+```
+
+**Available Options:**
+- `-e <ensemble_id>`: The ID of the ensemble to generate the script for.
+- `-j "<job_params>"`: Job parameters in the format "param1=value1 param2=value2 ...".
+- `-w "<wit_params>"`: WIT parameters in the format "param1=value1 param2=value2 ...".
+
+**Sample Command:**
+```bash
+mdwf_db smear-script -e 1 -j "queue=regular cfg_max=10 mail_user=wyatt@example.com" -w "Configurations.first=0 Configurations.last=10"
+```
+
+**Expected Output:**
+```
+Generated WIT input file: /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/slurm/glu_smear_STOUT8_0_10.sh
+```
+
+### Generate Meson 2pt Script
+**Command:**
+```bash
+mdwf_db meson-2pt -e <ensemble_id> -j "<job_params>" -w "<wit_params>"
+```
+
+**Available Options:**
+- `-e <ensemble_id>`: The ID of the ensemble to generate the script for.
+- `-j "<job_params>"`: Job parameters in the format "param1=value1 param2=value2 ...".
+- `-w "<wit_params>"`: WIT parameters in the format "param1=value1 param2=value2 ...".
+
+**Sample Command:**
+```bash
+mdwf_db meson-2pt -e 1 -j "queue=regular time_limit=1:00:00 nodes=1 cpus_per_task=16 mail_user=wyatt@example.com" -w "Configurations.first=0 Configurations.last=10"
+```
+
+**Expected Output:**
+```
+Generated WIT input file: /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/meson2pt/DWF.in
+```
+
+### Generate HMC Script
+**Command:**
+```bash
+mdwf_db hmc-script -e <ensemble_id> -j "<job_params>" -w "<wit_params>"
+```
+
+**Available Options:**
+- `-e <ensemble_id>`: The ID of the ensemble to generate the script for.
+- `-j "<job_params>"`: Job parameters in the format "param1=value1 param2=value2 ...".
+- `-w "<wit_params>"`: WIT parameters in the format "param1=value1 param2=value2 ...".
+
+**Sample Command:**
+```bash
+mdwf_db hmc-script -e 1 -j "queue=regular config_start=0 config_end=10 mail_user=wyatt@example.com" -w "Configurations.first=0 Configurations.last=10"
+```
+
+**Expected Output:**
+```
+Generated WIT input file: /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/hmc/hmc_0_10.sh
+```
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -410,3 +374,4 @@ mdwf_db meson-2pt -e 1 -j "queue=regular time_limit=1:00:00 nodes=1 cpus_per_tas
 ```
 Generated WIT input file: /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/meson2pt/DWF.in
 Generated WIT SBATCH script: /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64/meson2pt/meson2pt_0_10.sh
+
