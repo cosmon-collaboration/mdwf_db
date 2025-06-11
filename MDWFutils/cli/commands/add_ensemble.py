@@ -2,7 +2,7 @@
 """
 commands/add_ensemble.py
 
-Sub‐command “add-ensemble” for mdwf_db:
+Sub‐command "add-ensemble" for mdwf_db:
 """
 import sys
 from pathlib import Path
@@ -13,34 +13,56 @@ REQUIRED = ['beta','b','Ls','mc','ms','ml','L','T']
 def register(subparsers):
     p = subparsers.add_parser(
         'add-ensemble',
-        help='Add a new ensemble (all fields in --params)'
+        help='Add a new ensemble to the database',
+        description="""
+Add a new ensemble to the MDWF database. This command:
+1. Creates the ensemble directory structure
+2. Adds the ensemble record to the database
+3. Sets up initial operation tracking
+
+Required parameters:
+- beta: Gauge coupling
+- b: Domain wall height
+- Ls: Domain wall extent
+- mc: Charm quark mass
+- ms: Strange quark mass
+- ml: Light quark mass
+- L: Spatial lattice size
+- T: Temporal lattice size
+
+The ensemble directory will be created under:
+- TUNING/ for status=TUNING
+- ENSEMBLES/ for status=PRODUCTION
+
+Directory structure:
+  <base_dir>/<status>/b<beta>/b<b>Ls<Ls>/mc<mc>/ms<ms>/ml<ml>/L<L>/T<T>/
+"""
     )
     p.add_argument(
         '-p','--params',
         required=True,
-        help=('Space-separated key=val pairs. '
-              'Must include: beta, b, Ls, mc, ms, ml, L, T; '
-              'extras allowed.')
+        help=('Space-separated key=val pairs. Required: beta, b, Ls, mc, ms, ml, L, T. '
+              'Example: "beta=6.0 b=1.8 Ls=24 mc=0.8555 ms=0.0725 ml=0.0195 L=32 T=64"')
     )
     p.add_argument(
         '-s','--status',
         required=True,
         choices=['TUNING','PRODUCTION'],
-        help='Ensemble status (TUNING or PRODUCTION)'
+        help='Ensemble status: TUNING for development, PRODUCTION for final runs'
     )
     p.add_argument(
         '-d','--directory',
-        help='Explicit path (overrides auto-generated under base-dir)'
+        help='Explicit path to ensemble directory (overrides auto-generated path)'
     )
     p.add_argument(
         '-b','--base-dir',
         default='.',
-        help='Root containing TUNING/ and ENSEMBLES/ (default=CWD)'
+        help='Root directory containing TUNING/ and ENSEMBLES/ (default: current directory)'
     )
     p.add_argument(
         '--description',
         default=None,
-        help='Optional free-form text'
+        help='Optional free-form text description of the ensemble'
     )
     p.set_defaults(func=do_add)
 
@@ -88,7 +110,7 @@ def do_add(args):
         args.db_file, str(ens_dir), pdict, description=args.description
     )
     if created:
-        print(f"✅ Ensemble added: ID={eid}")
+        print(f"Ensemble added: ID={eid}")
     else:
         print(f"⚠ Ensemble already exists: ID={eid}")
 

@@ -4,7 +4,7 @@ import random
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.dom import minidom
-from MDWFutils.db import get_ensemble_details
+from MDWFutils.db import get_ensemble_details, get_connection, update_operation
 import sys
 
 def _make_default_tree(mode: str, seed_override: int = None):
@@ -173,22 +173,21 @@ def generate_hmc_slurm_gpu(
     gpus_per_task: str,
     gpu_bind: str,
     mail_user: str,
-    exec_path: str = None,       # now optional
-    bind_script: str = None,     # now optional
-    n_trajec: str = None,        # now optional
+    exec_path: str = None,       # optional - will check DB first
+    bind_script: str = None,     # optional - will check DB first
+    n_trajec: str = None,        
     cfg_max: str = None,
     mpi: str = None,
     resubmit: str = 'true'
 ):
     """
     Write a GPU SBATCH script that:
-      - creates a RUNNING operation and grabs its op_id (recording slurm_job too)
-      - traps EXIT/TERM/INT to UPDATE that same op_id (again recording slurm_job)
-      - tees program output to ../log_hmc/run_${start}.log
-      - appends SLURM_JOB_ID at end of that log
-      - re-queues if needed
+      - handles tepid/continue/reseed modes
+      - sets up proper environment variables
+      - runs HMC with appropriate parameters
+      - handles resubmission if needed
+      - tracks job history in database
     """
-
     # fetch ensemble metadata & parameters
     ens = get_ensemble_details(db_file, ensemble_id)
     if not ens:
@@ -197,37 +196,55 @@ def generate_hmc_slurm_gpu(
     L, T = int(p['L']), int(p['T'])
     VOL = f"{L}.{L}.{L}.{T}"
 
-    # ----------------------------------------------------------------
-    # Provide defaults for exec_path, bind_script, n_trajec if omitted
+    # Check for HMC parameters in ensemble parameters
     if exec_path is None:
-        # uses the same ens_name you pass in to the script
-        exec_path = (
-            f"/global/cfs/cdirs/{account}/cosmon/"
-            f"mdwf/software/install_gpu/Grid_{ens_name}/bin/Nf2p1p1"
-        )
+        if 'hmc_exec_path' in p:
+            exec_path = p['hmc_exec_path']
+        else:
+            # Prompt user for executable path
+            exec_path = input("Please enter the path to the HMC executable: ").strip()
+            if not exec_path:
+                raise RuntimeError("HMC executable path is required")
+            
+            # Save to ensemble parameters
+            conn = get_connection(db_file)
+            c = conn.cursor()
+            c.execute("""
+                INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
+                VALUES (?, ?, ?)
+            """, (ensemble_id, 'hmc_exec_path', exec_path))
+            conn.commit()
+            conn.close()
+
     if bind_script is None:
-        # place your bind‐script under a directory named by L
-        bind_script = f"/global/cfs/cdirs/m2986/cosmon/mdwf/L{L}/bind.sh"
+        if 'hmc_bind_script' in p:
+            bind_script = p['hmc_bind_script']
+        else:
+            # Prompt user for binding script path
+            bind_script = input("Please enter the path to the core binding script: ").strip()
+            if not bind_script:
+                raise RuntimeError("Core binding script path is required")
+            
+            # Save to ensemble parameters
+            conn = get_connection(db_file)
+            c = conn.cursor()
+            c.execute("""
+                INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
+                VALUES (?, ?, ?)
+            """, (ensemble_id, 'hmc_bind_script', bind_script))
+            conn.commit()
+            conn.close()
+
     if n_trajec is None:
         # default # of trajectories = cfg_max
         if cfg_max is None:
             raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
         n_trajec = cfg_max
-    # ----------------------------------------------------------------
 
     # prepare output file
     script_file = Path(out_path)
     script_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # build optional requeue block
-    requeue_blk = ""
-    if resubmit.lower() in ('1','y','yes','true') and mode != 'reseed':
-        requeue_blk = f"""
-# re-queue if under cfg_max and not a reseed job
-if (( start < {cfg_max} )); then
-  sbatch --dependency=afterok:$SLURM_JOBID $batch
-fi
-"""
     ensemble_dir = Path(ens['directory']).resolve()
     
     txt = f"""#!/bin/bash
@@ -258,72 +275,98 @@ cfg_max={cfg_max}
 mpi="{mpi}"
 
 cd {ensemble_dir}
-mkdir -p cnfg log_hmc jlog
 
-# find last config index
-start=$(ls -v cnfg/ | grep lat | tail -1 | sed 's/[^0-9]*//g')
-if [[ -z $start ]]; then start=0; fi
-echo "START = $start (mode=$mode)"
+echo "ens = $ens"
+echo "ens_dir = {ensemble_dir}"
+echo "EXEC = $EXEC"
+echo "BIND = $BIND"
+echo "n_trajec = $n_trajec"
+echo "cfg_max = $cfg_max"
 
+mkdir -p cnfg
+mkdir -p log_hmc
 
-# ------------------------------------------------------------------------
-# Update ensemble's history in db to show running/ending job
-# ------------------------------------------------------------------------
+start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
+if [[ -z $start ]]; then
+    echo "no configs - start is empty - doing TepidStart"
+    start=0
+fi
+
+# check if start <= cfg_max
+if [[ $start -ge $cfg_max ]]; then
+    echo "your latest config is greater than the target:"
+    echo "  $start >= $cfg_max"
+    exit
+fi
+
+echo "cfg_current = $start"
+
+# Update database to show running job
 out=$(
-  mdwf_db.py update \\
+  mdwf_db update \\
     --db-file="$DB" \\
     --ensemble-id=$EID \\
     --operation-type="$mode" \\
     --status=RUNNING \\
-    --params="config_start=$start config_end=$(( start + n_trajec )) config_increment=$n_trajec slurm_job=$SLURM_JOB_ID"
+    --params="config_start=$start config_end=$(( start + n_trajec )) config_increment=$n_trajec slurm_job=$SLURM_JOB_ID exec_path=$EXEC bind_script=$BIND"
 )
 echo "$out"
 op_id=${{out#*operation }}
 op_id=${{op_id%%:*}}
 export op_id
 
-update_status() {{
-  EXIT_CODE=$?
-  STATUS=COMPLETED
-  [[ $EXIT_CODE -ne 0 ]] && STATUS=FAILED
-
-  mdwf_db.py update \\
-    --db-file="$DB" \\
-    --ensemble-id=$EID \\
-    --operation-id=$op_id \\
-    --operation-type="$mode" \\
-    --status=$STATUS \\
-    --params="exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname)"
-
-  echo "DB updated: operation $op_id → $STATUS (exit=$EXIT_CODE) [SLURM_JOB_ID=$SLURM_JOB_ID]"
-  exit $EXIT_CODE
-}}
-trap update_status EXIT TERM INT HUP QUIT
-SECONDS=0
-
-# ------------------------------------------------------------------------
-
-# copy in the pre-generated XML and cd into cnfg
-mdwf_db hmc-xml -e {ensemble_id} -m continue --params "StartTrajectory=$start"
+# Generate HMC parameters XML
+mdwf_db hmc-xml -e $EID -m $mode --params "StartTrajectory=$start Trajectories=$n_trajec"
 
 cp HMCparameters.xml cnfg/
 cd cnfg
 
-# environment setup...
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export CRAY_ACCEL_TARGET=nvidia80
 export MPICH_OFI_NIC_POLICY=GPU
+export SLURM_CPU_BIND="cores"
 export MPICH_GPU_SUPPORT_ENABLED=1
 export MPICH_RDMA_ENABLED_CUDA=1
 export MPICH_GPU_IPC_ENABLED=1
 export MPICH_GPU_EAGER_REGISTER_HOST_MEM=0
 export MPICH_GPU_NO_ASYNC_MEMCPY=0
+export OMP_NUM_THREADS=8
 
-echo "RUNNING srun at $(date)"
-srun $BIND $EXEC --mpi $mpi --grid $VOL 2>&1 | tee ../log_hmc/run_${{start}}.log
-echo "SLURM_JOB_ID: $SLURM_JOB_ID" >> ../log_hmc/run_${{start}}.log
+echo "Nthreads $OMP_NUM_THREADS"
 
-{requeue_blk}
+echo "START `date`"
+srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_${ens}.$start
+EXIT_CODE=$?
+echo "STOP `date`"
+
+# Update database with job status
+STATUS=COMPLETED
+[[ $EXIT_CODE -ne 0 ]] && STATUS=FAILED
+
+mdwf_db update \\
+  --db-file="$DB" \\
+  --ensemble-id=$EID \\
+  --operation-id=$op_id \\
+  --operation-type="$mode" \\
+  --status=$STATUS \\
+  --params="exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname)"
+
+echo "DB updated: operation $op_id → $STATUS (exit=$EXIT_CODE) [SLURM_JOB_ID=$SLURM_JOB_ID]"
+
+# Check if we should resubmit
+if [[ $EXIT_CODE -eq 0 && "{resubmit}" == "true" && $mode != "reseed" ]]; then
+    next_start=$((start + n_trajec))
+    if [[ $next_start -lt $cfg_max ]]; then
+        echo "Resubmitting with start=$next_start in continue mode"
+        # Generate new XML for continue mode
+        mdwf_db hmc-xml -e $EID -m continue --params "StartTrajectory=$next_start Trajectories=$n_trajec"
+        # Resubmit the job
+        sbatch --dependency=afterok:$SLURM_JOBID $batch
+    else
+        echo "Reached target config_max=$cfg_max"
+    fi
+fi
+
+exit $EXIT_CODE
 """
     script_file.write_text(txt, encoding='utf-8')
     return True

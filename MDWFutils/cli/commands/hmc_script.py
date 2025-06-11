@@ -7,6 +7,7 @@ required & defaulted job-params.
 """
 import sys, os
 from pathlib import Path
+import click
 
 from MDWFutils.db            import get_ensemble_details
 from MDWFutils.jobs.hmc      import generate_hmc_parameters, generate_hmc_slurm_gpu
@@ -21,6 +22,19 @@ DEFAULT_JOB_PARAMS = {
     'gpu_bind'      : 'none',
     'mail_user'     : os.getenv('USER',''),
     'mpi'           : '2.1.1.2',
+}
+
+DEFAULT_PARAMS = {
+    'account': 'm2986_g',
+    'constraint': 'gpu',
+    'queue': 'regular',
+    'time_limit': '06:00:00',
+    'nodes': 1,
+    'cpus_per_task': 16,
+    'gpus': 4,
+    'gpu_bind': 'none',
+    'ranks': 4,
+    'bind_sh': 'bind.sh'
 }
 
 def register(subparsers):
@@ -40,7 +54,9 @@ def register(subparsers):
     p.add_argument('-x','--xml-params', default='',
                    help='Space‐separated key=val for XML overrides')
     p.add_argument('-j','--job-params', default='',
-                   help='Space‐separated key=val for SBATCH/job script')
+                   help='Space‐separated key=val for SBATCH/job script. Required params: queue, cfg_max, exec_path, bind_script')
+    p.add_argument('-o','--output-file', help='Output SBATCH script path')
+    p.add_argument('--hmc-params', help='HMC parameters in format "key1=val1 key2=val2"')
     p.set_defaults(func=do_hmc_script)
 
 
@@ -65,7 +81,7 @@ def do_hmc_script(args):
     #  Ensure slurm folder & output path
     slurm_dir = ens_dir / 'slurm'
     slurm_dir.mkdir(parents=True, exist_ok=True)
-    out_file = slurm_dir / f"hmc_{args.ensemble_id}_{args.mode}.sbatch"
+    out_file = args.output_file or slurm_dir / f"hmc_{args.ensemble_id}_{args.mode}.sbatch"
 
     # XML generation
     xdict = {}
@@ -86,6 +102,15 @@ def do_hmc_script(args):
         k,v = tok.split('=',1)
         jdict[k] = v
 
+    # Warn for unused job parameters
+    valid_job_params = {'constraint','time_limit','cpus_per_task','nodes','gpus_per_task','gpu_bind','mail_user','mpi','account','queue','ntasks_per_node','resubmit','bind_sh','ranks','output_file','cfg_max','exec_path','bind_script'}
+    unused = [k for k in jdict if k not in valid_job_params]
+    for k in unused:
+        print(f"WARNING: job parameter '{k}' was provided but is not used by the script generator.", file=sys.stderr)
+    # Remove unused keys
+    for k in unused:
+        jdict.pop(k)
+
     missing = [k for k in REQUIRED_JOB_PARAMS if k not in jdict]
     if missing:
         print("ERROR: missing job parameters:", missing, file=sys.stderr)
@@ -103,6 +128,25 @@ def do_hmc_script(args):
     if 'resubmit' not in jdict:
         jdict['resubmit'] = 'false' if args.mode=='reseed' else 'true'
 
+    # Parse HMC parameters
+    hmc_dict = {}
+    hmc_params = args.hmc_params or ''
+    for tok in hmc_params.split():
+        if '=' not in tok:
+            print(f"ERROR: bad HMC param '{tok}'", file=sys.stderr)
+            return 1
+        k,v = tok.split('=',1)
+        hmc_dict[k] = v
+
+    # Warn for unused HMC parameters
+    valid_hmc_params = {'StartTrajectory','Trajectories','RandomSeed','Integrator','IntegratorSteps','IntegratorStepSize','HasenbuschMass','HasenbuschMu','HasenbuschRho','HasenbuschAlpha','HasenbuschBeta','HasenbuschGamma','HasenbuschDelta','HasenbuschEpsilon','HasenbuschZeta','HasenbuschEta','HasenbuschTheta','HasenbuschLambda','HasenbuschKappa','HasenbuschNu','HasenbuschXi','HasenbuschOmicron','HasenbuschPi','HasenbuschRho','HasenbuschSigma','HasenbuschTau','HasenbuschUpsilon','HasenbuschPhi','HasenbuschChi','HasenbuschPsi','HasenbuschOmega'}
+    unused_hmc = [k for k in hmc_dict if k not in valid_hmc_params]
+    for k in unused_hmc:
+        print(f"WARNING: HMC parameter '{k}' was provided but is not used by the script generator.", file=sys.stderr)
+    # Remove unused keys
+    for k in unused_hmc:
+        hmc_dict.pop(k)
+
     # Assemble arguments & call the SBATCH-generator
     sbatch_args = {
         'out_path'    : str(out_file),
@@ -117,8 +161,57 @@ def do_hmc_script(args):
     }
     # everything from jdict (constraint, queue, time_limit, mpi, etc.)
     sbatch_args.update(jdict)
+    sbatch_args.update(hmc_dict)
 
     generate_hmc_slurm_gpu(**sbatch_args)
 
     print("Wrote HMC sbatch ->", out_file)
     return 0
+
+@click.command()
+@click.option('--ensemble-id', '-e', required=True, help='Ensemble ID')
+@click.option('--output-file', '-o', help='Output SBATCH script path')
+@click.option('--job-params', '-j', required=True, help='Job parameters in format "key1=val1 key2=val2" (mail_user is required)')
+@click.option('--hmc-params', '-h', help='HMC parameters in format "key1=val1 key2=val2"')
+def hmc_script(ensemble_id, output_file, job_params, hmc_params):
+    """Generate an HMC SBATCH script."""
+    # Parse job parameters
+    job_dict = DEFAULT_PARAMS.copy()
+    if job_params:
+        for param in job_params.split():
+            if '=' in param:
+                key, val = param.split('=', 1)
+                job_dict[key] = val
+
+    # Check for required mail_user
+    if 'mail_user' not in job_dict:
+        raise click.ClickException("mail_user is required in job parameters")
+
+    # Parse HMC parameters
+    hmc_dict = {}
+    if hmc_params:
+        for param in hmc_params.split():
+            if '=' in param:
+                key, val = param.split('=', 1)
+                hmc_dict[key] = val
+
+    # Get ensemble directory
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT directory FROM ensembles WHERE id = ?", (ensemble_id,))
+    result = c.fetchone()
+    conn.close()
+
+    if not result:
+        raise click.ClickException(f"Ensemble {ensemble_id} not found")
+    ensemble_dir = result[0]
+
+    # Generate SBATCH script
+    generate_hmc_sbatch(
+        output_file=output_file,
+        db_file=get_db_path(),
+        ensemble_id=ensemble_id,
+        ensemble_dir=ensemble_dir,
+        custom_changes=hmc_dict,
+        **job_dict
+    )

@@ -2,8 +2,8 @@
 """
 commands/update.py
 
-Sub‐command “update” for mdwf_db: insert a new operation or update an existing one
-in the database’s operations table.  Everything except ensemble-id, type, status,
+Sub‐command "update" for mdwf_db: insert a new operation or update an existing one
+in the database's operations table.  Everything except ensemble-id, type, status,
 and (optionally) operation-id is passed via --params.
 """
 
@@ -14,7 +14,31 @@ from MDWFutils.db import update_operation
 def register(subparsers):
     p = subparsers.add_parser(
         'update',
-        help='Create or update an operation in the DB'
+        help='Create or update an operation in the database',
+        description="""
+Create or update an operation record in the database. This command:
+1. Records operation status and parameters
+2. Tracks job execution details
+3. Maintains operation history
+
+Common operation types:
+- HMC_TUNE: HMC tuning run
+- HMC_PRODUCTION: HMC production run
+- GLU_SMEAR: Configuration smearing
+- WIT_MESON2PT: Meson measurements
+- PROMOTE_ENSEMBLE: Ensemble promotion
+
+Common parameters:
+- config_start: First configuration number
+- config_end: Last configuration number
+- exit_code: Job exit code
+- runtime: Job runtime in seconds
+- slurm_job: SLURM job ID
+- host: Execution hostname
+
+Example:
+  mdwf_db update -e 1 -o HMC_TUNE -s RUNNING -p "config_start=0 config_end=100"
+"""
     )
     p.add_argument(
         '--ensemble-id', '-e',
@@ -27,31 +51,28 @@ def register(subparsers):
         '--operation-type', '-o',
         dest='operation_type',
         required=True,
-        help='Operation type (e.g. HMC_TUNE, GLU_SMEAR, etc.)'
+        help='Type of operation (e.g. HMC_TUNE, GLU_SMEAR, WIT_MESON2PT)'
     )
     p.add_argument(
         '--status', '-s',
         dest='status',
         required=True,
         choices=['RUNNING','COMPLETED','FAILED'],
-        help='New status of the operation'
+        help='Operation status: RUNNING, COMPLETED, or FAILED'
     )
     p.add_argument(
         '--operation-id', '-i',
         dest='operation_id',
         type=int,
         default=None,
-        help='(optional) existing operation ID to update in place'
+        help='(Optional) ID of existing operation to update'
     )
     p.add_argument(
         '--params', '-p',
         dest='params',
         default='',
-        help=(
-            'Space‐separated list of key=val pairs; all fields (e.g. '
-            'config_start=0 config_end=100 exit_code=0 runtime=3600 '
-            'slurm_job=123 host=foo) must live here.'
-        )
+        help=('Space-separated key=val pairs for operation details. '
+              'Example: "config_start=0 config_end=100 exit_code=0 runtime=3600"')
     )
     p.set_defaults(func=do_update)
 

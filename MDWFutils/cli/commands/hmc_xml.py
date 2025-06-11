@@ -2,7 +2,7 @@
 """
 commands/hmc_xml.py
 
-Sub‐command “hmc-xml”: generate the HMCparameters XML (tepid, continue or reseed)
+Sub‐command "hmc-xml": generate the HMCparameters XML (tepid, continue or reseed)
 for a given ensemble.
 """
 import sys
@@ -15,32 +15,51 @@ from MDWFutils.jobs.hmc import generate_hmc_parameters
 def register(subparsers: argparse._SubParsersAction):
     p = subparsers.add_parser(
         'hmc-xml',
-        help='Generate HMCparameters.<mode>.xml for an ensemble'
+        help='Generate HMC parameters XML file',
+        description="""
+Generate HMC parameters XML file for an ensemble. This command:
+1. Creates HMCparameters.<mode>.xml with default parameters
+2. Allows customization of any parameter
+3. Supports different run modes
+
+Available run modes:
+- tepid: Initial thermalization run
+- continue: Continue from existing configuration
+- reseed: Start new run with different seed
+
+Common XML parameters:
+- n_therm: Number of thermalization steps
+- n_traj: Number of trajectories
+- dt: Molecular dynamics step size
+- n_steps: Steps per trajectory
+- seed: Random number seed
+
+Example:
+  mdwf_db hmc-xml -e 1 -m tepid -x "n_therm=100 n_traj=50 dt=0.01"
+"""
     )
     p.add_argument(
         '-e','--ensemble-id',
         type=int,
         required=True,
-        help='Which ensemble to target'
+        help='ID of the ensemble to generate XML for'
     )
     p.add_argument(
         '-m','--mode',
         choices=['tepid','continue','reseed'],
         required=True,
-        help='Which XML template to use'
+        help='Run mode: tepid (new), continue (existing), or reseed (new seed)'
     )
     p.add_argument(
         '-b','--base-dir',
         default='.',
-        help='Root of TUNING/ & ENSEMBLES/ (default: CWD)'
+        help='Root directory containing TUNING/ & ENSEMBLES/ (default: current directory)'
     )
     p.add_argument(
         '-x','--xml-params',
         default='',
-        help=(
-            'Space‐separated key=val pairs to override any XML defaults, '
-            'e.g. "n_therm=100 n_traj=50 dt=0.01".'
-        )
+        help=('Space-separated key=val pairs to override XML defaults. '
+              'Example: "n_therm=100 n_traj=50 dt=0.01"')
     )
     p.set_defaults(func=do_hmc_xml)
 

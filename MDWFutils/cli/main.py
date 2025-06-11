@@ -5,7 +5,34 @@ import os
 from pathlib import Path
 
 def main():
-    parser = argparse.ArgumentParser(prog="mdwf_db")
+    parser = argparse.ArgumentParser(
+        prog="mdwf_db",
+        description="MDWF Database Management Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Available commands are grouped by function:
+
+Database Management:
+  init-db          Initialize a new database and directory structure
+  add-ensemble     Add a new ensemble to the database
+  remove-ensemble  Remove an ensemble from the database
+  promote-ensemble Move a tuning ensemble to production
+  query           List ensembles or show details for one
+
+Job Script Generation:
+  hmc-script      Generate HMC XML and SLURM script
+  hmc-xml         Generate HMC parameters XML
+  smear-script    Generate GLU smearing SLURM script
+  meson-2pt       Generate WIT meson 2pt SLURM script
+  wit-input       Generate WIT input file
+  glu-input       Generate GLU input file
+
+Database Operations:
+  update          Create or update an operation in the database
+
+For detailed help on any command, use: mdwf_db <command> --help
+"""
+    )
 
     DEFAULT_DB = os.getenv('MDWF_DB',
                            str(Path('.').resolve()/'mdwf_ensembles.db'))

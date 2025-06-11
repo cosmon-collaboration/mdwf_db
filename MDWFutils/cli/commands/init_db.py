@@ -2,7 +2,7 @@
 """
 commands/init_db.py
 
-Sub‐command “init-db”: create fresh schema + disk tree
+Sub‐command "init-db": create fresh schema + disk tree
    BASE_DIR/TUNING
    BASE_DIR/ENSEMBLES
 Default BASE_DIR is the current directory.
@@ -14,12 +14,23 @@ from MDWFutils.db import init_database
 def register(subparsers):
     p = subparsers.add_parser(
         'init-db',
-        help='Initialize the SQLite schema and create TUNING/ & ENSEMBLES/ under BASE_DIR'
+        help='Initialize the SQLite schema and create TUNING/ & ENSEMBLES/ under BASE_DIR',
+        description="""
+Initialize a new MDWF database and directory structure. This command:
+1. Creates a new SQLite database with the required schema
+2. Creates TUNING/ and ENSEMBLES/ directories under BASE_DIR
+3. Sets up the initial directory structure for ensemble management
+
+The database will track:
+- Ensemble parameters and metadata
+- Operation history and status
+- Job parameters and results
+"""
     )
     p.add_argument(
         '--base-dir',
         default='.',
-        help='Root directory under which to create TUNING/ and ENSEMBLES/ (default: CWD)'
+        help='Root directory under which to create TUNING/ and ENSEMBLES/ (default: current directory)'
     )
     p.set_defaults(func=do_init)
 

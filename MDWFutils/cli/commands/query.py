@@ -2,7 +2,7 @@
 """
 commands/query.py
 
-‘mdwf_db query’:
+'mdwf_db query':
   • with no -e/--ensemble-id: list all ensembles
   • with   -e/--ensemble-id: show details + history for one
 """
@@ -17,18 +17,36 @@ from MDWFutils.db import (
 def register(subparsers):
     p = subparsers.add_parser(
         'query',
-        help='List ensembles or show details + history for one'
+        help='List ensembles or show details + history for one',
+        description="""
+Query the MDWF database for ensemble information. This command has two modes:
+
+1. List mode (no --ensemble-id):
+   - Shows a summary of all ensembles
+   - With --detailed, includes parameters and operation counts
+
+2. Detail mode (with --ensemble-id):
+   - Shows full ensemble parameters
+   - Lists all operations and their status
+   - Shows operation history and results
+
+The output includes:
+- Ensemble parameters (beta, masses, lattice size, etc.)
+- Operation history (HMC, smearing, measurements)
+- Job status and results
+- Configuration ranges and counts
+"""
     )
     p.add_argument(
         '-e', '--ensemble-id',
         type=int,
         default=None,
-        help='If given, show info and history for that ensemble'
+        help='Show detailed information and history for this ensemble ID'
     )
     p.add_argument(
         '--detailed',
         action='store_true',
-        help='In list mode, also show parameters + op counts'
+        help='In list mode, show full parameters and operation counts for each ensemble'
     )
     p.set_defaults(func=do_query)
 

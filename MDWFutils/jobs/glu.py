@@ -58,6 +58,17 @@ DEFAULT_PARAMS = {
     }
 }
 
+def update_nested_dict(d, updates):
+    """
+    Recursively merge updates into d.
+    """
+    for key, val in updates.items():
+        if isinstance(val, dict) and key in d and isinstance(d[key], dict):
+            update_nested_dict(d[key], val)
+        else:
+            d[key] = val
+    return d
+
 def generate_glu_input(
     output_file: str,
     overrides: dict = None
@@ -72,26 +83,12 @@ def generate_glu_input(
         {"ALPHA1": "0.8", "ITERS": "100"}
       )
     """
-    #Start from a fresh copy of the defaults
+    # Start from a fresh copy of the defaults
     params = copy.deepcopy(DEFAULT_PARAMS)
-    #Apply flat overrides
+    
+    # Apply overrides
     if overrides:
-        for key, val in overrides.items():
-            # top-level simple key
-            if key in params and not isinstance(params[key], dict):
-                params[key] = val
-                continue
-
-            # otherwise scan one level down
-            placed = False
-            for section, content in params.items():
-                if isinstance(content, dict) and key in content:
-                    content[key] = val
-                    placed = True
-                    break
-
-            if not placed:
-                raise KeyError(f"Override key '{key}' not found in defaults")
+        update_nested_dict(params, overrides)
 
     # Ensure output directory exists
     outf = Path(output_file)
@@ -101,11 +98,12 @@ def generate_glu_input(
     with outf.open("w") as f:
         for key, val in params.items():
             if isinstance(val, dict):
-                # first line uses the dict["value"]
-                f.write(f"{key} = {val['value']}\n")
-                # then the remainder, indented
+                # Write section value first
+                if 'value' in val:
+                    f.write(f"{key} = {val['value']}\n")
+                # Then write remaining parameters
                 for subk, subv in val.items():
-                    if subk == "value":
+                    if subk == 'value':
                         continue
                     f.write(f"    {subk} = {subv}\n")
             else:
