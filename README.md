@@ -10,7 +10,7 @@ To install the MDWF Database Tool, follow these steps:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/mdwf_db.git
+   git clone https://github.com/smithwya/mdwf_db.git
    cd mdwf_db
    ```
 
