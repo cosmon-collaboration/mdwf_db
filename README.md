@@ -118,23 +118,38 @@ To print the history of an ensemble, use the following command:
 
 **Command:**
 ```bash
-mdwf_db history --db-file=/path/to/mdwf_ensembles.db --ensemble-id=<ensemble_id>
+mdwf_db query -e <ensemble_id>
 ```
 
 **Parameters:**
-- `--db-file=<db_file>`: Path to the database file.
-- `--ensemble-id=<ensemble_id>`: The ID of the ensemble to print history for.
+- `-e <ensemble_id>`: The ID of the ensemble to query for history.
 
 **Sample Command:**
 ```bash
-mdwf_db history --db-file=/path/to/mdwf_ensembles.db --ensemble-id=1
+mdwf_db query -e 1
 ```
 
 **Expected Output:**
 ```
-History for Ensemble1:
-- Added on 2023-01-01
-- Promoted on 2023-01-02
+ID          = 1
+Directory   = /Users/wyatt/Development/mdwf_db/test_cli/TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64
+Status      = TUNING
+Created     = 2025-06-11T15:32:53.297052
+Description = Test ensemble for workflow
+Parameters:
+    L = 32
+    Ls = 24
+    T = 64
+    b = 1.8
+    beta = 6.0
+    mc = 0.85
+    ml = 0.02
+    ms = 0.07
+
+=== Operation history ===
+Op 1: ADD_ENSEMBLE [COMPLETED]
+  Created: 2025-06-11T15:32:53.297052
+  Updated: 2025-06-11T15:32:53.297052
 ```
 
 ### Generate Smearing Script for an Ensemble
