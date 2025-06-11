@@ -12,7 +12,7 @@ import click
 from MDWFutils.db            import get_ensemble_details
 from MDWFutils.jobs.hmc      import generate_hmc_parameters, generate_hmc_slurm_gpu
 
-REQUIRED_JOB_PARAMS = ['queue','cfg_max']
+REQUIRED_JOB_PARAMS = ['cfg_max']
 DEFAULT_JOB_PARAMS = {
     'constraint'    : 'gpu',
     'time_limit'    : '17:00:00',
