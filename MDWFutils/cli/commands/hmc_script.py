@@ -103,7 +103,7 @@ def do_hmc_script(args):
         jdict[k] = v
 
     # Warn for unused job parameters
-    valid_job_params = {'constraint','time_limit','cpus_per_task','nodes','gpus_per_task','gpu_bind','mail_user','mpi','account','queue','ntasks_per_node','resubmit','bind_sh','ranks','output_file','cfg_max','exec_path','bind_script'}
+    valid_job_params = {'constraint', 'time_limit', 'cpus_per_task', 'nodes', 'gpus_per_task', 'gpu_bind', 'mail_user', 'mpi', 'account', 'queue', 'ntasks_per_node', 'resubmit', 'bind_sh', 'ranks', 'output_file', 'cfg_max', 'exec_path', 'bind_script', 'n_trajec'}
     unused = [k for k in jdict if k not in valid_job_params]
     for k in unused:
         print(f"WARNING: job parameter '{k}' was provided but is not used by the script generator.", file=sys.stderr)
