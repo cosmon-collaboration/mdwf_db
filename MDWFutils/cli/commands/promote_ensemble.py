@@ -2,35 +2,78 @@
 """
 commands/promote-ensemble.py
 
-Sub‐command “promote-ensemble”: move a TUNING ensemble under ENSEMBLES and update its status.
-Default BASE_DIR is the current directory.
+Move a TUNING ensemble to PRODUCTION status and directory.
 """
 import shutil
 import subprocess
 import sys
+import argparse
 from pathlib import Path
-from MDWFutils.db import get_ensemble_details, update_ensemble
+from MDWFutils.db import update_ensemble
+from ..ensemble_utils import resolve_ensemble_from_args
 
 def register(subparsers):
     p = subparsers.add_parser(
         'promote-ensemble',
-        help='Move a TUNING ensemble into PRODUCTION (ENSEMBLES/)'
+        help='Move ensemble from TUNING to PRODUCTION status',
+        description="""
+Move a TUNING ensemble to PRODUCTION status and directory.
+
+WHAT THIS DOES:
+• Moves ensemble directory from TUNING/ to ENSEMBLES/
+• Updates ensemble status to PRODUCTION in database
+• Records a PROMOTE_ENSEMBLE operation in the history
+• Preserves all files and operation history
+
+DIRECTORY MOVEMENT:
+The ensemble directory is physically moved:
+  FROM: TUNING/b{beta}/b{b}Ls{Ls}/mc{mc}/ms{ms}/ml{ml}/L{L}/T{T}/
+  TO:   ENSEMBLES/b{beta}/b{b}Ls{Ls}/mc{mc}/ms{ms}/ml{ml}/L{L}/T{T}/
+
+DATABASE UPDATES:
+• Ensemble status: TUNING to PRODUCTION  
+• Directory path: Updated to new ENSEMBLES/ location
+• Operation history: PROMOTE_ENSEMBLE operation added
+
+REQUIREMENTS:
+• Ensemble must currently have TUNING status
+• Target directory in ENSEMBLES/ must not already exist
+• Source directory must be under TUNING/
+
+FLEXIBLE ENSEMBLE IDENTIFICATION:
+The --ensemble parameter accepts multiple formats:
+  • Ensemble ID: -e 1
+  • Relative path: -e ./TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64
+  • Absolute path: -e /full/path/to/ensemble
+  • Current directory: -e . (when run from within ensemble directory)
+
+EXAMPLES:
+  # Promote ensemble 1 to production
+  mdwf_db promote-ensemble -e 1
+
+  # Promote current ensemble (from within ensemble directory)
+  mdwf_db promote-ensemble -e . --force
+
+  # Promote with custom base directory
+  mdwf_db promote-ensemble -e 1 --base-dir /scratch/lattice
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument('--ensemble-id','-e', type=int, required=True,
-                   help='Which ensemble to promote')
+    p.add_argument('-e', '--ensemble', required=True,
+                   help='Ensemble to promote (ID, directory path, or "." for current directory)')
     p.add_argument('--base-dir',
                    default='.',
-                   help='Root under which TUNING/ and ENSEMBLES/ live (default: CWD)')
+                   help='Root directory containing TUNING/ and ENSEMBLES/ (default: current directory)')
     p.add_argument('--force', action='store_true',
-                   help='Skip the “Proceed?” prompt')
+                   help='Skip confirmation prompt and promote immediately')
     p.set_defaults(func=do_promote)
 
 
 def do_promote(args):
-    info = get_ensemble_details(args.db_file, args.ensemble_id)
+    ensemble_id, info = resolve_ensemble_from_args(args)
     if not info:
-        print(f"ERROR: no ensemble ID={args.ensemble_id}")
         return 1
+        
     if info['status'] == 'PRODUCTION':
         print("Already in PRODUCTION")
         return 0
@@ -48,7 +91,7 @@ def do_promote(args):
         return 1
 
     new_dir = prod / rel
-    print(f"Promote ensemble {args.ensemble_id}:")
+    print(f"Promote ensemble {ensemble_id}:")
     print(f"  from {old_dir}")
     print(f"    to {new_dir}")
     if new_dir.exists():
@@ -68,7 +111,7 @@ def do_promote(args):
     # update the ensembles table
     ok = update_ensemble(
         args.db_file,
-        args.ensemble_id,
+        ensemble_id,
         status='PRODUCTION',
         directory=str(new_dir)
     )
@@ -81,7 +124,7 @@ def do_promote(args):
         'mdwf_db',               
         'update',
         '--db-file',    args.db_file,
-        '--ensemble-id', str(args.ensemble_id),
+        '--ensemble-id', str(ensemble_id),
         '--operation-type', 'PROMOTE_ENSEMBLE',
         '--status',        'COMPLETED',
     ]

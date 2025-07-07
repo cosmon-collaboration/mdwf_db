@@ -1,68 +1,114 @@
+#!/usr/bin/env python3
+"""
+commands/glu_input.py
+
+Generate GLU input files for gauge field utilities.
+"""
 import argparse, ast, sys, os
+from pathlib import Path
 from MDWFutils.db    import get_ensemble_details
 from MDWFutils.jobs.glu import generate_glu_input
 
 def register(subparsers):
-    p = subparsers.add_parser('glu-input', 
-        help='Generate GLU input file',
+    p = subparsers.add_parser(
+        'glu-input',
+        help='Generate GLU input file for gauge field utilities',
         description="""
-Generate a GLU input file for smearing or gluon measurements. This command:
-1. Creates a GLU input file with default parameters
-2. Allows customization of any parameter
-3. Supports different calculation types
+Generate a GLU input file for the GLU gauge field utility program.
 
-Parameters can be specified in sections using dot notation:
-  SECTION.KEY=value
+WHAT THIS DOES:
+• Creates a properly formatted GLU input file
+• Uses ensemble parameters to set lattice dimensions
+• Provides sensible defaults for all GLU parameters
+• Allows customization of any parameter
 
-Example:
-  Configurations.first=168 Configurations.last=372
-  Smearing.steps=50
-  Smearing.alpha=0.1
+GLU PROGRAM:
+GLU is a gauge field utility program that can perform various operations
+on lattice gauge configurations, including:
+• Configuration smearing (STOUT, APE, etc.)
+• Gauge fixing (Coulomb, Landau)
+• Wilson loops and other gauge observables
+• Configuration format conversions
 
-Available calculation types:
-- smearing: Configuration smearing (default)
-- gluon_props: Gluon propagator measurements
-- other: Custom measurements
-"""
+PARAMETER CUSTOMIZATION:
+GLU parameters use flat names (no dots) and can be overridden:
+
+Common parameters (with defaults):
+  CONFNO: 24              # Configuration number to process
+  DIM_0, DIM_1, DIM_2: 16 # Spatial lattice dimensions (auto-set from ensemble)
+  DIM_3: 48               # Temporal dimension (auto-set from ensemble)
+  SMEARTYPE: STOUT        # Smearing algorithm
+  SMITERS: 8              # Number of smearing iterations
+  ALPHA1: 0.75            # Primary smearing parameter
+  ALPHA2: 0.4             # Secondary smearing parameter
+  ALPHA3: 0.2             # Tertiary smearing parameter
+  GFTYPE: COULOMB         # Gauge fixing type
+  GF_TUNE: 0.09           # Gauge fixing tuning parameter
+  ACCURACY: 14            # Gauge fixing accuracy
+  MAX_ITERS: 650          # Maximum gauge fixing iterations
+
+CALCULATION TYPES:
+  smearing:     Configuration smearing (default)
+  gluon_props:  Gluon field measurements
+  other:        Custom GLU operations
+
+EXAMPLES:
+  # Basic smearing input with defaults
+  mdwf_db glu-input -e 1 -o smear.in
+
+  # Custom smearing parameters
+  mdwf_db glu-input -e 1 -o smear.in -g "CONFNO=168 SMITERS=50 ALPHA1=0.1"
+
+  # Gauge fixing input
+  mdwf_db glu-input -e 1 -o gauge_fix.in -t other -g "CONFNO=100 GFTYPE=LANDAU"
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument('-e','--ensemble-id', type=int, required=True,
                    help='ID of the ensemble to generate input for')
     p.add_argument('-o','--output-file', required=True,
                    help='Path where to write the GLU input file')
     p.add_argument('-g','--glu-params', default='',
-                   help=('Space-separated key=val pairs for GLU input. '
-                         'Use dot notation for sections: SECTION.KEY=val'))
+                   help='Space-separated key=val pairs for GLU parameters. Example: "CONFNO=168 SMITERS=50 ALPHA1=0.1"')
     p.add_argument('-t','--type', default='smearing',
                    choices=['smearing', 'gluon_props', 'other'],
                    help='Type of GLU calculation (default: smearing)')
     p.set_defaults(func=do_glu_input)
 
 def do_glu_input(args):
+    # Get ensemble details
     ens = get_ensemble_details(args.db_file, args.ensemble_id)
     if not ens:
         print(f"ERROR: Ensemble {args.ensemble_id} not found", file=sys.stderr)
         return 1
-    ens_dir = ens['directory']
-
-    # Determine output file path
-    out_file = args.output_file
-    if not os.path.isabs(out_file):
-        out_file = os.path.join(ens_dir, out_file)
 
     # Parse GLU parameters
-    gdict = {}
-    glu_params = args.glu_params
-    if isinstance(glu_params, str):
-        glu_params = glu_params.split()
-    elif glu_params is None:
-        glu_params = []
-    for tok in glu_params:
-        if '=' not in tok:
-            print(f"ERROR: bad GLU param '{tok}'", file=sys.stderr)
-            return 1
-        k,v = tok.split('=',1)
-        gdict[k] = v
+    glu_params = {}
+    if args.glu_params:
+        for pair in args.glu_params.split():
+            if '=' not in pair:
+                print(f"ERROR: Invalid parameter format '{pair}'. Use KEY=VALUE", file=sys.stderr)
+                return 1
+            key, value = pair.split('=', 1)
+            glu_params[key] = value
 
-    # Only pass output_file and gdict (as overrides)
-    generate_glu_input(out_file, gdict)
-    return 0 
+    # Set lattice dimensions from ensemble parameters
+    ens_params = ens['parameters']
+    if 'L' in ens_params:
+        glu_params.setdefault('DIM_0', str(ens_params['L']))
+        glu_params.setdefault('DIM_1', str(ens_params['L']))
+        glu_params.setdefault('DIM_2', str(ens_params['L']))
+    if 'T' in ens_params:
+        glu_params.setdefault('DIM_3', str(ens_params['T']))
+
+    # Generate GLU input
+    try:
+        output_path = generate_glu_input(
+            output_file=args.output_file,
+            overrides=glu_params
+        )
+        return 0
+        
+    except Exception as e:
+        print(f"ERROR: Failed to generate GLU input: {e}", file=sys.stderr)
+        return 1 

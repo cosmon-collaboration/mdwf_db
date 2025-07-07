@@ -1,28 +1,72 @@
 import shutil
-from MDWFutils.db import get_ensemble_details, remove_ensemble
+import argparse
+from MDWFutils.db import remove_ensemble
+from ..ensemble_utils import resolve_ensemble_from_args
 
 def register(subparsers):
     p = subparsers.add_parser(
         'remove-ensemble',
-        help='Delete an ensemble and its operations'
+        help='Remove ensemble and all its operations from database',
+        description="""
+Remove an ensemble and all its operations from the database.
+
+WHAT THIS DOES:
+• Removes the ensemble record from the database
+• Deletes all associated operations and their parameters
+• Optionally deletes the on-disk directory tree
+
+WHAT IS REMOVED FROM DATABASE:
+• Ensemble record (ID, directory, status, creation time)
+• Physics parameters (beta, masses, lattice dimensions)
+• All operation records (HMC, smearing, measurements, etc.)
+• Operation parameters (config ranges, job IDs, exit codes)
+• Operation timestamps and status information
+
+FILESYSTEM OPERATIONS:
+By default, only the database records are removed. The ensemble
+directory and all files remain on disk.
+
+Use --remove-directory to also delete the on-disk ensemble tree.
+
+WARNING: Database removal is irreversible. All ensemble and operation
+data will be permanently deleted from the database.
+
+FLEXIBLE ENSEMBLE IDENTIFICATION:
+The --ensemble parameter accepts multiple formats:
+  • Ensemble ID: -e 1
+  • Relative path: -e ./TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64
+  • Absolute path: -e /full/path/to/ensemble
+  • Current directory: -e . (when run from within ensemble directory)
+
+EXAMPLES:
+  # Remove from database only (preserve files)
+  mdwf_db remove-ensemble -e 1
+
+  # Remove database record and delete files
+  mdwf_db remove-ensemble -e 1 --remove-directory --force
+
+  # Remove current ensemble (from within ensemble directory)
+  mdwf_db remove-ensemble -e . --force
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument('--ensemble-id', type=int, required=True)
+    p.add_argument('-e', '--ensemble', required=True,
+                   help='Ensemble to remove (ID, directory path, or "." for current directory)')
     p.add_argument(
         '--force',
         action='store_true',
-        help='Skip confirmation prompt'
+        help='Skip confirmation prompt and remove immediately'
     )
     p.add_argument(
         '--remove-directory',
         action='store_true',
-        help='Also delete the on-disk tree'
+        help='Also delete the ensemble directory and all files on disk'
     )
     p.set_defaults(func=do_remove)
 
 def do_remove(args):
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
+    ensemble_id, ens = resolve_ensemble_from_args(args)
     if not ens:
-        print(f"Ensemble not found: {args.ensemble_id}")
         return 1
 
     print(f"Removing ensemble {ens['id']} @ {ens['directory']}")
@@ -31,7 +75,7 @@ def do_remove(args):
             print("Aborted")
             return 0
 
-    ok = remove_ensemble(args.db_file, args.ensemble_id)
+    ok = remove_ensemble(args.db_file, ensemble_id)
     print("DB removal:", "OK" if ok else "FAILED")
 
     if ok and args.remove_directory:

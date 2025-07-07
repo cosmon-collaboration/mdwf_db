@@ -351,7 +351,7 @@ mdwf_db update \\
   --status=$STATUS \\
   --params="exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname)"
 
-echo "DB updated: operation $op_id → $STATUS (exit=$EXIT_CODE) [SLURM_JOB_ID=$SLURM_JOB_ID]"
+echo "DB updated: operation $op_id to $STATUS (exit=$EXIT_CODE) [SLURM_JOB_ID=$SLURM_JOB_ID]"
 
 # Check if we should resubmit
 if [[ $EXIT_CODE -eq 0 && "{resubmit}" == "true" && $mode != "reseed" ]]; then

@@ -91,5 +91,5 @@ def do_hmc_xml(args):
         **xdict
     )
 
-    print(f"Wrote HMCparameters.{args.mode}.xml → {ens_dir}")
+    print(f"Wrote HMCparameters.{args.mode}.xml to {ens_dir}")
     return 0

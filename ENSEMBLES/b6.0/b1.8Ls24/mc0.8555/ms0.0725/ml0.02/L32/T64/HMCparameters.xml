@@ -2,12 +2,12 @@
 <grid>
   <HMCparameters>
     <StartTrajectory>0</StartTrajectory>
-    <Trajectories>100</Trajectories>
+    <Trajectories>50</Trajectories>
     <MetropolisTest>false</MetropolisTest>
     <NoMetropolisUntil>0</NoMetropolisUntil>
     <PerformRandomShift>false</PerformRandomShift>
     <StartingType>TepidStart</StartingType>
-    <Seed>546623</Seed>
+    <Seed>973655</Seed>
     <MD>
       <name>
         <elem>OMF2_5StepV</elem>

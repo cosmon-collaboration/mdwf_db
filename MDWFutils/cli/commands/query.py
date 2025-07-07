@@ -2,87 +2,113 @@
 """
 commands/query.py
 
-'mdwf_db query':
-  • with no -e/--ensemble-id: list all ensembles
-  • with   -e/--ensemble-id: show details + history for one
+Query command with two modes:
+• with no -e/--ensemble: list all ensembles
+• with   -e/--ensemble: show details + history for one
 """
 import sys
+import argparse
 from MDWFutils.db import (
     list_ensembles,
-    get_ensemble_details,
-    print_history
+    print_history,
+    resolve_ensemble_identifier
 )
+from MDWFutils.cli.ensemble_utils import add_ensemble_argument
 
 
 def register(subparsers):
     p = subparsers.add_parser(
         'query',
-        help='List ensembles or show details + history for one',
+        help='List ensembles or show detailed info for one ensemble',
         description="""
-Query the MDWF database for ensemble information. This command has two modes:
+Query the MDWF database for ensemble information.
 
-1. List mode (no --ensemble-id):
-   - Shows a summary of all ensembles
-   - With --detailed, includes parameters and operation counts
+TWO MODES:
 
-2. Detail mode (with --ensemble-id):
-   - Shows full ensemble parameters
-   - Lists all operations and their status
-   - Shows operation history and results
+1. List mode (no --ensemble specified):
+   Shows a summary of all ensembles with ID, status, and directory.
+   Use --detailed to include physics parameters and operation counts.
 
-The output includes:
-- Ensemble parameters (beta, masses, lattice size, etc.)
-- Operation history (HMC, smearing, measurements)
-- Job status and results
-- Configuration ranges and counts
-"""
+2. Detail mode (with --ensemble specified):
+   Shows complete information for one ensemble:
+   - All physics parameters (beta, masses, lattice dimensions)
+   - Full operation history with timestamps and parameters
+   - Job status and configuration ranges
+
+FLEXIBLE ENSEMBLE IDENTIFICATION:
+The --ensemble parameter accepts multiple formats:
+  • Ensemble ID: -e 1
+  • Relative path: -e ./TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64
+  • Absolute path: -e /full/path/to/ensemble
+  • Current directory: -e . (when run from within ensemble directory)
+
+EXAMPLES:
+  mdwf_db query                    # List all ensembles
+  mdwf_db query --detailed         # List all with full details
+  mdwf_db query -e 1               # Show ensemble 1 details
+  mdwf_db query -e .               # Show current ensemble (when in ensemble dir)
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument(
-        '-e', '--ensemble-id',
-        type=int,
-        default=None,
-        help='Show detailed information and history for this ensemble ID'
+        '-e', '--ensemble',
+        help='Show detailed information for this ensemble (ID, directory path, or "." for current directory)'
     )
     p.add_argument(
         '--detailed',
         action='store_true',
-        help='In list mode, show full parameters and operation counts for each ensemble'
+        help='In list mode, show physics parameters and operation counts for each ensemble'
     )
     p.set_defaults(func=do_query)
 
 
 def do_query(args):
-    # ---- List mode ----
-    if args.ensemble_id is None:
-        ens_list = list_ensembles(args.db_file, detailed=args.detailed)
-        if not ens_list:
+    if not args.ensemble:
+        # 1. List mode (no --ensemble):
+        #    Show all ensembles, optionally with details
+        ensembles = list_ensembles(args.db_file, detailed=args.detailed)
+        if not ensembles:
             print("No ensembles found")
             return 0
 
-        for e in ens_list:
-            print(f"[{e['id']}] ({e['status']}) {e['directory']}")
+        for ens in ensembles:
+            status_str = f"({ens['status']})"
+            print(f"[{ens['id']}] {status_str} {ens['directory']}")
+            
             if args.detailed:
-                for k, v in e.get('parameters', {}).items():
-                    print(f"    {k} = {v}")
-                print(f"    ops = {e.get('operation_count',0)}")
-        return 0
+                if ens.get('parameters'):
+                    params = ', '.join([f"{k}={v}" for k, v in sorted(ens['parameters'].items())])
+                    print(f"    Parameters: {params}")
+                if 'operation_count' in ens:
+                    print(f"    Operations: {ens['operation_count']}")
+                if ens.get('description'):
+                    print(f"    Description: {ens['description']}")
+                print()  # blank line between detailed entries
 
-    # ---- Detail mode ----
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
-    if not ens:
-        print(f"ERROR: ensemble not found: {args.ensemble_id}", file=sys.stderr)
-        return 1
+    else:
+        # 2. Detail mode (with --ensemble):
+        #    Show full details + history for one ensemble
+        ensemble_id, ens = resolve_ensemble_identifier(args.db_file, args.ensemble)
+        if ensemble_id is None:
+            print(f"ERROR: Ensemble not found: {args.ensemble}")
+            return 1
 
-    print(f"ID          = {ens['id']}")
-    print(f"Directory   = {ens['directory']}")
-    print(f"Status      = {ens['status']}")
-    print(f"Created     = {ens['creation_time']}")
-    if ens.get('description'):
-        print(f"Description = {ens['description']}")
-    print("Parameters:")
-    for k, v in ens.get('parameters', {}).items():
-        print(f"    {k} = {v}")
+        # Print ensemble details
+        print(f"ID          = {ens['id']}")
+        print(f"Directory   = {ens['directory']}")
+        print(f"Status      = {ens['status']}")
+        print(f"Created     = {ens['creation_time']}")
+        if ens['description']:
+            print(f"Description = {ens['description']}")
+        
+        # Print parameters
+        if ens['parameters']:
+            print("Parameters:")
+            for k, v in sorted(ens['parameters'].items()):
+                print(f"    {k} = {v}")
+        
+        # Print operation history
+        print("\n=== Operation history ===")
+        print_history(args.db_file, ensemble_id)
 
-    print("\n=== Operation history ===")
-    print_history(args.db_file, args.ensemble_id)
     return 0

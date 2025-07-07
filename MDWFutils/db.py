@@ -377,6 +377,40 @@ def print_history(db_file, ensemble_id):
 
 
 # -----------------------------------------------------------------------------
+@retry_db()
+def clear_ensemble_history(db_file, ensemble_id):
+    """
+    Delete all operations and their parameters for a specific ensemble.
+    The ensemble itself remains untouched.
+    Returns (deleted_count, success).
+    """
+    conn = get_connection(db_file)
+    c = conn.cursor()
+    
+    # Check if ensemble exists
+    c.execute("SELECT 1 FROM ensembles WHERE id=?", (ensemble_id,))
+    if not c.fetchone():
+        conn.close()
+        return 0, False
+    
+    # Count operations before deletion
+    c.execute("SELECT COUNT(*) FROM operations WHERE ensemble_id=?", (ensemble_id,))
+    op_count = c.fetchone()[0]
+    
+    # Delete all operations and their parameters for this ensemble
+    conn.execute("BEGIN")
+    c.execute("""
+        DELETE FROM operation_parameters 
+        WHERE operation_id IN (SELECT id FROM operations WHERE ensemble_id=?)
+    """, (ensemble_id,))
+    c.execute("DELETE FROM operations WHERE ensemble_id=?", (ensemble_id,))
+    conn.commit()
+    conn.close()
+    
+    return op_count, True
+
+
+# -----------------------------------------------------------------------------
 def get_ensemble_id_by_directory(db_file, directory):
     """
     Look up the ensemble ID in the DB given the exact directory path.
@@ -388,3 +422,52 @@ def get_ensemble_id_by_directory(db_file, directory):
     row = cur.fetchone()
     conn.close()
     return row[0] if row else None
+
+
+# -----------------------------------------------------------------------------
+@retry_db()
+def resolve_ensemble_identifier(db_file, identifier):
+    """
+    Resolve an ensemble identifier that can be either:
+    1. An integer ensemble ID
+    2. A string path to an ensemble directory
+    
+    Returns (ensemble_id, ensemble_details) tuple, or (None, None) if not found.
+    
+    Args:
+        db_file: Path to the database file
+        identifier: Either an integer ID or a string path
+    
+    Returns:
+        tuple: (ensemble_id, ensemble_details) or (None, None)
+    """
+    from pathlib import Path
+    
+    # If it's already an integer, treat as ensemble ID
+    if isinstance(identifier, int):
+        ensemble_id = identifier
+    else:
+        # Try to parse as integer first
+        try:
+            ensemble_id = int(identifier)
+        except (ValueError, TypeError):
+            # Not an integer, treat as path
+            try:
+                # Resolve to absolute path for comparison
+                abs_path = str(Path(identifier).resolve())
+                ensemble_id = get_ensemble_id_by_directory(db_file, abs_path)
+                if ensemble_id is None:
+                    # Try the path as-is (in case it's already the stored format)
+                    ensemble_id = get_ensemble_id_by_directory(db_file, identifier)
+            except Exception:
+                return None, None
+    
+    if ensemble_id is None:
+        return None, None
+    
+    # Get ensemble details to verify it exists
+    ensemble_details = get_ensemble_details(db_file, ensemble_id)
+    if ensemble_details is None:
+        return None, None
+    
+    return ensemble_id, ensemble_details

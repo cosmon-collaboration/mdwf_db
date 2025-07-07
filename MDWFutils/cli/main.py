@@ -1,46 +1,80 @@
+#!/usr/bin/env python3
 import argparse
 import pkgutil
 import importlib
 import os
+import sys
 from pathlib import Path
+
+def find_database_file():
+    """
+    Find the mdwf_ensembles.db file by walking up the directory tree.
+    
+    Returns:
+        str: Path to the database file, or default path if not found
+    """
+    current_dir = Path.cwd()
+    db_filename = 'mdwf_ensembles.db'
+    
+    # Walk up the directory tree
+    for parent in [current_dir] + list(current_dir.parents):
+        db_path = parent / db_filename
+        if db_path.exists():
+            return str(db_path)
+    
+    # If not found, return default path in current directory
+    return str(current_dir / db_filename)
 
 def main():
     parser = argparse.ArgumentParser(
         prog="mdwf_db",
-        description="MDWF Database Management Tool",
+        description="MDWF Database Management Tool for Domain Wall Fermion Lattice QCD",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Available commands are grouped by function:
+Available commands by category:
 
-Database Management:
-  init-db          Initialize a new database and directory structure
-  add-ensemble     Add a new ensemble to the database
-  remove-ensemble  Remove an ensemble from the database
-  promote-ensemble Move a tuning ensemble to production
-  query           List ensembles or show details for one
+DATABASE MANAGEMENT:
+  init-db             Initialize database and directory structure
+  add-ensemble        Add ensemble to database (supports pre-existing directories)
+  remove-ensemble     Remove ensemble and all its operations from database
+  promote-ensemble    Move ensemble from TUNING to PRODUCTION status
+  query              List ensembles or show detailed info for one ensemble
+  clear-history      Clear operation history while preserving ensemble record
 
-Job Script Generation:
-  hmc-script      Generate HMC XML and SLURM script
-  hmc-xml         Generate HMC parameters XML
-  smear-script    Generate GLU smearing SLURM script
-  meson-2pt       Generate WIT meson 2pt SLURM script
-  wit-input       Generate WIT input file
-  glu-input       Generate GLU input file
+JOB SCRIPT GENERATION:
+  hmc-script         Generate HMC XML and SLURM script for gauge generation
+  hmc-xml            Generate standalone HMC XML parameter file
+  smear-script       Generate GLU smearing SLURM script
+  meson-2pt          Generate WIT meson correlator measurement script
+  glu-input          Generate GLU input file for gauge field utilities
+  wit-input          Generate WIT input file for correlator measurements
 
-Database Operations:
-  update          Create or update an operation in the database
+OPERATION TRACKING:
+  update             Record or update operation status and parameters
 
-For detailed help on any command, use: mdwf_db <command> --help
+FLEXIBLE IDENTIFIERS:
+Most commands accept either ensemble IDs (integers) or directory paths:
+  -e 1                    # Use ensemble ID
+  -e ./TUNING/b6.0/...    # Use relative path
+  -e /full/path/to/ens    # Use absolute path
+  -e .                    # Use current directory (when inside ensemble)
+
+DATABASE AUTO-DISCOVERY:
+The database file is automatically found by walking up the directory tree.
+No need to specify --db-file when working within project directories.
+
+For detailed help: mdwf_db <command> --help
 """
     )
 
-    DEFAULT_DB = os.getenv('MDWF_DB',
-                           str(Path('.').resolve()/'mdwf_ensembles.db'))
+    # Use environment variable if set, otherwise search up directory tree
+    DEFAULT_DB = os.getenv('MDWF_DB', find_database_file())
+    
     db_parent = argparse.ArgumentParser(add_help=False)
     db_parent.add_argument(
         '--db-file',
         default=DEFAULT_DB,
-        help='Path to the SQLite DB (or set MDWF_DB env).'
+        help='Path to the SQLite DB (or set MDWF_DB env). Auto-discovered by walking up directory tree.'
     )
 
     subs   = parser.add_subparsers(dest='cmd')

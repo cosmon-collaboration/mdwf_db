@@ -60,13 +60,23 @@ def generate_smear_sbatch(
     inp = smear_dir / "glu_smear.in"
 
     glu_overrides = {
-        'config_number': config_start,
-        'lattice_dims':  (L, L, L, T),
-        'MODE':          'SMEARING',
-        'SMEARTYPE':     SMEARTYPE,
-        'SMITERS':       SMITERS,
-        'alpha_values':  alpha_values or [],
+        'CONFNO': str(config_start),
+        'DIM_0': str(L),
+        'DIM_1': str(L), 
+        'DIM_2': str(L),
+        'DIM_3': str(T),
+        'SMEARTYPE': SMEARTYPE,
+        'SMITERS': str(SMITERS),
     }
+    
+    # Add alpha values if provided
+    if alpha_values:
+        if len(alpha_values) >= 1:
+            glu_overrides['ALPHA1'] = str(alpha_values[0])
+        if len(alpha_values) >= 2:
+            glu_overrides['ALPHA2'] = str(alpha_values[1])
+        if len(alpha_values) >= 3:
+            glu_overrides['ALPHA3'] = str(alpha_values[2])
     if custom_changes:
         glu_overrides.update(custom_changes)
 
@@ -162,109 +172,3 @@ echo "Done in $SECONDS s"
     with open(output_file,'w') as f: f.write(txt)
     os.chmod(output_file,0o755)
     return output_file
-
-DEFAULT_GLU_PARAMS = {
-    "Run name": {
-        "name": "u_stout8"
-    },
-    "Directories": {
-        "cnfg_dir": "../cnfg_stout8/"
-    },
-    "Configurations": {
-        "first": "CFGNO",
-        "last": "CFGNO",
-        "step": "4"
-    },
-    "Random number generator": {
-        "level": "0",
-        "seed": "3993"
-    },
-    "Lattice parameters": {
-        "Ls": "10",
-        "M5": "1.0",
-        "b": "1.75",
-        "c": "0.75"
-    },
-    "Boundary conditions": {
-        "type": "APeri"
-    },
-    "Witness": {
-        "no_prop": "3",
-        "no_solver": "2"
-    },
-    "Solver 0": {
-        "solver": "CG",
-        "nkv": "24",
-        "isolv": "1",
-        "nmr": "3",
-        "ncy": "3",
-        "nmx": "8000",
-        "exact_deflation": "true"
-    },
-    "Solver 1": {
-        "solver": "CG",
-        "nkv": "24",
-        "isolv": "1",
-        "nmr": "3",
-        "ncy": "3",
-        "nmx": "8000",
-        "exact_deflation": "false"
-    },
-    "Exact Deflation": {
-        "Cheby_fine": "0.01,-1,24",
-        "Cheby_smooth": "0,0,0",
-        "Cheby_coarse": "0,0,0",
-        "kappa": "0.125",
-        "res": "1E-5",
-        "nmx": "64",
-        "Ns": "64"
-    },
-    "Propagator 0": {
-        "Noise": "Z2xZ2",
-        "Source": "Wall",
-        "Dilution": "PS",
-        "pos": "0 0 0 -1",
-        "mom": "0 0 0 0",
-        "twist": "0 0 0",
-        "kappa": "KAPPA_L",
-        "mu": "0.",
-        "Seed": "12345",
-        "idx_solver": "0",
-        "res": "1E-12",
-        "sloppy_res": "1E-4"
-    },
-    "Propagator 1": {
-        "Noise": "Z2xZ2",
-        "Source": "Wall",
-        "Dilution": "PS",
-        "pos": "0 0 0 -1",
-        "mom": "0 0 0 0",
-        "twist": "0 0 0",
-        "kappa": "KAPPA_S",
-        "mu": "0.",
-        "Seed": "12345",
-        "idx_solver": "1",
-        "res": "1E-12",
-        "sloppy_res": "1E-6"
-    },
-    "Propagator 2": {
-        "Noise": "Z2xZ2",
-        "Source": "Wall",
-        "Dilution": "PS",
-        "pos": "0 0 0 -1",
-        "mom": "0 0 0 0",
-        "twist": "0 0 0",
-        "kappa": "KAPPA_C",
-        "mu": "0.",
-        "Seed": "12345",
-        "idx_solver": "1",
-        "res": "5E-15",
-        "sloppy_res": "5E-15"
-    },
-    "AMA": {
-        "NEXACT": "2",
-        "SLOPPY_PREC": "1E-5",
-        "NHITS": "1",
-        "NT": "48"
-    }
-}
