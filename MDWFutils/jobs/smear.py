@@ -28,7 +28,7 @@ def generate_smear_sbatch(
     # smearing‐run arguments (must supply config_start/end)
     config_start: int,
     config_end:   int,
-    config_prefix: str = 'ckpoint_lat.',
+    config_prefix: str = 'ckpoint_EODWF_lat.',
     output_prefix: str = 'u_stout',
     SMEARTYPE:     str = 'STOUT',
     SMITERS:       int = 8,
