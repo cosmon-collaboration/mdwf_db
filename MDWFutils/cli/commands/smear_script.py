@@ -11,7 +11,7 @@ from MDWFutils.db           import get_ensemble_details, resolve_ensemble_identi
 from MDWFutils.jobs.smear   import generate_smear_sbatch
 from MDWFutils.config       import get_operation_config, merge_params, get_config_path, save_operation_config
 
-REQUIRED_JOB_PARAMS = ['mail_user', 'config_start', 'config_end']
+REQUIRED_JOB_PARAMS = ['mail_user', 'config_start', 'config_end', 'config_inc']
 DEFAULT_PARAMS = {
     'account': 'm2986',
     'constraint': 'cpu',
@@ -43,14 +43,15 @@ Required parameters:
   mail_user:     Email address for job notifications
   config_start:  First configuration number to smear
   config_end:    Last configuration number to smear
+  config_inc:    Step/increment between configurations to smear
 
 Optional parameters (with defaults):
-  account: m2986_g          # SLURM account
-  constraint: gpu           # Node constraint
+  account: m2986            # SLURM account
+  constraint: cpu           # Node constraint
   queue: regular            # SLURM partition
-  time_limit: 06:00:00      # Job time limit
+  time_limit: 01:00:00      # Job time limit
   nodes: 1                  # Number of nodes
-  cpus_per_task: 16         # CPUs per task
+  cpus_per_task: 256        # CPUs per task
   gpus: 4                   # GPUs per node
   gpu_bind: none            # GPU binding
   ranks: 4                  # MPI ranks
@@ -78,25 +79,25 @@ Other GLU parameters:
 EXAMPLES:
   # Basic smearing job
   mdwf_db smear-script -e 1 \\
-    -j "mail_user=user@example.com config_start=100 config_end=200"
+    -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4"
 
   # Custom smearing parameters
   mdwf_db smear-script -e 1 \\
-    -j "mail_user=user@example.com config_start=100 config_end=200 time_limit=12:00:00" \\
+    -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4 time_limit=12:00:00" \\
     -g "SMITERS=10 ALPHA1=0.8 SMEARTYPE=APE"
 
   # Specify output file
   mdwf_db smear-script -e 1 -o custom_smear.sh \\
-    -j "mail_user=user@example.com config_start=100 config_end=200"
+    -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4"
 
   # Use stored default parameters
   mdwf_db smear-script -e 1 --use-default-params
 
   # Use default params with CLI overrides
-  mdwf_db smear-script -e 1 --use-default-params -g "SMITERS=12" -j "time_limit=08:00:00"
+  mdwf_db smear-script -e 1 --use-default-params -g "SMITERS=12" -j "config_inc=4 time_limit=08:00:00"
 
   # Save current parameters for later reuse
-  mdwf_db smear-script -e 1 -j "mail_user=user@nersc.gov config_start=100 config_end=200" --save-default-params
+  mdwf_db smear-script -e 1 -j "mail_user=user@nersc.gov config_start=100 config_end=200 config_inc=4" --save-default-params
 
   # Save under custom variant name
   mdwf_db smear-script -e 1 -g "SMITERS=4" -j "config_start=100 config_end=200" --save-params-as "stout4"
@@ -201,7 +202,7 @@ def do_smear_script(args):
                 job_dict[key] = val
 
     # Require essential job parameters
-    missing = [k for k in ('config_start','config_end','mail_user') if k not in job_dict]
+    missing = [k for k in ('config_start','config_end','config_inc','mail_user') if k not in job_dict]
     if missing:
         if args.use_default_params:
             print(f"ERROR: missing required job parameters: {missing}. Add them to your default parameter file or use -j", file=sys.stderr)

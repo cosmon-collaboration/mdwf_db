@@ -160,7 +160,7 @@ for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
         let 'hih=loh+Nth/2-1'
         
         echo "Config $c: CPUs $lo-$hi $loh-$hih"
-        export GOMP_CPU_AFFINITY="$lo-$hi $loh-$hih"
+        export GOMP_CPU_AFFINITY="${{lo}}-${{hi}} ${{loh}}-${{hih}}"
         
         in_cfg="{ensemble_dir}/cnfg/{config_prefix}${{c}}"
         out_cfg="{smear_dir}/{output_prefix}{SMEARTYPE}{SMITERS}_n${{c}}"
