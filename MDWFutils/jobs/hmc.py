@@ -317,7 +317,7 @@ op_id=${{op_id%%:*}}
 export op_id
 
 # Generate HMC parameters XML
-mdwf_db hmc-xml -e $EID -m $mode --params "StartTrajectory=$start Trajectories=$n_trajec"
+mdwf_db hmc-xml -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec"
 
 cp HMCparameters.xml cnfg/
 cd cnfg
@@ -359,7 +359,7 @@ if [[ $EXIT_CODE -eq 0 && "{resubmit}" == "true" && $mode != "reseed" ]]; then
     if [[ $next_start -lt $cfg_max ]]; then
         echo "Resubmitting with start=$next_start in continue mode"
         # Generate new XML for continue mode
-        mdwf_db hmc-xml -e $EID -m continue --params "StartTrajectory=$next_start Trajectories=$n_trajec"
+        mdwf_db hmc-xml -e $EID -m continue -x "StartTrajectory=$next_start Trajectories=$n_trajec"
         # Resubmit the job
         sbatch --dependency=afterok:$SLURM_JOBID $batch
     else
