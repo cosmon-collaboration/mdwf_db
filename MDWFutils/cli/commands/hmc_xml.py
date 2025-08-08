@@ -59,9 +59,9 @@ Example:
     )
     p.add_argument(
         '-x','--xml-params',
-        default='',
-        help=('Space-separated key=val pairs to override XML defaults. '
-              'Example: "n_therm=100 n_traj=50 dt=0.01"')
+        required=True,
+        help=('Space-separated key=val pairs to override XML defaults. Required: trajL, lvl_sizes. '
+              'Example: "StartTrajectory=0 Trajectories=100 trajL=0.75 lvl_sizes=9,1,1"')
     )
     p.set_defaults(func=do_hmc_xml)
 
@@ -78,13 +78,23 @@ def do_hmc_xml(args):
 
     # parse the xml‐params string into a dict
     xdict = {}
-    if args.xml_params.strip():  # Only parse if not empty
-        for tok in args.xml_params.split():
-            if '=' not in tok:
-                print(f"ERROR: bad xml param '{tok}'", file=sys.stderr)
-                return 1
-            k, v = tok.split('=', 1)
-            xdict[k] = v
+    for tok in args.xml_params.split():
+        if '=' not in tok:
+            print(f"ERROR: bad xml param '{tok}'", file=sys.stderr)
+            return 1
+        k, v = tok.split('=', 1)
+        xdict[k] = v
+    
+    # Check required XML parameters
+    missing_params = []
+    if 'trajL' not in xdict:
+        missing_params.append('trajL')
+    if 'lvl_sizes' not in xdict:
+        missing_params.append('lvl_sizes')
+    
+    if missing_params:
+        print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}", file=sys.stderr)
+        return 1
 
     # generate the XML
     # This will produce HMCparameters.xml under ens_dir

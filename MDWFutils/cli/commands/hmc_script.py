@@ -104,8 +104,8 @@ CLI parameters override default parameter file parameters.
                    help='HMC run mode: tepid (new), continue (existing), or reseed (new seed)')
     p.add_argument('--base-dir', default='.',
                    help='Root directory containing TUNING/ and ENSEMBLES/ (default: current directory)')
-    p.add_argument('-x', '--xml-params', default='',
-                   help='Space-separated key=val pairs for HMC XML parameters')
+    p.add_argument('-x', '--xml-params', required=True,
+                   help='Space-separated key=val pairs for HMC XML parameters. Required: trajL, lvl_sizes')
     p.add_argument('-j', '--job-params', default='',
                    help='Space-separated key=val pairs for SLURM job parameters. Required: cfg_max')
     p.add_argument('-o', '--output-file',
@@ -179,6 +179,20 @@ def do_hmc_script(args):
                 key, val = param.split('=', 1)
                 xml_dict[key] = val
     
+    # Check required XML parameters
+    missing_params = []
+    if 'trajL' not in xml_dict:
+        missing_params.append('trajL')
+    if 'lvl_sizes' not in xml_dict:
+        missing_params.append('lvl_sizes')
+    
+    if missing_params:
+        if args.use_default_params:
+            print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}. Add them to your default parameter file or use -x '{' '.join(missing_params)}'", file=sys.stderr)
+        else:
+            print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}", file=sys.stderr)
+        return 1
+    
     # Get base directory and compute relative paths
     base = Path(args.base_dir).resolve()
     
@@ -237,6 +251,8 @@ def do_hmc_script(args):
             ens_name=ens_name,
             account=args.account,
             mode=args.mode,
+            trajL=xml_dict['trajL'],
+            lvl_sizes=xml_dict['lvl_sizes'],
             **job_params
         )
         print(f"Generated HMC script: {out_file}")

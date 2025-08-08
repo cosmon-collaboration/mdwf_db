@@ -202,7 +202,9 @@ def generate_hmc_slurm_gpu(
     cfg_max: str = None,
     mpi: str = None,
     resubmit: str = 'true',
-    queue: str = 'regular'
+    queue: str = 'regular',
+    trajL: str = None,           # required - trajectory length
+    lvl_sizes: str = None        # required - level sizes as comma-separated string
 ):
     """
     Write a GPU SBATCH script that:
@@ -264,11 +266,20 @@ def generate_hmc_slurm_gpu(
     elif n_trajec is None and cfg_max is None:
         raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
 
+    # Validate required HMC parameters
+    if trajL is None:
+        raise RuntimeError("trajL parameter is required")
+    if lvl_sizes is None:
+        raise RuntimeError("lvl_sizes parameter is required")
+
     # prepare output file
     script_file = Path(out_path)
     script_file.parent.mkdir(parents=True, exist_ok=True)
 
     ensemble_dir = Path(ens['directory']).resolve()
+    
+    # Make database path absolute to ensure it works in resubmitted jobs
+    db_file_abs = Path(db_file).resolve()
     
     ens_name = f"b{ens['parameters']['beta']}_b{ens['parameters']['b']}Ls{ens['parameters']['Ls']}_mc{ens['parameters']['mc']}_ms{ens['parameters']['ms']}_ml{ens['parameters']['ml']}_L{ens['parameters']['L']}_T{ens['parameters']['T']}"
 
@@ -287,7 +298,7 @@ def generate_hmc_slurm_gpu(
 #SBATCH --signal=B:TERM@60
 
 batch="$0"
-DB="{db_file}"
+DB="{db_file_abs}"
 EID={ensemble_id}
 mode="{mode}"
 ens="{ens_name}"
@@ -298,6 +309,8 @@ BIND="{bind_script}"
 n_trajec={n_trajec}
 cfg_max={cfg_max}
 mpi="{mpi}"
+trajL="{trajL}"
+lvl_sizes="{lvl_sizes}"
 
 cd {ensemble_dir}
 
@@ -341,7 +354,7 @@ op_id=${{op_id%%:*}}
 export op_id
 
 # Generate HMC parameters XML
-mdwf_db hmc-xml -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec"
+mdwf_db hmc-xml -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
 
 cp HMCparameters.xml cnfg/
 cd cnfg
@@ -389,11 +402,11 @@ if [[ $EXIT_CODE -eq 0 && "{resubmit}" == "true" && $mode != "reseed" ]]; then
             echo "Resubmitting with start=$next_start in continue mode"
         fi
         # Generate new XML for the next mode
-        mdwf_db hmc-xml -e $EID -m $next_mode -x "StartTrajectory=$next_start Trajectories=$n_trajec"
+        mdwf_db hmc-xml -e $EID -m $next_mode -x "StartTrajectory=$next_start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
         # Resubmit the job with the next mode by modifying the script
         # We need to update the mode variable in the resubmitted script
-        sed -i "s/mode=\"$mode\"/mode=\"$next_mode\"/" $batch
-        sbatch --dependency=afterok:$SLURM_JOBID $batch
+        sed -i "s/mode=\\"$mode\\"/mode=\\"$next_mode\\"/" $batch
+        sbatch --dependency=afterok:$SLURM_JOB_ID $batch
     else
         echo "Reached target config_max=$cfg_max"
     fi
