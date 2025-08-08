@@ -106,6 +106,8 @@ def generate_smear_sbatch(
 module load cpu
 module load intel-mixed/2023.2.0
 module load cray-fftw/3.3.10.8
+module load conda
+conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
 DB="{db_file}"
 EID={ensemble_id}

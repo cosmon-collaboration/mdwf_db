@@ -323,6 +323,9 @@ echo "cfg_max = $cfg_max"
 
 mkdir -p cnfg
 mkdir -p log_hmc
+module load conda
+conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
+
 
 start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
 if [[ -z $start ]]; then

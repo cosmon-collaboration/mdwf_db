@@ -256,8 +256,10 @@ def generate_wit_sbatch(
 
 set -euo pipefail
 cd {workdir}
+module load conda
+conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-#record RUNNING (one shot for the entire meson2pt job)
+#record RUNNING
 mdwf_db update \\
   --db-file="{db_file}" \\
   --ensemble-id={ensemble_id} \\
