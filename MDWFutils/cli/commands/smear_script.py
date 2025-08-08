@@ -13,12 +13,12 @@ from MDWFutils.config       import get_operation_config, merge_params, get_confi
 
 REQUIRED_JOB_PARAMS = ['mail_user', 'config_start', 'config_end']
 DEFAULT_PARAMS = {
-    'account': 'm2986_g',
-    'constraint': 'gpu',
+    'account': 'm2986',
+    'constraint': 'cpu',
     'queue': 'regular',
-    'time_limit': '06:00:00',
+    'time_limit': '01:00:00',
     'nodes': 1,
-    'cpus_per_task': 16,
+    'cpus_per_task': 256,
     'gpus': 4,
     'gpu_bind': 'none',
     'ranks': 4,

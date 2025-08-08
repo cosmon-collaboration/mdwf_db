@@ -15,7 +15,7 @@ def generate_smear_sbatch(
     account: str       = 'm2986',
     constraint: str    = 'cpu',
     queue: str         = 'regular',
-    time_limit: str    = '0:20:00',
+    time_limit: str    = '01:00:00',
     job_name: str      = 'glu_smear',
     nodes: int         = 1,
     cpus_per_task: int = 256,
