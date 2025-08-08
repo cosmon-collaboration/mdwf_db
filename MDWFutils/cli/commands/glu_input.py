@@ -6,7 +6,7 @@ Generate GLU input files for gauge field utilities.
 """
 import argparse, ast, sys, os
 from pathlib import Path
-from MDWFutils.db    import get_ensemble_details
+from MDWFutils.db    import get_ensemble_details, resolve_ensemble_identifier
 from MDWFutils.jobs.glu import generate_glu_input
 
 def register(subparsers):
@@ -64,8 +64,8 @@ EXAMPLES:
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument('-e','--ensemble-id', type=int, required=True,
-                   help='ID of the ensemble to generate input for')
+    p.add_argument('-e','--ensemble', required=True,
+                   help='Ensemble ID, directory path, or "." for current directory')
     p.add_argument('-o','--output-file', required=True,
                    help='Path where to write the GLU input file')
     p.add_argument('-g','--glu-params', default='',
@@ -76,10 +76,10 @@ EXAMPLES:
     p.set_defaults(func=do_glu_input)
 
 def do_glu_input(args):
-    # Get ensemble details
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
-    if not ens:
-        print(f"ERROR: Ensemble {args.ensemble_id} not found", file=sys.stderr)
+    # Resolve ensemble
+    ensemble_id, ens = resolve_ensemble_identifier(args.db_file, args.ensemble)
+    if ensemble_id is None:
+        print(f"ERROR: Ensemble not found: {args.ensemble}", file=sys.stderr)
         return 1
 
     # Parse GLU parameters
@@ -108,7 +108,6 @@ def do_glu_input(args):
             overrides=glu_params
         )
         return 0
-        
     except Exception as e:
         print(f"ERROR: Failed to generate GLU input: {e}", file=sys.stderr)
-        return 1 
+        return 1

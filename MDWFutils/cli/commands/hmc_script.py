@@ -8,7 +8,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from MDWFutils.db import get_ensemble_details
+from MDWFutils.db import get_ensemble_details, resolve_ensemble_identifier
 from MDWFutils.jobs.hmc import generate_hmc_parameters, generate_hmc_slurm_gpu
 from MDWFutils.config import get_operation_config, merge_params, get_config_path, save_operation_config
 
@@ -95,8 +95,12 @@ CLI parameters override default parameter file parameters.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument('-e', '--ensemble-id', type=int, required=True,
-                   help='ID of the ensemble to generate HMC script for')
+    # Flexible identifier (preferred)
+    p.add_argument('-e', '--ensemble', required=False,
+                   help='Ensemble ID, directory path, or "." for current directory')
+    # Legacy integer-only option for backward compatibility
+    p.add_argument('--ensemble-id', dest='ensemble_id', type=int, required=False,
+                   help='[DEPRECATED] Ensemble ID (use -e/--ensemble for flexible ID or path)')
     p.add_argument('-a', '--account', required=True,
                    help='SLURM account name (e.g., m2986)')
     p.add_argument('-m', '--mode', required=True,
@@ -121,10 +125,24 @@ CLI parameters override default parameter file parameters.
     p.set_defaults(func=do_hmc_script)
 
 def do_hmc_script(args):
-    # Get ensemble details
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
-    if not ens:
-        print(f"ERROR: Ensemble {args.ensemble_id} not found", file=sys.stderr)
+    # Resolve ensemble from flexible identifier first, then legacy --ensemble-id
+    ensemble_id = None
+    ens = None
+    if getattr(args, 'ensemble', None):
+        eid, info = resolve_ensemble_identifier(args.db_file, args.ensemble)
+        if eid is None:
+            print(f"ERROR: Ensemble not found: {args.ensemble}", file=sys.stderr)
+            return 1
+        ensemble_id, ens = eid, info
+    elif getattr(args, 'ensemble_id', None) is not None:
+        # legacy path
+        ens = get_ensemble_details(args.db_file, args.ensemble_id)
+        if not ens:
+            print(f"ERROR: Ensemble {args.ensemble_id} not found", file=sys.stderr)
+            return 1
+        ensemble_id = args.ensemble_id
+    else:
+        print("ERROR: Missing ensemble identifier. Use -e/--ensemble (ID or path) or --ensemble-id.", file=sys.stderr)
         return 1
     
     # Get ensemble directory for config loading
@@ -209,7 +227,7 @@ def do_hmc_script(args):
     # Ensure slurm folder & output path
     slurm_dir = ens_dir / 'slurm'
     slurm_dir.mkdir(parents=True, exist_ok=True)
-    out_file = args.output_file or slurm_dir / f"hmc_{args.ensemble_id}_{args.mode}.sbatch"
+    out_file = args.output_file or slurm_dir / f"hmc_{ensemble_id}_{args.mode}.sbatch"
     
     # Generate HMC XML parameters
     try:
@@ -244,7 +262,7 @@ def do_hmc_script(args):
         generate_hmc_slurm_gpu(
             out_path=str(out_file),
             db_file=args.db_file,
-            ensemble_id=args.ensemble_id,
+            ensemble_id=ensemble_id,
             base_dir=args.base_dir,
             type_=root,
             ens_relpath=ens_rel,

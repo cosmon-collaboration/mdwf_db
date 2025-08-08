@@ -6,7 +6,7 @@ Generate WIT input files for meson correlator measurements.
 """
 import argparse, ast, sys, os
 from pathlib import Path
-from MDWFutils.db import get_ensemble_details
+from MDWFutils.db import get_ensemble_details, resolve_ensemble_identifier
 from MDWFutils.jobs.wit import generate_wit_input
 
 def register(subparsers):
@@ -81,8 +81,12 @@ For complete parameter documentation, see the WIT manual.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument('--ensemble-id', '-e', type=int, required=True,
-                   help='ID of the ensemble to generate WIT input for')
+    # Flexible identifier (preferred)
+    p.add_argument('--ensemble', '-e', required=False,
+                   help='Ensemble ID, directory path, or "." for current directory')
+    # Legacy integer-only option for backward compatibility
+    p.add_argument('--ensemble-id', dest='ensemble_id', type=int, required=False,
+                   help='[DEPRECATED] Ensemble ID (use -e/--ensemble for flexible ID or path)')
     p.add_argument('--output-file', '-o', required=True,
                    help='Path to output WIT input file (e.g., DWF.in)')
     p.add_argument('--wit-params', '-w', default='',
@@ -90,10 +94,23 @@ For complete parameter documentation, see the WIT manual.
     p.set_defaults(func=do_wit_input)
 
 def do_wit_input(args):
-    # Get ensemble details
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
-    if not ens:
-        print(f"ERROR: Ensemble {args.ensemble_id} not found", file=sys.stderr)
+    # Resolve ensemble from flexible identifier first, then legacy --ensemble-id
+    ensemble_id = None
+    ens = None
+    if getattr(args, 'ensemble', None):
+        eid, info = resolve_ensemble_identifier(args.db_file, args.ensemble)
+        if eid is None:
+            print(f"ERROR: Ensemble not found: {args.ensemble}", file=sys.stderr)
+            return 1
+        ensemble_id, ens = eid, info
+    elif getattr(args, 'ensemble_id', None) is not None:
+        ens = get_ensemble_details(args.db_file, args.ensemble_id)
+        if not ens:
+            print(f"ERROR: Ensemble {args.ensemble_id} not found", file=sys.stderr)
+            return 1
+        ensemble_id = args.ensemble_id
+    else:
+        print("ERROR: Missing ensemble identifier. Use -e/--ensemble (ID or path) or --ensemble-id.", file=sys.stderr)
         return 1
 
     # Parse WIT parameters into nested dict

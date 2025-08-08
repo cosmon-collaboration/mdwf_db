@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 import argparse
 
-from MDWFutils.db import get_ensemble_details
+from MDWFutils.db import get_ensemble_details, resolve_ensemble_identifier
+from MDWFutils.cli.ensemble_utils import migrate_ensemble_id_argument
 from MDWFutils.jobs.hmc import generate_hmc_parameters
 
 def register(subparsers: argparse._SubParsersAction):
@@ -41,10 +42,9 @@ Example:
 """
     )
     p.add_argument(
-        '-e','--ensemble-id',
-        type=int,
+        '-e','--ensemble',
         required=True,
-        help='ID of the ensemble to generate XML for'
+        help='Ensemble ID, directory path, or "." for current directory'
     )
     p.add_argument(
         '-m','--mode',
@@ -67,10 +67,10 @@ Example:
 
 
 def do_hmc_xml(args):
-    # fetch the ensemble
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
-    if not ens:
-        print(f"ERROR: ensemble {args.ensemble_id} not found", file=sys.stderr)
+    # resolve flexible ensemble identifier
+    ensemble_id, ens = resolve_ensemble_identifier(args.db_file, args.ensemble)
+    if ensemble_id is None:
+        print(f"ERROR: ensemble not found: {args.ensemble}", file=sys.stderr)
         return 1
 
     # resolve its on‐disk path

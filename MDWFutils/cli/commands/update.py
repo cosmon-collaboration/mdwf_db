@@ -9,7 +9,7 @@ and (optionally) operation-id is passed via --params.
 
 import sys
 import sqlite3
-from MDWFutils.db import update_operation
+from MDWFutils.db import update_operation, resolve_ensemble_identifier
 
 def register(subparsers):
     p = subparsers.add_parser(
@@ -40,12 +40,20 @@ Example:
   mdwf_db update -e 1 -o HMC_TUNE -s RUNNING -p "config_start=0 config_end=100"
 """
     )
+    # Backward compatible legacy integer-only option
     p.add_argument(
-        '--ensemble-id', '-e',
+        '--ensemble-id',
         dest='ensemble_id',
         type=int,
-        required=True,
-        help='ID of the ensemble this operation belongs to'
+        required=False,
+        help='[DEPRECATED] ID of the ensemble (use -e/--ensemble for flexible ID or path)'
+    )
+    # New flexible identifier option: ID, path, or "."
+    p.add_argument(
+        '-e', '--ensemble',
+        dest='ensemble',
+        required=False,
+        help='Ensemble identifier: ID, directory path, or "." for current directory'
     )
     p.add_argument(
         '--operation-type', '-o',
@@ -87,10 +95,24 @@ def do_update(args):
         k, v = tok.split('=', 1)
         param_dict[k] = v
 
+    # Resolve ensemble id from flexible identifier first, fallback to legacy --ensemble-id
+    ensemble_id = None
+    if getattr(args, 'ensemble', None):
+        eid, _ = resolve_ensemble_identifier(args.db_file, args.ensemble)
+        if eid is None:
+            print(f"ERROR: Ensemble not found: {args.ensemble}", file=sys.stderr)
+            return 1
+        ensemble_id = eid
+    elif getattr(args, 'ensemble_id', None) is not None:
+        ensemble_id = args.ensemble_id
+    else:
+        print("ERROR: Missing ensemble identifier. Use -e/--ensemble (ID or path) or --ensemble-id.", file=sys.stderr)
+        return 1
+
     try:
         op_id, created, msg = update_operation(
             db_file       = args.db_file,
-            ensemble_id   = args.ensemble_id,
+            ensemble_id   = ensemble_id,
             operation_type= args.operation_type,
             status        = args.status,
             operation_id  = args.operation_id,

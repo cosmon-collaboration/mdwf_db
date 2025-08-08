@@ -1,6 +1,6 @@
 import argparse, sys, os, ast
 from pathlib import Path
-from MDWFutils.db    import get_ensemble_details
+from MDWFutils.db    import get_ensemble_details, resolve_ensemble_identifier
 from MDWFutils.jobs.wit import generate_wit_sbatch
 from MDWFutils.config import get_operation_config, merge_params, get_config_path, save_operation_config
 
@@ -118,8 +118,12 @@ generated DWF.in files for all available options.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument('-e','--ensemble-id', type=int, required=True,
-                   help='ID of the ensemble to generate meson correlator script for')
+    # Flexible identifier (preferred)
+    p.add_argument('-e','--ensemble', required=False,
+                   help='Ensemble ID, directory path, or "." for current directory')
+    # Legacy integer-only option for backward compatibility
+    p.add_argument('--ensemble-id', dest='ensemble_id', type=int, required=False,
+                   help='[DEPRECATED] Ensemble ID (use -e/--ensemble for flexible ID or path)')
     p.add_argument('-j','--job-params', default='',
                    help=f'Space-separated key=val for SLURM job parameters. Required: {REQUIRED_JOB_PARAMS}')
     p.add_argument('-w','--wit-params', default='',
@@ -135,10 +139,23 @@ generated DWF.in files for all available options.
     p.set_defaults(func=do_meson_2pt)
 
 def do_meson_2pt(args):
-    # Get ensemble details first for config loading
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
-    if not ens:
-        print(f"ERROR: ensemble {args.ensemble_id} not found", file=sys.stderr)
+    # Resolve ensemble from flexible identifier first, then legacy --ensemble-id
+    ensemble_id = None
+    ens = None
+    if getattr(args, 'ensemble', None):
+        eid, info = resolve_ensemble_identifier(args.db_file, args.ensemble)
+        if eid is None:
+            print(f"ERROR: Ensemble not found: {args.ensemble}", file=sys.stderr)
+            return 1
+        ensemble_id, ens = eid, info
+    elif getattr(args, 'ensemble_id', None) is not None:
+        ens = get_ensemble_details(args.db_file, args.ensemble_id)
+        if not ens:
+            print(f"ERROR: ensemble {args.ensemble_id} not found", file=sys.stderr)
+            return 1
+        ensemble_id = args.ensemble_id
+    else:
+        print("ERROR: Missing ensemble identifier. Use -e/--ensemble (ID or path) or --ensemble-id.", file=sys.stderr)
         return 1
     ens_dir = Path(ens['directory']).resolve()
 
@@ -274,7 +291,7 @@ def do_meson_2pt(args):
     # Generate the script
     sbatch = generate_wit_sbatch(
         db_file       = args.db_file,
-        ensemble_id   = args.ensemble_id,
+        ensemble_id   = ensemble_id,
         ensemble_dir  = str(ens_dir),
         custom_changes = wdict,
         **job_dict
