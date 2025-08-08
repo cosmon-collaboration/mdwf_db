@@ -120,8 +120,9 @@ def do_promote(args):
         return 1
 
     # call existing CLI to record the PROMOTE_ENSEMBLE operation
+    import sys
     cmd = [
-        'mdwf_db',               
+        sys.executable, '-m', 'MDWFutils.cli.main',              
         'update',
         '--db-file',    args.db_file,
         '--ensemble-id', str(ensemble_id),

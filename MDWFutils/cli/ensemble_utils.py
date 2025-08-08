@@ -34,7 +34,7 @@ def resolve_ensemble_from_args(args):
         args: Parsed command line arguments containing 'ensemble' and 'db_file'
     
     Returns:
-        tuple: (ensemble_id, ensemble_details) or exits on error
+        tuple: (ensemble_id, ensemble_details) or (None, None) on error
     """
     ensemble_id, ensemble_details = resolve_ensemble_identifier(args.db_file, args.ensemble)
     
@@ -43,7 +43,7 @@ def resolve_ensemble_from_args(args):
             print(f"ERROR: Ensemble not found at path: {args.ensemble}", file=sys.stderr)
         else:
             print(f"ERROR: Ensemble not found with ID: {args.ensemble}", file=sys.stderr)
-        sys.exit(1)
+        return None, None
     
     return ensemble_id, ensemble_details
 

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from MDWFutils.db           import get_ensemble_details
 from MDWFutils.jobs.smear   import generate_smear_sbatch
+from MDWFutils.config       import get_operation_config, merge_params, get_config_path, save_operation_config
 
 REQUIRED_JOB_PARAMS = ['mail_user', 'config_start', 'config_end']
 DEFAULT_PARAMS = {
@@ -87,6 +88,27 @@ EXAMPLES:
   # Specify output file
   mdwf_db smear-script -e 1 -o custom_smear.sh \\
     -j "mail_user=user@example.com config_start=100 config_end=200"
+
+  # Use stored default parameters
+  mdwf_db smear-script -e 1 --use-default-params
+
+  # Use default params with CLI overrides
+  mdwf_db smear-script -e 1 --use-default-params -g "SMITERS=12" -j "time_limit=08:00:00"
+
+  # Save current parameters for later reuse
+  mdwf_db smear-script -e 1 -j "mail_user=user@nersc.gov config_start=100 config_end=200" --save-default-params
+
+  # Save under custom variant name
+  mdwf_db smear-script -e 1 -g "SMITERS=4" -j "config_start=100 config_end=200" --save-params-as "stout4"
+
+  # Use specific parameter variant
+  mdwf_db smear-script -e 1 --use-default-params --params-variant stout4
+
+DEFAULT PARAMETER FILES:
+Use 'mdwf_db default_params generate -e <ensemble>' to create a default parameter template.
+The --use-default-params flag loads parameters from mdwf_default_params.yaml in the ensemble directory.
+The --save-default-params flag saves current parameters to the default params file for later reuse.
+CLI parameters override default parameter file parameters.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -97,13 +119,66 @@ EXAMPLES:
     p.add_argument('-g','--glu-params', default='',
                    help='Space-separated key=val for GLU smearing parameters. Example: "SMITERS=10 ALPHA1=0.8"')
     p.add_argument('-o', '--output-file', help='Output SBATCH script path (auto-generated if not specified)')
+    p.add_argument('--use-default-params', action='store_true',
+                   help='Load parameters from ensemble default parameter file (mdwf_default_params.yaml)')
+    p.add_argument('--params-variant',
+                   help='Specify which parameter variant to use (e.g., stout8, stout4, ape)')
+    p.add_argument('--save-default-params', action='store_true',
+                   help='Save current command parameters to default parameter file for later reuse')
+    p.add_argument('--save-params-as',
+                   help='Save current parameters under specific variant name (default: stout8)')
     p.set_defaults(func=do_smear_script)
 
 def do_smear_script(args):
-    # Parse job parameters - these are ALL parameters used to generate the SLURM script
+    # Get ensemble details first for config loading
+    ens = get_ensemble_details(args.db_file, args.ensemble_id)
+    if not ens:
+        print(f"ERROR: ensemble {args.ensemble_id} not found", file=sys.stderr)
+        return 1
+    ens_dir = Path(ens['directory']).resolve()
+
+    # Load parameters from config file if requested
+    config_job_params = ""
+    config_glu_params = ""
+    
+    if args.use_default_params:
+        if args.params_variant:
+            # Use specified variant
+            config = get_operation_config(ens_dir, 'smearing', args.params_variant)
+            if config:
+                config_job_params = config.get('job_params', '')
+                config_glu_params = config.get('params', '')
+                print(f"Loaded smearing.{args.params_variant} default parameters from {get_config_path(ens_dir)}")
+            else:
+                config_path = get_config_path(ens_dir)
+                print(f"Warning: No smearing.{args.params_variant} default parameters found in {config_path}")
+        else:
+            # Try different parameter variants for smearing (fallback behavior)
+            config = None
+            for smear_type in ['stout8', 'stout4', 'ape', 'default']:
+                config = get_operation_config(ens_dir, 'smearing', smear_type)
+                if config:
+                    config_job_params = config.get('job_params', '')
+                    config_glu_params = config.get('params', '')
+                    print(f"Loaded smearing.{smear_type} default parameters from {get_config_path(ens_dir)}")
+                    break
+            
+            if not config:
+                config_path = get_config_path(ens_dir)
+                if config_path.exists():
+                    print(f"Warning: No smearing default parameters found in {config_path}")
+                else:
+                    print(f"Warning: No default parameter file found at {config_path}")
+                    print("Use 'mdwf_db default_params generate' to create one")
+
+    # Merge config parameters with CLI parameters (CLI takes precedence)
+    merged_job_params = merge_params(config_job_params, args.job_params)
+    merged_glu_params = merge_params(config_glu_params, args.glu_params)
+
+    # Parse merged job parameters
     job_dict = DEFAULT_PARAMS.copy()
-    if args.job_params:
-        for param in args.job_params.split():
+    if merged_job_params:
+        for param in merged_job_params.split():
             if '=' in param:
                 key, val = param.split('=', 1)
                 job_dict[key] = val
@@ -111,13 +186,16 @@ def do_smear_script(args):
     # Require essential job parameters
     missing = [k for k in ('config_start','config_end','mail_user') if k not in job_dict]
     if missing:
-        print(f"ERROR: missing required job parameters: {missing}", file=sys.stderr)
+        if args.use_default_params:
+            print(f"ERROR: missing required job parameters: {missing}. Add them to your default parameter file or use -j", file=sys.stderr)
+        else:
+            print(f"ERROR: missing required job parameters: {missing}", file=sys.stderr)
         return 1
 
-    # Parse GLU parameters into flat dict
+    # Parse merged GLU parameters into flat dict
     glu_dict = {}
-    if args.glu_params:
-        for param in args.glu_params.split():
+    if merged_glu_params:
+        for param in merged_glu_params.split():
             if '=' in param:
                 key, val = param.split('=', 1)
                 try:
@@ -125,20 +203,27 @@ def do_smear_script(args):
                 except:
                     glu_dict[key] = val
 
-    # Get ensemble directory
-    ens = get_ensemble_details(args.db_file, args.ensemble_id)
-    if not ens:
-        print(f"ERROR: ensemble {args.ensemble_id} not found", file=sys.stderr)
-        return 1
-    ens_dir = str(Path(ens['directory']).resolve())
-
     # Generate the script
     sbatch = generate_smear_sbatch(
         db_file       = args.db_file,
         ensemble_id   = args.ensemble_id,
-        ensemble_dir  = ens_dir,
+        ensemble_dir  = str(ens_dir),
         custom_changes = glu_dict,
         **job_dict
     )
     print("Wrote smearing SBATCH script to", sbatch)
+    
+    # Save parameters to default params if requested
+    if args.save_default_params:
+        save_variant = args.save_params_as if args.save_params_as else 'stout8'
+        success = save_operation_config(
+            ens_dir, 'smearing', save_variant,
+            job_params=merged_job_params,
+            params=merged_glu_params
+        )
+        if success:
+            print(f"Saved parameters to default params: smearing.{save_variant}")
+        else:
+            print(f"Warning: Failed to save parameters to default params", file=sys.stderr)
+    
     return 0

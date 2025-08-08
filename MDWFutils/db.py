@@ -1,8 +1,20 @@
 import sqlite3
 import datetime
 import time
+import getpass
 from pathlib import Path
 from functools import wraps
+
+# -----------------------------------------------------------------------------
+def get_current_user():
+    """
+    Get the current username for tracking operations.
+    """
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "unknown"
+
 
 # -----------------------------------------------------------------------------
 def get_connection(db_file, timeout=30.0):
@@ -80,6 +92,7 @@ def init_database(db_file):
       status           TEXT    NOT NULL,
       creation_time    TEXT    NOT NULL,
       update_time      TEXT    NOT NULL,
+      user             TEXT    NOT NULL,
       FOREIGN KEY(ensemble_id) REFERENCES ensembles(id) ON DELETE CASCADE
     );
 
@@ -237,13 +250,15 @@ def list_ensembles(db_file, detailed=False):
 @retry_db()
 def update_operation(db_file, ensemble_id,
                      operation_type, status,
-                     operation_id=None, params=None):
+                     operation_id=None, params=None, user=None):
     """
     Insert a new operation or update an existing one.
     All extra fields (config ranges, exit_code, runtime, etc.)
     must be provided in the `params` dict.
     Returns (op_id, created_flag, message).
     """
+    if user is None:
+        user = get_current_user()
     conn = get_connection(db_file)
     c = conn.cursor()
 
@@ -261,18 +276,18 @@ def update_operation(db_file, ensemble_id,
         oid = operation_id
         c.execute("""
           UPDATE operations
-             SET status=?, update_time=?
+             SET status=?, update_time=?, user=?
            WHERE id=?
-        """, (status, now, oid))
+        """, (status, now, user, oid))
         created = False
         msg = "Updated"
     else:
         # — INSERT brand‐new operation —
         c.execute("""
           INSERT INTO operations
-            (ensemble_id,operation_type,status,creation_time,update_time)
-          VALUES (?,?,?,?,?)
-        """, (ensemble_id, operation_type, status, now, now))
+            (ensemble_id,operation_type,status,creation_time,update_time,user)
+          VALUES (?,?,?,?,?,?)
+        """, (ensemble_id, operation_type, status, now, now, user))
         oid = c.lastrowid
         created = True
         msg = "Created"
@@ -347,7 +362,7 @@ def print_history(db_file, ensemble_id):
     conn = get_connection(db_file)
     c = conn.cursor()
     c.execute("""
-      SELECT id,operation_type,status,creation_time,update_time
+      SELECT id,operation_type,status,creation_time,update_time,user
         FROM operations
        WHERE ensemble_id=?
     ORDER BY creation_time, id
@@ -358,9 +373,9 @@ def print_history(db_file, ensemble_id):
         conn.close()
         return
 
-    for oid, op, st, ct, ut in rows:
+    for oid, op, st, ct, ut, user in rows:
         print(f"Op {oid}: {op} [{st}]")
-        print(f"  Created: {ct}")
+        print(f"  Created: {ct} (by {user})")
         print(f"  Updated: {ut}")
 
         # dump every param for this operation

@@ -16,7 +16,6 @@ Detection patterns:
 - Meson correlators: .h5 files in correlator directories
 """
 
-import os
 import re
 import sys
 import glob
@@ -206,10 +205,11 @@ def add_ensemble_to_db(db_file, ensemble_dir, status, description=None):
 
 def add_operation_to_db(db_file, ensemble_id, operation_type, status='COMPLETED', params=None):
     """
-    Add operation to database using mdwf_db update command.
+    Add operation to database using Python module instead of subprocess.
     """
+    import sys
     cmd = [
-        'mdwf_db', 'update',
+        sys.executable, '-m', 'MDWFutils.cli.main', 'update',
         '--db-file', db_file,
         '-e', str(ensemble_id),
         '--operation-type', operation_type,
