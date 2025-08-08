@@ -2,6 +2,7 @@ import sqlite3
 import datetime
 import time
 import getpass
+import os
 from pathlib import Path
 from functools import wraps
 
@@ -19,11 +20,26 @@ def get_current_user():
 # -----------------------------------------------------------------------------
 def get_connection(db_file, timeout=30.0):
     """
-    Open sqlite3 in IMMEDIATE mode, enable WAL, and set a busy timeout.
+    Open sqlite3 in IMMEDIATE mode, set journal mode, and set a busy timeout.
+
+    Journal mode defaults to WAL but can be overridden with the environment
+    variable MDWF_DB_JOURNAL. Acceptable values include WAL, DELETE, TRUNCATE,
+    MEMORY, OFF. On some networked filesystems WAL may cause 'disk I/O error'.
+    Set MDWF_DB_JOURNAL=DELETE to improve compatibility.
     """
     conn = sqlite3.connect(db_file, timeout=timeout)
     conn.isolation_level = "IMMEDIATE"
-    conn.execute("PRAGMA journal_mode = WAL;")
+
+    journal = os.getenv('MDWF_DB_JOURNAL', 'WAL').upper()
+    try:
+        conn.execute(f"PRAGMA journal_mode = {journal};")
+    except sqlite3.OperationalError:
+        # Fallback to DELETE if requested mode fails
+        try:
+            conn.execute("PRAGMA journal_mode = DELETE;")
+        except sqlite3.OperationalError:
+            pass
+
     conn.execute("PRAGMA busy_timeout = 5000;")
     return conn
 
