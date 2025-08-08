@@ -56,8 +56,8 @@ def _make_default_tree(mode: str, seed_override: int = None):
     for e in md_name:
         ET.SubElement(nm, 'elem').text = e
 
-    E('MDsteps',  md_steps)
-    E('trajL',    trajL)
+    ET.SubElement(md, 'MDsteps').text = str(md_steps)
+    ET.SubElement(md, 'trajL').text = str(trajL)
 
     lvl = ET.SubElement(md, 'lvl_sizes')
     for x in lvl_sizes:
