@@ -119,6 +119,30 @@ def generate_hmc_parameters(
     if mode == 'reseed' and seed_override is not None:
         root.find('Seed').text = str(seed_override)
 
+    # Update mode-specific parameters (StartingType and MetropolisTest) to match the current mode
+    if mode == 'tepid':
+        stype, metropolis = 'TepidStart', False
+    elif mode == 'continue':
+        stype, metropolis = 'CheckpointStart', True
+    elif mode == 'reseed':
+        stype, metropolis = 'CheckpointStartReseed', True
+    
+    # Update StartingType and MetropolisTest to match the current mode
+    starting_type_elem = root.find('StartingType')
+    metropolis_elem = root.find('MetropolisTest')
+    
+    if starting_type_elem is None:
+        print(f"WARNING: <StartingType> element not found in XML, creating it", file=sys.stderr)
+        ET.SubElement(root, 'StartingType').text = stype
+    else:
+        starting_type_elem.text = stype
+        
+    if metropolis_elem is None:
+        print(f"WARNING: <MetropolisTest> element not found in XML, creating it", file=sys.stderr)
+        ET.SubElement(root, 'MetropolisTest').text = str(metropolis).lower()
+    else:
+        metropolis_elem.text = str(metropolis).lower()
+
     # apply all other overrides
     for key, val in overrides.items():
         txt = str(val)
@@ -357,10 +381,18 @@ echo "DB updated: operation $op_id to $STATUS (exit=$EXIT_CODE) [SLURM_JOB_ID=$S
 if [[ $EXIT_CODE -eq 0 && "{resubmit}" == "true" && $mode != "reseed" ]]; then
     next_start=$((start + n_trajec))
     if [[ $next_start -lt $cfg_max ]]; then
-        echo "Resubmitting with start=$next_start in continue mode"
-        # Generate new XML for continue mode
-        mdwf_db hmc-xml -e $EID -m continue -x "StartTrajectory=$next_start Trajectories=$n_trajec"
-        # Resubmit the job
+        # Determine next mode: tepid -> continue, continue -> continue
+        next_mode="continue"
+        if [[ $mode == "tepid" ]]; then
+            echo "Resubmitting with start=$next_start in continue mode (transitioning from tepid)"
+        else
+            echo "Resubmitting with start=$next_start in continue mode"
+        fi
+        # Generate new XML for the next mode
+        mdwf_db hmc-xml -e $EID -m $next_mode -x "StartTrajectory=$next_start Trajectories=$n_trajec"
+        # Resubmit the job with the next mode by modifying the script
+        # We need to update the mode variable in the resubmitted script
+        sed -i "s/mode=\"$mode\"/mode=\"$next_mode\"/" $batch
         sbatch --dependency=afterok:$SLURM_JOBID $batch
     else
         echo "Reached target config_max=$cfg_max"
