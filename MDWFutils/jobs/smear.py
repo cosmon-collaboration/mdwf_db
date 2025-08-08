@@ -30,7 +30,7 @@ def generate_smear_sbatch(
     config_end:   int,
     config_prefix: str = 'ckpoint_EODWF_lat.',
     output_prefix: str = 'u_',
-    SMEARTYPE:     str = 'STOUT',
+    SMEARTYPE:     str = 'stout',
     SMITERS:       int = 8,
     alpha_values:  list = None,
     config_inc:    int = 4,
@@ -91,6 +91,19 @@ def generate_smear_sbatch(
         output_file = str(sbatch_dir / fname)
 
     alpha_str = "[" + ",".join(map(str, alpha_values or [])) + "]"
+
+    # Determine output file prefix. Default is u_<SMEARTYPE><SMITERS>,
+    # but for stout8 specifically, use 'ck'. Allow an explicit output_prefix
+    # override by passing a custom value (will be ignored for stout8 case).
+    prefix_for_files = f"u_{SMEARTYPE}{SMITERS}"
+    try:
+        if str(SMEARTYPE).lower() == 'stout' and int(SMITERS) == 8:
+            prefix_for_files = 'ck'
+        elif output_prefix and output_prefix != 'u_':
+            # If user provided a non-default prefix, use it as a base
+            prefix_for_files = f"{output_prefix}{SMEARTYPE}{SMITERS}"
+    except Exception:
+        pass
     txt = f"""#!/usr/bin/env bash
 #SBATCH -A {account}
 #SBATCH -C {constraint}
@@ -167,7 +180,7 @@ for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
         export GOMP_CPU_AFFINITY="${{lo}}-${{hi}} ${{loh}}-${{hih}}"
         
         in_cfg="{ensemble_dir}/cnfg/{config_prefix}${{c}}"
-        out_cfg="{smear_dir}/{output_prefix}{SMEARTYPE}{SMITERS}_n${{c}}"
+        out_cfg="{smear_dir}/{prefix_for_files}n${{c}}"
         $GLU -i "{inp}" -c "$in_cfg" -o "$out_cfg" &
     done
     wait
