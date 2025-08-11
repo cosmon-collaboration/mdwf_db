@@ -30,7 +30,7 @@ def generate_smear_sbatch(
     config_end:   int,
     config_prefix: str = 'ckpoint_EODWF_lat.',
     output_prefix: str = 'u_',
-    SMEARTYPE:     str = 'stout',
+    SMEARTYPE:     str = 'STOUT',
     SMITERS:       int = 8,
     alpha_values:  list = None,
     config_inc:    int = 4,
