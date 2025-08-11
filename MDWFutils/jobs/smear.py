@@ -158,7 +158,7 @@ export OMP_NUM_THREADS=$Nth
 echo "step=$step nsim=$nsim Nth=$Nth"
 
 let 'mxcnf=step*nsim'
-for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
+for((cnf=$SC;cnf -le $EC;cnf+=$mxcnf));do
     for((i=0;i<$nsim;i++));do
         let 'c=cnf+step*i'
         (( c>=EC )) && break
