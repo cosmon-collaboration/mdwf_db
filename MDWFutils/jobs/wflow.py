@@ -16,7 +16,7 @@ def generate_wflow_sbatch(
     constraint: str    = 'cpu',
     queue: str         = 'regular',
     time_limit: str    = '01:00:00',
-    job_name: str      = 'glu_smear',
+    job_name: str      = 'wflow',
     nodes: int         = 1,
     cpus_per_task: int = 256,
     gpus: int          = 4,
@@ -87,7 +87,7 @@ def generate_wflow_sbatch(
     sbatch_dir.mkdir(parents=True, exist_ok=True)
 
     if not output_file:
-        fname = f"glu_smear_{SMEARTYPE}{SMITERS}_{config_start}_{config_end}.sh"
+        fname = f"GLU_{SMEARTYPE}{SMITERS}_{config_start}_{config_end}.sh"
         output_file = str(sbatch_dir / fname)
 
     alpha_str = "[" + ",".join(map(str, alpha_values or [])) + "]"
@@ -117,7 +117,7 @@ export MDWF_DB_JOURNAL="${{MDWF_DB_JOURNAL:-DELETE}}"
 
 DB="{db_file}"
 EID={ensemble_id}
-OP="GLU_SMEAR"
+OP="GLU_WFLOW"
 SC={config_start}
 EC={config_end}
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
