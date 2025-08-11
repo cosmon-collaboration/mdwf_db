@@ -36,6 +36,8 @@ Common parameters:
 - slurm_job: SLURM job ID
 - host: Execution hostname
 
+Note: User is automatically detected unless --user is specified.
+
 Example:
   mdwf_db update -e 1 -o HMC_TUNE -s RUNNING -p "config_start=0 config_end=100"
 """
@@ -82,6 +84,12 @@ Example:
         help=('Space-separated key=val pairs for operation details. '
               'Example: "config_start=0 config_end=100 exit_code=0 runtime=3600"')
     )
+    p.add_argument(
+        '--user', '-u',
+        dest='user',
+        default=None,
+        help='(Optional) Username to associate with this operation. If not specified, current user is used.'
+    )
     p.set_defaults(func=do_update)
 
 
@@ -116,7 +124,8 @@ def do_update(args):
             operation_type= args.operation_type,
             status        = args.status,
             operation_id  = args.operation_id,
-            params        = param_dict or None
+            params        = param_dict or None,
+            user          = args.user
         )
     except sqlite3.OperationalError as e:
         print(f"ERROR: SQLite error: {e}", file=sys.stderr)

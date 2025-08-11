@@ -298,15 +298,37 @@ def update_operation(db_file, ensemble_id,
         created = False
         msg = "Updated"
     else:
-        # — INSERT brand‐new operation —
-        c.execute("""
-          INSERT INTO operations
-            (ensemble_id,operation_type,status,creation_time,update_time,user)
-          VALUES (?,?,?,?,?,?)
-        """, (ensemble_id, operation_type, status, now, now, user))
-        oid = c.lastrowid
-        created = True
-        msg = "Created"
+        # Check if we can find an existing operation by slurm_job_id
+        oid = None
+        if params and 'slurm_job' in params:
+            # Try to find existing operation with matching ensemble_id, operation_type, and slurm_job
+            c.execute("""
+              SELECT o.id FROM operations o
+              JOIN operation_parameters op ON o.id = op.operation_id
+              WHERE o.ensemble_id = ? AND o.operation_type = ? AND op.name = 'slurm_job' AND op.value = ?
+            """, (ensemble_id, operation_type, params['slurm_job']))
+            result = c.fetchone()
+            if result:
+                oid = result[0]
+                # Update existing operation
+                c.execute("""
+                  UPDATE operations
+                     SET status=?, update_time=?, user=?
+                   WHERE id=?
+                """, (status, now, user, oid))
+                created = False
+                msg = "Updated"
+        
+        if oid is None:
+            # — INSERT brand‐new operation —
+            c.execute("""
+              INSERT INTO operations
+                (ensemble_id,operation_type,status,creation_time,update_time,user)
+              VALUES (?,?,?,?,?,?)
+            """, (ensemble_id, operation_type, status, now, now, user))
+            oid = c.lastrowid
+            created = True
+            msg = "Created"
 
     # stash *all* extra k/v pairs in operation_parameters
     if params:

@@ -131,26 +131,28 @@ EID={ensemble_id}
 OP="GLU_SMEAR"
 SC={config_start}
 EC={config_end}
+IC={config_inc}
+USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
 mkdir -p "{ensemble_dir}/jlog" "{smear_dir}"
 
 # Queue DB update to mark RUNNING (execute off-node)
-echo "mdwf_db update --db-file=\"$DB\" --ensemble-id=$EID --operation-type=\"$OP\" --status=RUNNING --params=\"config_start=$SC config_end=$EC config_increment={config_inc} slurm_job=$SLURM_JOBID\"" >> "$LOGFILE"
+echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=RUNNING --user=$USER --params=\"config_start=$SC config_end=$EC config_increment=$IC slurm_job=$SLURM_JOBID\"" >> $LOGFILE
 
 update_status() {{
   code=$?
   status=COMPLETED
   (( code!=0 )) && status=FAILED
   # Queue DB update with final status (execute off-node)
-  echo "mdwf_db update --db-file=\"$DB\" --ensemble-id=$EID --operation-type=\"$OP\" --status=$status --params=\"slurm_job=$SLURM_JOBID runtime=$SECONDS host=$(hostname)\"" >> "$LOGFILE"
+  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$status --user=$USER --params=\"slurm_job=$SLURM_JOBID runtime=$SECONDS\"" >> $LOGFILE
   exit $code
 }}
 trap update_status EXIT TERM INT HUP QUIT
 SECONDS=0
 
 GLU="{glu_path}"
-step={config_inc}
+step=$IC
 nsim={nsim}
 let 'Nth={cpus_per_task}/nsim'
 export OMP_NUM_THREADS=$Nth
