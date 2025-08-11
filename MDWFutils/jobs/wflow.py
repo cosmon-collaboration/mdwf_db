@@ -3,7 +3,7 @@ from pathlib import Path
 from MDWFutils.db            import get_ensemble_details
 from MDWFutils.jobs.glu      import generate_glu_input
 
-def generate_smear_sbatch(
+def generate_wflow_sbatch(
     *,
     # output SBATCH script path; if None we auto-name
     output_file: str      = None,
@@ -29,19 +29,19 @@ def generate_smear_sbatch(
     config_start: int,
     config_end:   int,
     config_prefix: str = 'ckpoint_EODWF_lat.',
-    output_prefix: str = 'u_',
-    SMEARTYPE:     str = 'stout',
-    SMITERS:       int = 8,
-    alpha_values:  list = None,
+    output_prefix: str = 't0',
+    SMEARTYPE:     str = 'ADAPTWFLOW_STOUT',
+    SMITERS:       int = 250,
+    alpha_values:  list = (0.02, 0.01, 0.005),
     config_inc:    int = 4,
-    nsim:          int = 8,
+    nsim:          int = 4,
 
     # any extra overrides for generate_glu_input
     custom_changes: dict = None
 ) -> str:
     """
     read L,T from DB
-    write glu_smear.in under CFGS_<SMEARTYPE><SMITERS>/
+    write glu_smear.in under t0/
     write SBATCH script under slurm/
     """
     ensemble_dir = Path(ensemble_dir).expanduser().resolve()
@@ -55,9 +55,9 @@ def generate_smear_sbatch(
     L = int(p['L']); T = int(p['T'])
 
     # build GLU input
-    smear_dir = ensemble_dir / f"cnfg_{SMEARTYPE}{SMITERS}"
-    smear_dir.mkdir(parents=True, exist_ok=True)
-    inp = smear_dir / "glu_smear.in"
+    t0_dir = ensemble_dir / f"t0"
+    t0_dir.mkdir(parents=True, exist_ok=True)
+    inp = t0_dir / "glu_smear.in"
 
     glu_overrides = {
         'CONFNO': str(config_start),
@@ -65,7 +65,7 @@ def generate_smear_sbatch(
         'DIM_1': str(L), 
         'DIM_2': str(L),
         'DIM_3': str(T),
-        'SMEARTYPE': SMEARTYPE,
+        'SMEARTYPE': "ADAPTWFLOW_STOUT",
         'SMITERS': str(SMITERS),
     }
     
@@ -92,18 +92,6 @@ def generate_smear_sbatch(
 
     alpha_str = "[" + ",".join(map(str, alpha_values or [])) + "]"
 
-    # Determine output file prefix. Default is u_<SMEARTYPE><SMITERS>,
-    # but for stout8 specifically, use 'ck'. Allow an explicit output_prefix
-    # override by passing a custom value (will be ignored for stout8 case).
-    prefix_for_files = f"u_{SMEARTYPE}{SMITERS}"
-    try:
-        if str(SMEARTYPE).lower() == 'stout' and int(SMITERS) == 8:
-            prefix_for_files = 'ck'
-        elif output_prefix and output_prefix != 'u_':
-            # If user provided a non-default prefix, use it as a base
-            prefix_for_files = f"{output_prefix}{SMEARTYPE}{SMITERS}"
-    except Exception:
-        pass
     txt = f"""#!/usr/bin/env bash
 #SBATCH -A {account}
 #SBATCH -C {constraint}
@@ -115,6 +103,7 @@ def generate_smear_sbatch(
 #SBATCH -N {nodes}
 #SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH --signal=B:TERM@60
+#SBATCH --mail-user={mail_user}
 
 module load cpu
 module load intel-mixed/2023.2.0
@@ -133,7 +122,7 @@ SC={config_start}
 EC={config_end}
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
-mkdir -p "{ensemble_dir}/jlog" "{smear_dir}"
+mkdir -p "{ensemble_dir}/jlog" "{t0_dir}"
 
 # Queue DB update to mark RUNNING (execute off-node)
 echo "mdwf_db update --db-file=\"$DB\" --ensemble-id=$EID --operation-type=\"$OP\" --status=RUNNING --params=\"config_start=$SC config_end=$EC config_increment={config_inc} slurm_job=$SLURM_JOBID\"" >> "$LOGFILE"
@@ -173,8 +162,8 @@ for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
         export GOMP_CPU_AFFINITY="${{lo}}-${{hi}} ${{loh}}-${{hih}}"
         
         in_cfg="{ensemble_dir}/cnfg/{config_prefix}${{c}}"
-        out_cfg="{smear_dir}/{prefix_for_files}n${{c}}"
-        $GLU -i "{inp}" -c "$in_cfg" -o "$out_cfg" &
+        out_cfg="{t0_dir}/{output_prefix}.${{c}}.out"
+        $GLU -i "{inp}" -c "$in_cfg" > "$out_cfg" &
     done
     wait
 done

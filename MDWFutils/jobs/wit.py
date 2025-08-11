@@ -259,13 +259,9 @@ cd {workdir}
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-#record RUNNING
-mdwf_db update \\
-  --db-file="{db_file}" \\
-  --ensemble-id={ensemble_id} \\
-  --operation-type="WIT_MESON2PT" \\
-  --status="RUNNING" \\
-  --params="{params_str}"
+# Record RUNNING by queuing a command (to be executed off-node)
+LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+echo "mdwf_db update --db-file=\"{db_file}\" --ensemble-id={ensemble_id} --operation-type=\"WIT_MESON2PT\" --status=\"RUNNING\" --params=\"{params_str}\"" >> "$LOGFILE"
 
 # On exit/failure, update status + code + runtime
 update_status() {{
@@ -273,14 +269,7 @@ update_status() {{
   local ST="COMPLETED"
   [[ $EC -ne 0 ]] && ST="FAILED"
 
-  mdwf_db update \\
-    --db-file="{db_file}" \\
-    --ensemble-id={ensemble_id} \\
-    --operation-type="WIT_MESON2PT" \\
-    --status="$ST" \\
-    --exit-code=$EC \\
-    --runtime=$SECONDS \\
-    --params="slurm_job=$SLURM_JOB_ID host=$(hostname)"
+  echo "mdwf_db update --db-file=\"{db_file}\" --ensemble-id={ensemble_id} --operation-type=\"WIT_MESON2PT\" --status=\"$ST\" --exit-code=$EC --runtime=$SECONDS --params=\"slurm_job=$SLURM_JOB_ID host=$(hostname)\"" >> "$LOGFILE"
 
   echo "Meson2pt job $ST ($EC)"
 }}

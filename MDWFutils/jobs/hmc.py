@@ -312,7 +312,8 @@ mpi="{mpi}"
 trajL="{trajL}"
 lvl_sizes="{lvl_sizes}"
 
-cd {ensemble_dir}
+    cd {ensemble_dir}
+    LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
 echo "ens = $ens"
 echo "ens_dir = {ensemble_dir}"
