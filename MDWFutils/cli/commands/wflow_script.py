@@ -83,23 +83,23 @@ def do_smear_script(args):
     if args.use_default_params:
         if args.params_variant:
             # Use specified variant
-            config = get_operation_config(ens_dir, 'smearing', args.params_variant)
+            config = get_operation_config(ens_dir, 'wflow', args.params_variant)
             if config:
                 config_job_params = config.get('job_params', '')
                 config_glu_params = config.get('params', '')
                 print(f"Loaded smearing.{args.params_variant} default parameters from {get_config_path(ens_dir)}")
             else:
                 config_path = get_config_path(ens_dir)
-                print(f"Warning: No smearing.{args.params_variant} default parameters found in {config_path}")
+                print(f"Warning: No wflow.{args.params_variant} default parameters found in {config_path}")
         else:
             # Try different parameter variants for smearing (fallback behavior)
             config = None
             for smear_type in ['stout8', 'stout4', 'ape', 'default']:
-                config = get_operation_config(ens_dir, 'smearing', smear_type)
+                config = get_operation_config(ens_dir, 'wflow', smear_type)
                 if config:
                     config_job_params = config.get('job_params', '')
                     config_glu_params = config.get('params', '')
-                    print(f"Loaded smearing.{smear_type} default parameters from {get_config_path(ens_dir)}")
+                    print(f"Loaded wflow.{smear_type} default parameters from {get_config_path(ens_dir)}")
                     break
             
             if not config:
