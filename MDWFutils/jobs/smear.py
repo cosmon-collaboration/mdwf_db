@@ -136,14 +136,14 @@ LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 mkdir -p "{ensemble_dir}/jlog" "{smear_dir}"
 
 # Queue DB update to mark RUNNING (execute off-node)
-echo "mdwf_db update --db-file=\"$DB\" --ensemble-id=$EID --operation-type=\"$OP\" --status=RUNNING --params=\"config_start=$SC config_end=$EC config_increment={config_inc} slurm_job=$SLURM_JOBID\"" >> "$LOGFILE"
+echo 'mdwf_db update --db-file="$DB" --ensemble-id=$EID --operation-type="$OP" --status=RUNNING --params="config_start=$SC config_end=$EC config_increment={config_inc} slurm_job=$SLURM_JOBID"' >> "$LOGFILE"
 
 update_status() {{
   code=$?
   status=COMPLETED
   (( code!=0 )) && status=FAILED
   # Queue DB update with final status (execute off-node)
-  echo "mdwf_db update --db-file=\"$DB\" --ensemble-id=$EID --operation-type=\"$OP\" --status=$status --params=\"slurm_job=$SLURM_JOBID runtime=$SECONDS host=$(hostname)\"" >> "$LOGFILE"
+  echo 'mdwf_db update --db-file="$DB" --ensemble-id=$EID --operation-type="$OP" --status=$status --params="slurm_job=$SLURM_JOBID runtime=$SECONDS host=$(hostname)"' >> "$LOGFILE"
   exit $code
 }}
 trap update_status EXIT TERM INT HUP QUIT
@@ -158,10 +158,10 @@ export OMP_NUM_THREADS=$Nth
 echo "step=$step nsim=$nsim Nth=$Nth"
 
 let 'mxcnf=step*nsim'
-for((cnf=$SC;cnf<=$EC;cnf+=$mxcnf));do
+for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
     for((i=0;i<$nsim;i++));do
         let 'c=cnf+step*i'
-        (( c>=EC )) && break
+        (( c>EC )) && break
         
         # Calculate CPU binding for physical and logical cores
         let 'lo=i*Nth/2'
