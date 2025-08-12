@@ -1,21 +1,27 @@
 import argparse, sys, os, ast
 from pathlib import Path
 from MDWFutils.db    import get_ensemble_details, resolve_ensemble_identifier
-from MDWFutils.jobs.wit import generate_wit_sbatch
+from MDWFutils.jobs.meson2pt import generate_meson2pt_sbatch
 from MDWFutils.config import get_operation_config, merge_params, get_config_path, save_operation_config
 
-REQUIRED_JOB_PARAMS = ['queue', 'time_limit', 'nodes', 'cpus_per_task']
+# Required job params: time_limit, nodes, mail_user. Config range lives in WIT params.
+REQUIRED_JOB_PARAMS = ['mail_user', 'time_limit', 'nodes']
 DEFAULT_JOB_PARAMS = {
-    'account'       : 'm2986_g',
-    'constraint'    : 'gpu',
-    'gpus'          : '4',
-    'gpu_bind'      : 'none',
-    'mail_user'     : os.getenv('USER',''),
+    'account'    : 'm2986_g',
+    'constraint' : 'gpu',
+    'queue'      : 'regular',
+    'time_limit' : '06:00:00',
+    'nodes'      : '1',
+    'gpus'       : '4',
+    'gpu_bind'   : 'none',
+    'ranks'      : '4',
+    'ogeom'      : '1,1,1,4',
 }
 
 def register(subparsers):
     p = subparsers.add_parser(
-        'meson-2pt', 
+        'meson2pt-script',
+        aliases=['meson-2pt','meson2pt'], 
         help='Generate WIT meson correlator measurement script',
         description="""
 Generate SLURM script for meson 2-point correlator measurements using WIT.
@@ -32,11 +38,10 @@ from Domain Wall Fermion propagators on smeared gauge configurations.
 
 JOB PARAMETERS (via -j/--job-params):
 Required parameters:
-  queue:         SLURM queue (e.g., regular)
-  time_limit:    Job time limit (e.g., 06:00:00)
-  nodes:         Number of nodes (e.g., 1)
-  cpus_per_task: CPUs per task (e.g., 16)
-  mail_user:     Email for job notifications
+          queue:         SLURM queue (e.g., regular)
+          time_limit:    Job time limit (e.g., 06:00:00)
+          nodes:         Number of nodes (e.g., 1)
+          mail_user:     Email for job notifications
 
 Optional parameters (with defaults):
   account: m2986_g          # SLURM account
@@ -78,28 +83,28 @@ stored in the ensemble parameters. Do not set these manually.
 
 EXAMPLES:
   # Basic meson correlator measurement
-  mdwf_db meson-2pt -e 1 \\
-    -j "queue=regular time_limit=06:00:00 nodes=1 cpus_per_task=16 mail_user=user@example.com" \\
+          mdwf_db meson-2pt -e 1 \\
+            -j "queue=regular time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
     -w "Configurations.first=100 Configurations.last=200"
 
   # Custom solver settings
-  mdwf_db meson-2pt -e 1 \\
-    -j "queue=regular time_limit=12:00:00 nodes=2 cpus_per_task=32 mail_user=user@example.com" \\
+          mdwf_db meson-2pt -e 1 \\
+            -j "queue=regular time_limit=12:00:00 nodes=2 mail_user=user@example.com" \\
     -w "Configurations.first=0 Configurations.last=50 Solver 0.nmx=10000 Configurations.step=2"
 
   # Point source measurement
-  mdwf_db meson-2pt -e 1 \\
-    -j "queue=regular time_limit=06:00:00 nodes=1 cpus_per_task=16 mail_user=user@example.com" \\
+          mdwf_db meson-2pt -e 1 \\
+            -j "queue=regular time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
     -w "Configurations.first=100 Configurations.last=150 Propagator 0.Source=Point"
 
   # Use stored default parameters
   mdwf_db meson-2pt -e 1 --use-default-params
 
   # Use default params with CLI overrides
-  mdwf_db meson-2pt -e 1 --use-default-params -w "Configurations.first=150" -j "nodes=2"
+          mdwf_db meson-2pt -e 1 --use-default-params -w "Configurations.first=150" -j "nodes=2"
 
   # Save current parameters for later reuse
-  mdwf_db meson-2pt -e 1 -j "queue=regular time_limit=6:00:00 nodes=1" -w "Configurations.first=100" --save-default-params
+          mdwf_db meson-2pt -e 1 -j "queue=regular time_limit=6:00:00 nodes=1" -w "Configurations.first=100" --save-default-params
 
   # Save under custom variant name
   mdwf_db meson-2pt -e 1 -w "Propagator 0.Source=Wall" -j "nodes=2" --save-params-as "wall"
@@ -132,6 +137,7 @@ generated DWF.in files for all available options.
                    help='Load parameters from ensemble default parameter file (mdwf_default_params.yaml)')
     p.add_argument('--params-variant',
                    help='Specify which parameter variant to use (e.g., default, wall, point)')
+    p.add_argument('-o','--output-file', help='Output SBATCH script path (auto-generated if not specified)')
     p.add_argument('--save-default-params', action='store_true',
                    help='Save current command parameters to default parameter file for later reuse')
     p.add_argument('--save-params-as',
@@ -205,17 +211,35 @@ def do_meson_2pt(args):
                 key, val = param.split('=', 1)
                 job_dict[key] = val
 
-    # Check required parameters
+    # Require essential job parameters
     missing = [k for k in REQUIRED_JOB_PARAMS if k not in job_dict]
     if missing:
         if args.use_default_params:
             print(f"ERROR: missing required job parameters: {missing}. Add them to your default parameter file or use -j", file=sys.stderr)
         else:
-            print("ERROR: missing required job parameters:", missing, file=sys.stderr)
+            print(f"ERROR: missing required job parameters: {missing}", file=sys.stderr)
         return 1
 
     # Parse merged WIT parameters into nested dict - only parameters that go into DWF.in
     wdict = {}
+    # Key alias normalization to allow shorthand without spaces in section names
+    section_alias = {
+        'RNG': 'Random number generator',
+        'Random_number_generator': 'Random number generator',
+        'Run_name': 'Run name',
+        'Exact_Deflation': 'Exact Deflation',
+        'Boundary_conditions': 'Boundary conditions',
+        'Propagator0': 'Propagator 0',
+        'Propagator1': 'Propagator 1',
+        'Propagator2': 'Propagator 2',
+    }
+    def normalize_keypath(key: str) -> list:
+        parts = key.split('.')
+        if not parts:
+            return parts
+        # Normalize first section name if aliased
+        head = section_alias.get(parts[0], parts[0])
+        return [head] + parts[1:]
     for tok in merged_wit_params.split():
         if not tok.strip():  # Skip empty tokens
             continue
@@ -227,7 +251,7 @@ def do_meson_2pt(args):
             val = ast.literal_eval(raw)
         except:
             val = raw
-        parts = key.split('.')
+        parts = normalize_keypath(key)
         d = wdict
         for p in parts[:-1]:
             if p not in d or not isinstance(d[p], dict):
@@ -278,6 +302,22 @@ def do_meson_2pt(args):
         for k in keys_to_remove:
             d.pop(k)
 
+    # Enforce required WIT parameters for meson2pt
+    required_wit_params = {'Configurations.first', 'Configurations.last', 'Configurations.step', 'Random number generator.seed'}
+    present = set()
+    def collect_keys(d, prefix=""):
+        for k, v in d.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                collect_keys(v, full_key)
+            else:
+                present.add(full_key)
+    collect_keys(wdict)
+    missing_wit = [k for k in required_wit_params if k not in present]
+    if missing_wit:
+        print(f"ERROR: missing required WIT parameters: {missing_wit}", file=sys.stderr)
+        return 1
+
     # Check for unused WIT parameters and warn
     unused_w = find_unused_keys(wdict, valid_wit_params)
     for param in unused_w:
@@ -289,12 +329,22 @@ def do_meson_2pt(args):
     # Use ensemble directory from earlier
 
     # Generate the script
-    sbatch = generate_wit_sbatch(
-        db_file       = args.db_file,
-        ensemble_id   = ensemble_id,
-        ensemble_dir  = str(ens_dir),
+    sbatch = generate_meson2pt_sbatch(
+        db_file        = args.db_file,
+        ensemble_id    = ensemble_id,
+        ensemble_dir   = str(ens_dir),
         custom_changes = wdict,
-        **job_dict
+        output_file    = args.output_file,
+        account        = job_dict.get('account'),
+        constraint     = job_dict.get('constraint'),
+        queue          = job_dict.get('queue'),
+        time_limit     = job_dict.get('time_limit'),
+        nodes          = int(job_dict.get('nodes')),
+        gpus           = int(job_dict.get('gpus')),
+        gpu_bind       = job_dict.get('gpu_bind'),
+        mail_user      = job_dict.get('mail_user'),
+        ranks          = int(job_dict.get('ranks', 4)),
+        ogeom          = job_dict.get('ogeom'),
     )
     print("Wrote WIT SBATCH script to", sbatch)
     

@@ -30,7 +30,7 @@ def register(subparsers):
         'wflow-script',
         help='Generate gradient flow SLURM script',
         description="""
-Generate a complete SLURM script for configuration smearing using GLU.
+Generate a complete SLURM script for gradient flow using GLU.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -87,25 +87,25 @@ def do_smear_script(args):
             if config:
                 config_job_params = config.get('job_params', '')
                 config_glu_params = config.get('params', '')
-                print(f"Loaded smearing.{args.params_variant} default parameters from {get_config_path(ens_dir)}")
+                print(f"Loaded wflow.{args.params_variant} default parameters from {get_config_path(ens_dir)}")
             else:
                 config_path = get_config_path(ens_dir)
                 print(f"Warning: No wflow.{args.params_variant} default parameters found in {config_path}")
         else:
-            # Try different parameter variants for smearing (fallback behavior)
+            # Try different parameter variants for wflow (fallback behavior)
             config = None
-            for smear_type in ['stout8', 'stout4', 'ape', 'default']:
-                config = get_operation_config(ens_dir, 'wflow', smear_type)
+            for flow_type in ['default']:
+                config = get_operation_config(ens_dir, 'wflow', flow_type)
                 if config:
                     config_job_params = config.get('job_params', '')
                     config_glu_params = config.get('params', '')
-                    print(f"Loaded wflow.{smear_type} default parameters from {get_config_path(ens_dir)}")
+                    print(f"Loaded wflow.{flow_type} default parameters from {get_config_path(ens_dir)}")
                     break
             
             if not config:
                 config_path = get_config_path(ens_dir)
                 if config_path.exists():
-                    print(f"Warning: No smearing default parameters found in {config_path}")
+                    print(f"Warning: No wflow default parameters found in {config_path}")
                 else:
                     print(f"Warning: No default parameter file found at {config_path}")
                     print("Use 'mdwf_db default_params generate' to create one")
@@ -150,18 +150,18 @@ def do_smear_script(args):
         custom_changes = glu_dict,
         **job_dict
     )
-    print("Wrote smearing SBATCH script to", sbatch)
+    print("Wrote wflow SBATCH script to", sbatch)
     
     # Save parameters to default params if requested
     if args.save_default_params:
-        save_variant = args.save_params_as if args.save_params_as else 'stout8'
+        save_variant = args.save_params_as if args.save_params_as else 'default'
         success = save_operation_config(
-            ens_dir, 'smearing', save_variant,
+            ens_dir, 'wflow', save_variant,
             job_params=merged_job_params,
             params=merged_glu_params
         )
         if success:
-            print(f"Saved parameters to default params: smearing.{save_variant}")
+            print(f"Saved parameters to default params: wflow.{save_variant}")
         else:
             print(f"Warning: Failed to save parameters to default params", file=sys.stderr)
     

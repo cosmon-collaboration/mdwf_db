@@ -5,10 +5,10 @@ from MDWFutils.db import get_ensemble_details
 
 DEFAULT_WIT_PARAMS = {
     "Run name": {
-        "name": "u_stout8"
+        "name": "ck"
     },
     "Directories": {
-        "cnfg_dir": "../cnfg_stout8/"
+        "cnfg_dir": "../cnfg_STOUT8/"
     },
     "Configurations": {
         "first": "CFGNO",
@@ -127,16 +127,47 @@ def update_nested_dict(d, updates):
 
 def generate_wit_input(
     output_file,
-    custom_changes=None
+    custom_changes=None,
+    *,
+    ensemble_params=None,
+    custom_params=None
 ):
     """
     Write a WIT .ini‐style input file.
       - output_file: path to write DWF.in
-      - custom_changes: nested dict { section: { key: value, … }, … }
+      - custom_changes/custom_params: nested dict { section: { key: value, … }, … }
+      - ensemble_params: optional dict of ensemble parameters to auto-fill
+        some lattice/physics values (e.g., Ls, b, c, kappas from ml,ms,mc).
+
+    Backward compatible with previous signature using 'custom_changes'.
     """
+    overrides = custom_params if custom_params is not None else (custom_changes or {})
+
     params = copy.deepcopy(DEFAULT_WIT_PARAMS)
-    if custom_changes:
-        update_nested_dict(params, custom_changes)
+
+    # auto-fill from ensemble parameters when available
+    if ensemble_params:
+        ep = ensemble_params
+        lat_updates = {}
+        for key in ('Ls', 'b', 'c', 'M5'):
+            if key in ep:
+                lat_updates[key] = str(ep[key])
+        if lat_updates:
+            update_nested_dict(params.setdefault('Lattice parameters', {}), lat_updates)
+
+        # kappas from masses: kappa = 1/(2m+8)
+        try:
+            for mass_key, prop_section in (('ml', 'Propagator 0'), ('ms', 'Propagator 1'), ('mc', 'Propagator 2')):
+                if mass_key in ep:
+                    m = float(ep[mass_key])
+                    kappa = 1.0 / (2.0 * m + 8.0)
+                    update_nested_dict(params.setdefault(prop_section, {}), {'kappa': str(kappa)})
+        except Exception:
+            pass
+
+    # apply user overrides last
+    if overrides:
+        update_nested_dict(params, overrides)
 
     outf = Path(output_file)
     outf.parent.mkdir(parents=True, exist_ok=True)
@@ -153,6 +184,7 @@ def generate_wit_input(
 
 
 def generate_wit_sbatch(
+    *,
     output_file=None,
     db_file=None,
     ensemble_id=None,
@@ -171,15 +203,18 @@ def generate_wit_sbatch(
     gpu_bind='none',
     mail_user=None,
     ranks=4,
-    step=4,
-    first=444,
-    last=444
+    # Config range
+    config_start=None,
+    config_end=None,
+    config_inc=4
 ):
     """
     Create a SBATCH script under ensemble_dir/meson2pt/.
     """
     if mail_user is None:
         raise ValueError("mail_user is required")
+    if config_start is None or config_end is None:
+        raise ValueError("config_start and config_end are required")
 
     ensemble_dir = os.path.abspath(ensemble_dir)
     db_file      = os.path.abspath(db_file)
@@ -199,9 +234,18 @@ def generate_wit_sbatch(
     except (KeyError, ValueError) as e:
         raise RuntimeError(f"Failed to get lattice dimensions: {e}")
 
-    kappaL = 1 / (2 * float(p.get('ml', 0.0195)) + 8)
-    kappaS = 1 / (2 * float(p.get('ms', 0.0725)) + 8)
-    kappaC = 1 / (2 * float(p.get('mc', 0.8555)) + 8)
+    try:
+        ml = float(p['ml'])
+        ms = float(p['ms'])
+        mc = float(p['mc'])
+        if ml <= 0 or ms <= 0 or mc <= 0:
+            raise ValueError(f"Invalid quark masses: ml={ml}, ms={ms}, mc={mc}")
+    except (KeyError, ValueError) as e:
+        raise RuntimeError(f"Failed to get quark masses from ensemble parameters: {e}. Ensure ensemble has ml, ms, and mc parameters.")
+
+    kappaL = 1 / (2 * ml + 8)
+    kappaS = 1 / (2 * ms + 8)
+    kappaC = 1 / (2 * mc + 8)
 
     # Validate ogeom and calculate lgeom
     ogeom = [1, 1, 1, 4]  # Default values
@@ -224,10 +268,7 @@ def generate_wit_sbatch(
     workdir.mkdir(parents=True, exist_ok=True)
 
     if not output_file:
-        # Get first/last from custom_changes
-        first = custom_changes.get('Configurations', {}).get('first', '444') if custom_changes else '444'
-        last = custom_changes.get('Configurations', {}).get('last', '444') if custom_changes else '444'
-        output_file = str(workdir / f"meson2pt_{first}_{last}.sh")
+        output_file = str(workdir / f"meson2pt_{config_start}_{config_end}.sh")
 
     # Generate WIT input file with kappa values
     wit_input_file = Path(ensemble_dir) / "meson2pt" / "DWF.in"
@@ -237,11 +278,11 @@ def generate_wit_sbatch(
         'Propagator 2': {'kappa': str(kappaC)}
     }
     if custom_changes:
-        wit_params.update(custom_changes)
-    generate_wit_input(str(wit_input_file), custom_changes=wit_params)
+        update_nested_dict(wit_params, custom_changes)
+    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=p)
 
     # pack all WIT-specific params into one --params string
-    params_str = " ".join(f"{k}={v}" for k,v in (custom_changes or {}).items())
+    params_str = f"config_start={config_start} config_end={config_end} config_increment={config_inc}"
 
     script = f"""#!/bin/bash
 #SBATCH -A {account}
@@ -252,16 +293,17 @@ def generate_wit_sbatch(
 #SBATCH --qos={queue}
 #SBATCH --mail-user={mail_user}
 #SBATCH --mail-type=ALL
-#SBATCH -o {workdir}/jlog/%j.log
+#SBATCH -o {workdir}/jlog/%J.log
 
-set -euo pipefail
 cd {workdir}
+
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
+PARAMS="{params_str}"
 
 # Record RUNNING by queuing a command (to be executed off-node)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
-echo "mdwf_db update --db-file=\"{db_file}\" --ensemble-id={ensemble_id} --operation-type=\"WIT_MESON2PT\" --status=\"RUNNING\" --params=\"{params_str}\"" >> "$LOGFILE"
+echo "mdwf_db update --db-file=\"{db_file}\" --ensemble-id={ensemble_id} --operation-type=\"WIT_MESON2PT\" --status=\"RUNNING\" --params=\"$PARAMS\"" >> "$LOGFILE"
 
 # On exit/failure, update status + code + runtime
 update_status() {{
@@ -269,7 +311,7 @@ update_status() {{
   local ST="COMPLETED"
   [[ $EC -ne 0 ]] && ST="FAILED"
 
-  echo "mdwf_db update --db-file=\"{db_file}\" --ensemble-id={ensemble_id} --operation-type=\"WIT_MESON2PT\" --status=\"$ST\" --exit-code=$EC --runtime=$SECONDS --params=\"slurm_job=$SLURM_JOB_ID host=$(hostname)\"" >> "$LOGFILE"
+  echo "mdwf_db update --db-file=\"{db_file}\" --ensemble-id={ensemble_id} --operation-type=\"WIT_MESON2PT\" --status=\"$ST\" --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname)\"" >> "$LOGFILE"
 
   echo "Meson2pt job $ST ($EC)"
 }}
@@ -311,7 +353,7 @@ generate_seed() {{
 }}
 
 # loop over cfg numbers
-for cfg in $(seq {first} {step} {last}); do
+for cfg in $(seq {config_start} {config_inc} {config_end}); do
     if [[ ! -e DATA/Meson_2pt_00u_stout8n${{cfg}}.bin ]]; then
         # Generate new seed for this config
         seed=$(generate_seed $cfg)
