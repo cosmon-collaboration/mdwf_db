@@ -311,7 +311,7 @@ def do_meson_2pt(args):
             d.pop(k)
 
     # Enforce required WIT parameters for meson2pt
-    required_wit_params = {'Configurations.first', 'Configurations.last', 'Configurations.step', 'Random number generator.seed'}
+    required_wit_params = {'Configurations.first', 'Configurations.last', 'Configurations.step', 'Random_number_generator.seed'}
     present = set()
     def collect_keys(d, prefix=""):
         for k, v in d.items():
