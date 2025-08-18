@@ -282,7 +282,8 @@ def do_meson_2pt(args):
         'Propagator_1.res', 'Propagator_1.sloppy_res', 'Propagator_2.Noise', 'Propagator_2.Source', 
         'Propagator_2.Dilution', 'Propagator_2.pos', 'Propagator_2.mom', 'Propagator_2.twist', 
         'Propagator_2.kappa', 'Propagator_2.mu', 'Propagator_2.Seed', 'Propagator_2.idx_solver', 
-        'Propagator_2.res', 'Propagator_2.sloppy_res', 'AMA.NEXACT', 'AMA.SLOPPY_PREC', 'AMA.NHITS', 'AMA.NT'
+        'Propagator_2.res', 'Propagator_2.sloppy_res', 'AMA.NEXACT', 'AMA.SLOPPY_PREC', 'AMA.NHITS', 'AMA.NT',
+        'Propagator.Seed'  # Special parameter that applies to all propagators
     }
 
     # Helper to recursively check for unused WIT parameters
@@ -311,7 +312,8 @@ def do_meson_2pt(args):
             d.pop(k)
 
     # Enforce required WIT parameters for meson2pt
-    required_wit_params = {'Configurations.first', 'Configurations.last', 'Configurations.step', 'Random_number_generator.seed'}
+    # Note: Propagator.Seed applies to all propagators, RNG seed is optional
+    required_wit_params = {'Configurations.first', 'Configurations.last', 'Configurations.step', 'Propagator.Seed'}
     present = set()
     def collect_keys(d, prefix=""):
         for k, v in d.items():
@@ -325,6 +327,40 @@ def do_meson_2pt(args):
     if missing_wit:
         print(f"ERROR: missing required WIT parameters: {missing_wit}", file=sys.stderr)
         return 1
+
+    # Handle Propagator.Seed parameter - apply to all individual propagators
+    if 'Propagator' in wdict and 'Seed' in wdict['Propagator']:
+        propagator_seed = wdict['Propagator']['Seed']
+        print(f"Applying Propagator.Seed={propagator_seed} to all propagators")
+        
+        # Apply to all propagator sections
+        for prop_key in ['Propagator_0', 'Propagator_1', 'Propagator_2']:
+            if prop_key not in wdict:
+                wdict[prop_key] = {}
+            wdict[prop_key]['Seed'] = propagator_seed
+        
+        # Remove the Propagator.Seed entry since it's not a real WIT parameter
+        del wdict['Propagator']['Seed']
+        # Remove empty Propagator section if it has no other parameters
+        if not wdict['Propagator']:
+            del wdict['Propagator']
+    
+    # Check for any remaining inconsistent individual propagator seeds
+    propagator_seeds = []
+    for prop_key in ['Propagator_0', 'Propagator_1', 'Propagator_2']:
+        if prop_key in wdict and 'Seed' in wdict[prop_key]:
+            propagator_seeds.append((prop_key, wdict[prop_key]['Seed']))
+    
+    if propagator_seeds:
+        # Check if all propagator seeds are the same
+        first_seed = propagator_seeds[0][1]
+        inconsistent = [(prop, seed) for prop, seed in propagator_seeds if seed != first_seed]
+        if inconsistent:
+            print(f"ERROR: All propagator seeds must be the same. Found inconsistent seeds:", file=sys.stderr)
+            for prop, seed in propagator_seeds:
+                print(f"  {prop}.Seed = {seed}", file=sys.stderr)
+            print("Use 'Propagator.Seed=VALUE' to set the same seed for all propagators", file=sys.stderr)
+            return 1
 
     # Check for unused WIT parameters and warn
     unused_w = find_unused_keys(wdict, valid_wit_params)
@@ -354,7 +390,6 @@ def do_meson_2pt(args):
         ranks          = int(job_dict.get('ranks', 4)),
         ogeom          = job_dict.get('ogeom'),
     )
-    print("Wrote WIT SBATCH script to", sbatch)
     
     # Save parameters to default params if requested
     if args.save_default_params:

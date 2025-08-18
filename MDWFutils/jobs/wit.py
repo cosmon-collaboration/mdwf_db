@@ -18,7 +18,7 @@ CLI_WIT_PARAMS = {
     },
     "Random_number_generator": {
         "level": "0",
-        "seed": "3993"
+        "seed": "3993"  # Optional RNG seed
     },
     "Lattice_parameters": {
         "Ls": "10",
@@ -69,7 +69,7 @@ CLI_WIT_PARAMS = {
         "twist": "0,0,0",
         "kappa": "KAPPA_L",
         "mu": "0.",
-        "Seed": "12345",
+        "Seed": "54321",  # Required propagator seed (same for all propagators)
         "idx_solver": "0",
         "res": "1E-12",
         "sloppy_res": "1E-4"
@@ -83,7 +83,7 @@ CLI_WIT_PARAMS = {
         "twist": "0,0,0",
         "kappa": "KAPPA_S",
         "mu": "0.",
-        "Seed": "12345",
+        "Seed": "54321",  # Required propagator seed (same for all propagators)
         "idx_solver": "1",
         "res": "1E-12",
         "sloppy_res": "1E-6"
@@ -97,7 +97,7 @@ CLI_WIT_PARAMS = {
         "twist": "0,0,0",
         "kappa": "KAPPA_C",
         "mu": "0.",
-        "Seed": "12345",
+        "Seed": "54321",  # Required propagator seed (same for all propagators)
         "idx_solver": "1",
         "res": "5E-15",
         "sloppy_res": "5E-15"
@@ -176,7 +176,7 @@ DEFAULT_WIT_PARAMS = {
         "twist": "0 0 0",
         "kappa": "KAPPA_L",
         "mu": "0.",
-        "Seed": "12345",
+        "Seed": "54321",  # Required propagator seed (same for all propagators)
         "idx_solver": "0",
         "res": "1E-12",
         "sloppy_res": "1E-4"
@@ -190,7 +190,7 @@ DEFAULT_WIT_PARAMS = {
         "twist": "0 0 0",
         "kappa": "KAPPA_S",
         "mu": "0.",
-        "Seed": "12345",
+        "Seed": "54321",  # Required propagator seed (same for all propagators)
         "idx_solver": "1",
         "res": "1E-12",
         "sloppy_res": "1E-6"
@@ -204,7 +204,7 @@ DEFAULT_WIT_PARAMS = {
         "twist": "0 0 0",
         "kappa": "KAPPA_C",
         "mu": "0.",
-        "Seed": "12345",
+        "Seed": "54321",  # Required propagator seed (same for all propagators)
         "idx_solver": "1",
         "res": "5E-15",
         "sloppy_res": "5E-15"

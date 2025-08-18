@@ -60,9 +60,13 @@ Propagator parameters:
   Propagator_0.pos: 0,0,0,-1        # Source position (comma-separated)
   Propagator_0.mom: 0,0,0,0         # Momentum (comma-separated)
   Propagator_0.twist: 0,0,0         # Twist angles (comma-separated)
+  Propagator.Seed: 54321            # Propagator seed (REQUIRED, applies to ALL propagators)
   Propagator_0.kappa: (auto from ml) # Light quark kappa
   Propagator_1.kappa: (auto from ms) # Strange quark kappa
   Propagator_2.kappa: (auto from mc) # Charm quark kappa
+
+Random number generator:
+  Random_number_generator.seed: 3993 # RNG seed (optional, different from propagator seed)
 
 Note: Kappa values are automatically calculated from quark masses
 stored in the ensemble parameters. Do not set these manually.
@@ -79,6 +83,9 @@ EXAMPLES:
 
   # Custom solver settings
   mdwf_db wit-input -e 1 -o DWF.in -w "Solver_0.nmx=10000 Solver_0.res=1E-12"
+
+  # Custom propagator seed (applies to all propagators)
+  mdwf_db wit-input -e 1 -o DWF.in -w "Propagator.Seed=98765"
 
 For complete parameter documentation, see the WIT manual.
         """,
