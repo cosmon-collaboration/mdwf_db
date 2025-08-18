@@ -150,7 +150,7 @@ def generate_mres_sbatch(
     if (ml is not None or ms is not None or mc is not None or 
         ls_override is not None or b_override is not None):
         print("Warning: overriding ensemble parameters")
-        folder_name = f"mres_Ls{ls_final}b{b_final}mc{mc_final}ms{ms_final}ml{ml_final}"
+        folder_name = f"mres_Ls{ls_final}_b{b_final}_mc{mc_final}_ms{ms_final}_ml{ml_final}"
         print(f"Using custom output folder: {folder_name}")
     else:
         folder_name = "mres"
