@@ -24,7 +24,7 @@ CLI_WIT_PARAMS = {
         "Ls": "10",
         "M5": "1.0",
         "b": "1.75",
-        "c": "0.75"
+        "c": "0.75"  # Automatically calculated as b-1
     },
     "Boundary_conditions": {
         "type": "APeri"
@@ -300,9 +300,24 @@ def generate_wit_input(
     if ensemble_params:
         ep = ensemble_params
         lat_updates = {}
-        for key in ('Ls', 'b', 'c', 'M5'):
+        for key in ('Ls', 'b', 'M5'):  # Note: removed 'c' as it will be calculated from 'b'
             if key in ep:
                 lat_updates[key] = str(ep[key])
+        
+        # Always calculate c = b - 1
+        if 'b' in ep:
+            try:
+                b_value = float(ep['b'])
+                c_value = b_value - 1.0
+                lat_updates['c'] = str(c_value)
+            except (ValueError, TypeError):
+                # If b is not a valid number, fall back to default or ensemble c
+                if 'c' in ep:
+                    lat_updates['c'] = str(ep['c'])
+        elif 'c' in ep:
+            # If no b parameter but c is provided, use the provided c
+            lat_updates['c'] = str(ep['c'])
+            
         if lat_updates:
             update_nested_dict(params.setdefault('Lattice parameters', {}), lat_updates)
 
@@ -319,6 +334,16 @@ def generate_wit_input(
     # apply user overrides last
     if overrides:
         update_nested_dict(params, overrides)
+
+    # Ensure c = b - 1 after all parameters are set
+    if 'Lattice parameters' in params and 'b' in params['Lattice parameters']:
+        try:
+            b_value = float(params['Lattice parameters']['b'])
+            c_value = b_value - 1.0
+            params['Lattice parameters']['c'] = str(c_value)
+        except (ValueError, TypeError):
+            # If b is not a valid number, keep existing c value
+            pass
 
     outf = Path(output_file)
     outf.parent.mkdir(parents=True, exist_ok=True)

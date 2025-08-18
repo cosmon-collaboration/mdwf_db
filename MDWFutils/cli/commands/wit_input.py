@@ -42,7 +42,7 @@ Lattice parameters (auto-set from ensemble):
   Ls: (from ensemble)               # Domain wall extent
   M5: 1.0                          # Domain wall mass
   b: (from ensemble)                # Domain wall height
-  c: (from ensemble)                # Domain wall parameter
+  c: (automatically b-1)           # Domain wall parameter (calculated as b-1)
 
 Measurement setup:
   Witness.no_prop: 3                # Number of propagators (light, strange, charm)
