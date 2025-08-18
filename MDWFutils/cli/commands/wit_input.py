@@ -72,10 +72,10 @@ EXAMPLES:
   mdwf_db wit-input -e 1 -o DWF.in -w "Configurations.first=100 Configurations.last=200"
 
   # Point source measurement
-  mdwf_db wit-input -e 1 -o DWF.in -w "Propagator 0.Source=Point Propagator 0.pos=0 0 0 0"
+  mdwf_db wit-input -e 1 -o DWF.in -w "Propagator_0.Source=Point Propagator_0.pos=0,0,0,0"
 
   # Custom solver settings
-  mdwf_db wit-input -e 1 -o DWF.in -w "Solver 0.nmx=10000 Solver 0.res=1E-12"
+  mdwf_db wit-input -e 1 -o DWF.in -w "Solver_0.nmx=10000 Solver_0.res=1E-12"
 
 For complete parameter documentation, see the WIT manual.
         """,
@@ -141,7 +141,8 @@ def do_wit_input(args):
         generate_wit_input(
             ensemble_params=ens['parameters'],
             output_file=output_path,
-            custom_params=wdict
+            custom_params=wdict,
+            cli_format=True
         )
         print(f"Generated WIT input file: {output_path.resolve()}")
         return 0

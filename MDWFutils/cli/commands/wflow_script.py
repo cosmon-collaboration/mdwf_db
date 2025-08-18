@@ -161,7 +161,7 @@ def do_smear_script(args):
             params=merged_glu_params
         )
         if success:
-            print(f"Saved parameters to default params: wflow.{save_variant}")
+            print(f"Saved parameters to {get_config_path(ens_dir)}: wflow.{save_variant}")
         else:
             print(f"Warning: Failed to save parameters to default params", file=sys.stderr)
     

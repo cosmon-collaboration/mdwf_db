@@ -2,85 +2,16 @@ import os
 import copy
 from pathlib import Path
 from MDWFutils.db import get_ensemble_details
+from MDWFutils.jobs.wit import generate_wit_input, update_nested_dict
 
-# Defaults for WIT meson2pt
-DEFAULT_WIT_PARAMS = {
-    "Run name": {"name": "ck"},
-    "Directories": {"cnfg_dir": "../cnfg_STOUT8/"},
-    "Configurations": {"first": "CFGNO", "last": "CFGNO", "step": "4"},
-    "Random number generator": {"level": "0", "seed": "3993"},
-    "Lattice parameters": {"Ls": "10", "M5": "1.0", "b": "1.75", "c": "0.75"},
-    "Boundary conditions": {"type": "APeri"},
-    "Witness": {"no_prop": "3", "no_solver": "2"},
-    "Solver 0": {"solver": "CG", "nkv": "24", "isolv": "1", "nmr": "3", "ncy": "3", "nmx": "8000", "exact_deflation": "true"},
-    "Solver 1": {"solver": "CG", "nkv": "24", "isolv": "1", "nmr": "3", "ncy": "3", "nmx": "8000", "exact_deflation": "false"},
-    "Exact Deflation": {"Cheby_fine": "0.01,-1,24", "Cheby_smooth": "0,0,0", "Cheby_coarse": "0,0,0", "kappa": "0.125", "res": "1E-5", "nmx": "64", "Ns": "64"},
-    "Propagator 0": {"Noise": "Z2xZ2", "Source": "Wall", "Dilution": "PS", "pos": "0 0 0 -1", "mom": "0 0 0 0", "twist": "0 0 0", "kappa": "KAPPA_L", "mu": "0.", "Seed": "12345", "idx_solver": "0", "res": "1E-12", "sloppy_res": "1E-4"},
-    "Propagator 1": {"Noise": "Z2xZ2", "Source": "Wall", "Dilution": "PS", "pos": "0 0 0 -1", "mom": "0 0 0 0", "twist": "0 0 0", "kappa": "KAPPA_S", "mu": "0.", "Seed": "12345", "idx_solver": "1", "res": "1E-12", "sloppy_res": "1E-6"},
-    "Propagator 2": {"Noise": "Z2xZ2", "Source": "Wall", "Dilution": "PS", "pos": "0 0 0 -1", "mom": "0 0 0 0", "twist": "0 0 0", "kappa": "KAPPA_C", "mu": "0.", "Seed": "12345", "idx_solver": "1", "res": "5E-15", "sloppy_res": "5E-15"},
-    "AMA": {"NEXACT": "2", "SLOPPY_PREC": "1E-5", "NHITS": "1", "NT": "48"}
-}
+
 
 DEFAULT_WIT_ENV = 'source /global/cfs/cdirs/m2986/cosmon/mdwf/software/scripts/env_gpu.sh'
 DEFAULT_WIT_BIND = '/global/cfs/cdirs/m2986/cosmon/mdwf/ANALYSIS/WIT/bind.sh'
 DEFAULT_WIT_EXEC = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Meson'
 
 
-def update_nested_dict(d, updates):
-    for key, val in updates.items():
-        if isinstance(val, dict) and key in d and isinstance(d[key], dict):
-            update_nested_dict(d[key], val)
-        else:
-            d[key] = val
-    return d
 
-
-def generate_wit_input(
-    output_file,
-    custom_changes=None,
-    *,
-    ensemble_params=None,
-    custom_params=None
-):
-    """
-    Generate a WIT .ini-style input file (DWF.in).
-    Backward compatible with 'custom_changes'; prefer 'custom_params'.
-    """
-    overrides = custom_params if custom_params is not None else (custom_changes or {})
-    params = copy.deepcopy(DEFAULT_WIT_PARAMS)
-
-    # auto-fill from ensemble parameters when available
-    if ensemble_params:
-        ep = ensemble_params
-        lat_updates = {}
-        for key in ('Ls', 'b', 'c', 'M5'):
-            if key in ep:
-                lat_updates[key] = str(ep[key])
-        if lat_updates:
-            update_nested_dict(params.setdefault('Lattice parameters', {}), lat_updates)
-
-        try:
-            for mass_key, prop_section in (('ml', 'Propagator 0'), ('ms', 'Propagator 1'), ('mc', 'Propagator 2')):
-                if mass_key in ep:
-                    m = float(ep[mass_key])
-                    kappa = 1.0 / (2.0 * m + 8.0)
-                    update_nested_dict(params.setdefault(prop_section, {}), {'kappa': str(kappa)})
-        except Exception:
-            pass
-
-    if overrides:
-        update_nested_dict(params, overrides)
-
-    outf = Path(output_file)
-    outf.parent.mkdir(parents=True, exist_ok=True)
-    with open(outf, 'w') as f:
-        for section, block in params.items():
-            f.write(f"[{section}]\n")
-            for key, val in block.items():
-                f.write(f"{key:<12} {val}\n")
-            f.write("\n")
-    print(f"Generated WIT input file: {outf}")
-    return str(outf)
 
 
 def generate_meson2pt_sbatch(
@@ -185,13 +116,13 @@ def generate_meson2pt_sbatch(
 
     wit_input_file = workdir / "DWF.in"
     wit_params = {
-        'Propagator 0': {'kappa': str(kappaL)},
-        'Propagator 1': {'kappa': str(kappaS)},
-        'Propagator 2': {'kappa': str(kappaC)}
+        'Propagator_0': {'kappa': str(kappaL)},
+        'Propagator_1': {'kappa': str(kappaS)},
+        'Propagator_2': {'kappa': str(kappaC)}
     }
     if custom_changes:
         update_nested_dict(wit_params, custom_changes)
-    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=p)
+    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=p, cli_format=True)
 
     # Extract required config range from WIT parameters
     cfg_section = (custom_changes or {}).get('Configurations', {})
@@ -289,7 +220,6 @@ echo "All done in $SECONDS seconds"
 
 
 __all__ = [
-    'generate_wit_input',
     'generate_meson2pt_sbatch',
 ]
 

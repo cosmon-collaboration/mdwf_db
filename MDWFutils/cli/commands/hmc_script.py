@@ -284,7 +284,7 @@ def do_hmc_script(args):
                 job_params=merged_job_params
             )
             if success:
-                print(f"Saved parameters to default params: hmc.{save_variant}")
+                print(f"Saved parameters to {get_config_path(ens_dir)}: hmc.{save_variant}")
             else:
                 print(f"Warning: Failed to save parameters to default params", file=sys.stderr)
         

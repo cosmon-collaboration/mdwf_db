@@ -223,15 +223,19 @@ def do_meson_2pt(args):
     # Parse merged WIT parameters into nested dict - only parameters that go into DWF.in
     wdict = {}
     # Key alias normalization to allow shorthand without spaces in section names
+    # These aliases are kept for backward compatibility and map to CLI underscore format
     section_alias = {
-        'RNG': 'Random number generator',
-        'Random_number_generator': 'Random number generator',
-        'Run_name': 'Run name',
-        'Exact_Deflation': 'Exact Deflation',
-        'Boundary_conditions': 'Boundary conditions',
-        'Propagator0': 'Propagator 0',
-        'Propagator1': 'Propagator 1',
-        'Propagator2': 'Propagator 2',
+        'RNG': 'Random_number_generator',
+        'Random number generator': 'Random_number_generator', # backward compatibility
+        'Run name': 'Run_name', # backward compatibility
+        'Exact Deflation': 'Exact_Deflation', # backward compatibility
+        'Boundary conditions': 'Boundary_conditions', # backward compatibility
+        'Propagator0': 'Propagator_0',
+        'Propagator1': 'Propagator_1',
+        'Propagator2': 'Propagator_2',
+        'Solver0': 'Solver_0',
+        'Solver1': 'Solver_1',
+        'Lattice parameters': 'Lattice_parameters', # backward compatibility
     }
     def normalize_keypath(key: str) -> list:
         parts = key.split('.')
@@ -357,7 +361,7 @@ def do_meson_2pt(args):
             params=merged_wit_params
         )
         if success:
-            print(f"Saved parameters to default params: meson_2pt.{save_variant}")
+            print(f"Saved parameters to {get_config_path(ens_dir)}: meson_2pt.{save_variant}")
         else:
             print(f"Warning: Failed to save parameters to default params", file=sys.stderr)
     

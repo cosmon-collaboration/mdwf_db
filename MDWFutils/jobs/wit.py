@@ -3,6 +3,114 @@ import copy
 from pathlib import Path
 from MDWFutils.db import get_ensemble_details
 
+# CLI-facing parameters use underscores to avoid space parsing issues
+CLI_WIT_PARAMS = {
+    "Run_name": {
+        "name": "ck"
+    },
+    "Directories": {
+        "cnfg_dir": "../cnfg_STOUT8/"
+    },
+    "Configurations": {
+        "first": "CFGNO",
+        "last": "CFGNO",
+        "step": "4"
+    },
+    "Random_number_generator": {
+        "level": "0",
+        "seed": "3993"
+    },
+    "Lattice_parameters": {
+        "Ls": "10",
+        "M5": "1.0",
+        "b": "1.75",
+        "c": "0.75"
+    },
+    "Boundary_conditions": {
+        "type": "APeri"
+    },
+    "Witness": {
+        "no_prop": "3",
+        "no_solver": "2"
+    },
+    "Solver_0": {
+        "solver": "CG",
+        "nkv": "24",
+        "isolv": "1",
+        "nmr": "3",
+        "ncy": "3",
+        "nmx": "8000",
+        "exact_deflation": "true"
+    },
+    "Solver_1": {
+        "solver": "CG",
+        "nkv": "24",
+        "isolv": "1",
+        "nmr": "3",
+        "ncy": "3",
+        "nmx": "8000",
+        "exact_deflation": "false"
+    },
+    "Exact_Deflation": {
+        "Cheby_fine": "0.01,-1,24",
+        "Cheby_smooth": "0,0,0",
+        "Cheby_coarse": "0,0,0",
+        "kappa": "0.125",
+        "res": "1E-5",
+        "nmx": "64",
+        "Ns": "64"
+    },
+    "Propagator_0": {
+        "Noise": "Z2xZ2",
+        "Source": "Wall",
+        "Dilution": "PS",
+        "pos": "0,0,0,-1",
+        "mom": "0,0,0,0",
+        "twist": "0,0,0",
+        "kappa": "KAPPA_L",
+        "mu": "0.",
+        "Seed": "12345",
+        "idx_solver": "0",
+        "res": "1E-12",
+        "sloppy_res": "1E-4"
+    },
+    "Propagator_1": {
+        "Noise": "Z2xZ2",
+        "Source": "Wall",
+        "Dilution": "PS",
+        "pos": "0,0,0,-1",
+        "mom": "0,0,0,0",
+        "twist": "0,0,0",
+        "kappa": "KAPPA_S",
+        "mu": "0.",
+        "Seed": "12345",
+        "idx_solver": "1",
+        "res": "1E-12",
+        "sloppy_res": "1E-6"
+    },
+    "Propagator_2": {
+        "Noise": "Z2xZ2",
+        "Source": "Wall",
+        "Dilution": "PS",
+        "pos": "0,0,0,-1",
+        "mom": "0,0,0,0",
+        "twist": "0,0,0",
+        "kappa": "KAPPA_C",
+        "mu": "0.",
+        "Seed": "12345",
+        "idx_solver": "1",
+        "res": "5E-15",
+        "sloppy_res": "5E-15"
+    },
+    "AMA": {
+        "NEXACT": "2",
+        "SLOPPY_PREC": "1E-5",
+        "NHITS": "1",
+        "NT": "48"
+    }
+}
+
+# WIT file format requires spaces - this is the internal format
 DEFAULT_WIT_PARAMS = {
     "Run name": {
         "name": "ck"
@@ -113,6 +221,43 @@ DEFAULT_WIT_ENV = 'source /global/cfs/cdirs/m2986/cosmon/mdwf/software/scripts/e
 DEFAULT_WIT_BIND = '/global/cfs/cdirs/m2986/cosmon/mdwf/ANALYSIS/WIT/bind.sh'
 DEFAULT_WIT_EXEC = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Meson'
 
+def convert_cli_to_wit_format(cli_params):
+    """
+    Convert CLI parameter format (with underscores) to WIT file format (with spaces).
+    
+    This handles:
+    1. Section names: Run_name -> Run name, Propagator_0 -> Propagator 0
+    2. Tuple values like pos/mom/twist: 0,0,0,-1 -> 0 0 0 -1
+    """
+    wit_params = {}
+    
+    for section_key, section_dict in cli_params.items():
+        # Convert section name: underscores to spaces, handle numbered sections
+        if section_key.endswith('_0') or section_key.endswith('_1') or section_key.endswith('_2'):
+            # Handle Solver_0 -> Solver 0, Propagator_1 -> Propagator 1, etc.
+            base_name = section_key[:-2].replace('_', ' ')
+            section_name = f"{base_name} {section_key[-1]}"
+        else:
+            section_name = section_key.replace('_', ' ')
+        
+        wit_section = {}
+        for param_key, param_value in section_dict.items():
+            # Convert parameter values: handle special cases like pos, mom, twist
+            if param_key in ('pos', 'mom', 'twist'):
+                if isinstance(param_value, str):
+                    # Convert comma-separated string to space-separated: "0,0,0,-1" -> "0 0 0 -1"
+                    param_value = param_value.replace(',', ' ')
+                elif isinstance(param_value, (tuple, list)):
+                    # Convert tuple/list to space-separated string: (0,0,0,-1) -> "0 0 0 -1"
+                    param_value = ' '.join(str(x) for x in param_value)
+            
+            wit_section[param_key] = param_value
+        
+        wit_params[section_name] = wit_section
+    
+    return wit_params
+
+
 def update_nested_dict(d, updates):
     """
     Recursively merge updates into d.
@@ -130,7 +275,8 @@ def generate_wit_input(
     custom_changes=None,
     *,
     ensemble_params=None,
-    custom_params=None
+    custom_params=None,
+    cli_format=False
 ):
     """
     Write a WIT .ini‐style input file.
@@ -138,10 +284,15 @@ def generate_wit_input(
       - custom_changes/custom_params: nested dict { section: { key: value, … }, … }
       - ensemble_params: optional dict of ensemble parameters to auto-fill
         some lattice/physics values (e.g., Ls, b, c, kappas from ml,ms,mc).
+      - cli_format: if True, convert CLI underscore format to WIT space format
 
     Backward compatible with previous signature using 'custom_changes'.
     """
     overrides = custom_params if custom_params is not None else (custom_changes or {})
+
+    # Convert CLI format to WIT format if needed
+    if cli_format and overrides:
+        overrides = convert_cli_to_wit_format(overrides)
 
     params = copy.deepcopy(DEFAULT_WIT_PARAMS)
 
