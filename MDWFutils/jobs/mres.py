@@ -33,6 +33,10 @@ def generate_mres_sbatch(
     mail_user=None,
     ranks=4,
     ogeom=None,
+    # Mass overrides (optional)
+    ml=None,
+    ms=None,
+    mc=None,
 ):
     """
     Create a mres SBATCH script under ensemble_dir/mres/
@@ -55,16 +59,36 @@ def generate_mres_sbatch(
     except Exception:
         raise RuntimeError("Failed to get lattice dimensions from ensemble parameters")
 
+    # Get quark masses from ensemble parameters, with optional overrides
     try:
-        ml = float(p['ml']); ms = float(p['ms']); mc = float(p['mc'])
-        if ml <= 0 or ms <= 0 or mc <= 0:
+        ml_ens = float(p['ml']); ms_ens = float(p['ms']); mc_ens = float(p['mc'])
+        if ml_ens <= 0 or ms_ens <= 0 or mc_ens <= 0:
             raise ValueError
     except Exception:
         raise RuntimeError("Failed to get quark masses (ml, ms, mc) from ensemble parameters")
 
-    kappaL = 1 / (2 * ml + 8)
-    kappaS = 1 / (2 * ms + 8)
-    kappaC = 1 / (2 * mc + 8)
+    # Use overrides if provided, otherwise use ensemble values
+    ml_final = float(ml) if ml is not None else ml_ens
+    ms_final = float(ms) if ms is not None else ms_ens
+    mc_final = float(mc) if mc is not None else mc_ens
+    
+    # Validate final mass values
+    if ml_final <= 0 or ms_final <= 0 or mc_final <= 0:
+        raise ValueError(f"Invalid quark masses: ml={ml_final}, ms={ms_final}, mc={mc_final}")
+
+    kappaL = 1 / (2 * ml_final + 8)
+    kappaS = 1 / (2 * ms_final + 8)
+    kappaC = 1 / (2 * mc_final + 8)
+    
+    # Print override information if any mass was overridden
+    if ml is not None or ms is not None or mc is not None:
+        print(f"Mass overrides applied:")
+        if ml is not None:
+            print(f"  ml: {ml_ens} -> {ml_final} (kappa: {kappaL:.8f})")
+        if ms is not None:
+            print(f"  ms: {ms_ens} -> {ms_final} (kappa: {kappaS:.8f})")
+        if mc is not None:
+            print(f"  mc: {mc_ens} -> {mc_final} (kappa: {kappaC:.8f})")
 
     # Parse/normalize ogeom
     if ogeom is None:
@@ -106,7 +130,32 @@ def generate_mres_sbatch(
     bind_sh   = bind_script or DEFAULT_WIT_BIND
     exec_path = wit_exec_path or DEFAULT_WIT_EXEC
 
-    workdir = Path(ensemble_dir) / "mres"
+    # Check for Ls and b overrides in custom_changes (WIT parameters)
+    ls_override = None
+    b_override = None
+    if custom_changes:
+        lattice_params = custom_changes.get('Lattice_parameters', {})
+        ls_override = lattice_params.get('Ls')
+        b_override = lattice_params.get('b')
+    
+    # Get ensemble Ls and b values for comparison
+    ls_ens = p.get('Ls')
+    b_ens = p.get('b')
+    
+    # Determine final values (override if provided, otherwise ensemble)
+    ls_final = ls_override if ls_override is not None else ls_ens
+    b_final = b_override if b_override is not None else b_ens
+    
+    # Create custom folder name if any parameters are overridden
+    if (ml is not None or ms is not None or mc is not None or 
+        ls_override is not None or b_override is not None):
+        print("Warning: overriding ensemble parameters")
+        folder_name = f"mres_Ls{ls_final}b{b_final}mc{mc_final}ms{ms_final}ml{ml_final}"
+        print(f"Using custom output folder: {folder_name}")
+    else:
+        folder_name = "mres"
+    
+    workdir = Path(ensemble_dir) / folder_name
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "jlog").mkdir(parents=True, exist_ok=True)
     # Build SBATCH output path under slurm/
@@ -121,7 +170,14 @@ def generate_mres_sbatch(
     }
     if custom_changes:
         update_nested_dict(wit_params, custom_changes)
-    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=p, cli_format=True)
+    
+    # Create modified ensemble parameters with mass overrides for WIT input generation
+    modified_ensemble_params = p.copy()
+    modified_ensemble_params['ml'] = ml_final
+    modified_ensemble_params['ms'] = ms_final
+    modified_ensemble_params['mc'] = mc_final
+    
+    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=modified_ensemble_params, cli_format=True)
 
     # Extract required config range from WIT parameters
     cfg_section = (custom_changes or {}).get('Configurations', {})

@@ -81,6 +81,15 @@ Propagator parameters:
 Note: Kappa values are automatically calculated from quark masses
 stored in the ensemble parameters. Do not set these manually.
 
+MASS OVERRIDES:
+Use --ml, --ms, --mc to override quark masses from the ensemble:
+  --ml 0.005    # Override light quark mass
+  --ms 0.04     # Override strange quark mass  
+  --mc 0.2      # Override charm quark mass
+
+This allows using different masses than those stored in the ensemble
+parameters, even if they don't match the file path naming convention.
+
 EXAMPLES:
   # Basic meson correlator measurement
           mdwf_db meson-2pt -e 1 \\
@@ -96,6 +105,11 @@ EXAMPLES:
           mdwf_db meson-2pt -e 1 \\
             -j "queue=regular time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
     -w "Configurations.first=100 Configurations.last=150 Propagator 0.Source=Point"
+
+  # Override quark masses (useful for parameter studies)
+          mdwf_db meson-2pt -e 1 --ml 0.005 --ms 0.04 --mc 0.2 \\
+            -j "queue=regular time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
+    -w "Configurations.first=100 Configurations.last=200"
 
   # Use stored default parameters
   mdwf_db meson-2pt -e 1 --use-default-params
@@ -142,6 +156,10 @@ generated DWF.in files for all available options.
                    help='Save current command parameters to default parameter file for later reuse')
     p.add_argument('--save-params-as',
                    help='Save current parameters under specific variant name (default: default)')
+    # Mass override parameters
+    p.add_argument('--ml', type=float, help='Override light quark mass (ml) and recalculate kappa')
+    p.add_argument('--ms', type=float, help='Override strange quark mass (ms) and recalculate kappa')
+    p.add_argument('--mc', type=float, help='Override charm quark mass (mc) and recalculate kappa')
     p.set_defaults(func=do_meson_2pt)
 
 def do_meson_2pt(args):
@@ -390,6 +408,10 @@ def do_meson_2pt(args):
         mail_user      = job_dict.get('mail_user'),
         ranks          = int(job_dict.get('ranks', 4)),
         ogeom          = job_dict.get('ogeom'),
+        # Mass overrides
+        ml             = args.ml,
+        ms             = args.ms,
+        mc             = args.mc,
     )
     
     # Save parameters to default params if requested

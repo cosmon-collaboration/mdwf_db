@@ -343,19 +343,23 @@ fi
 
 echo "cfg_current = $start"
 
-# Update database to show running job
-out=$(
-  mdwf_db update \\
-    --db-file="$DB" \\
-    --ensemble-id=$EID \\
-    --operation-type="$mode" \\
-    --status=RUNNING \\
-    --params="config_start=$start config_end=$(( start + n_trajec )) config_increment=$n_trajec slurm_job=$SLURM_JOB_ID exec_path=$EXEC bind_script=$BIND"
-)
-echo "$out"
-op_id=${{out#*operation }}
-op_id=${{op_id%%:*}}
-export op_id
+# Prepare DB update variables and queue RUNNING update off-node
+USER=$(whoami)
+echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$mode --status=RUNNING --user=$USER --params=\"config_start=$start config_end=$(( start + n_trajec )) config_increment=$n_trajec slurm_job=$SLURM_JOB_ID exec_path=$EXEC bind_script=$BIND\"" >> "$LOGFILE"
+
+# On exit/failure, update status + code + runtime
+update_status() {{
+  local EC=$?
+  local ST="COMPLETED"
+  [[ $EC -ne 0 ]] && ST="FAILED"
+
+  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$mode --status=$ST --user=$USER --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname)\"" >> "$LOGFILE"
+
+  echo "HMC job $ST ($EC)"
+}}
+trap update_status EXIT TERM INT HUP QUIT
+
+SECONDS=0
 
 # Generate HMC parameters XML
 mdwf_db hmc-xml -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
@@ -377,45 +381,9 @@ echo "Nthreads $OMP_NUM_THREADS"
 
 echo "START `date`"
 srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_{ens_name}.$start
-EXIT_CODE=$?
 echo "STOP `date`"
 
-# Update database with job status
-STATUS=COMPLETED
-[[ $EXIT_CODE -ne 0 ]] && STATUS=FAILED
-
-mdwf_db update \\
-  --db-file="$DB" \\
-  --ensemble-id=$EID \\
-  --operation-id=$op_id \\
-  --operation-type="$mode" \\
-  --status=$STATUS \\
-  --params="exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname)"
-
-echo "DB updated: operation $op_id to $STATUS (exit=$EXIT_CODE) [SLURM_JOB_ID=$SLURM_JOB_ID]"
-
-# Check if we should resubmit
-if [[ $EXIT_CODE -eq 0 && "{resubmit}" == "true" && $mode != "reseed" ]]; then
-    next_start=$((start + n_trajec))
-    if [[ $next_start -lt $cfg_max ]]; then
-        # Determine next mode: tepid -> continue, continue -> continue
-        next_mode="continue"
-        if [[ $mode == "tepid" ]]; then
-            echo "Resubmitting with start=$next_start in continue mode (transitioning from tepid)"
-        else
-            echo "Resubmitting with start=$next_start in continue mode"
-        fi
-        # Generate new XML for the next mode
-        mdwf_db hmc-xml -e $EID -m $next_mode -x "StartTrajectory=$next_start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
-        # Resubmit the job with the next mode by modifying the script
-        # We need to update the mode variable in the resubmitted script
-        sed -i "s/mode=\\"$mode\\"/mode=\\"$next_mode\\"/" $batch
-        sbatch --dependency=afterok:$SLURM_JOB_ID $batch
-    else
-        echo "Reached target config_max=$cfg_max"
-    fi
-fi
-
-exit $EXIT_CODE"""
+echo "All done in $SECONDS seconds"
+"""
     script_file.write_text(txt, encoding='utf-8')
     return True

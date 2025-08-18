@@ -77,6 +77,15 @@ Propagator parameters:
 
 Note: Kappa values are automatically calculated from quark masses
 stored in the ensemble parameters. Do not set these manually.
+
+MASS OVERRIDES:
+Use --ml, --ms, --mc to override quark masses from the ensemble:
+  --ml 0.005    # Override light quark mass
+  --ms 0.04     # Override strange quark mass  
+  --mc 0.2      # Override charm quark mass
+
+This allows using different masses than those stored in the ensemble
+parameters, even if they don't match the file path naming convention.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -99,6 +108,10 @@ stored in the ensemble parameters. Do not set these manually.
                    help='Save current command parameters to default parameter file for later reuse')
     p.add_argument('--save-params-as',
                    help='Save current parameters under specific variant name (default: default)')
+    # Mass override parameters
+    p.add_argument('--ml', type=float, help='Override light quark mass (ml) and recalculate kappa')
+    p.add_argument('--ms', type=float, help='Override strange quark mass (ms) and recalculate kappa')
+    p.add_argument('--mc', type=float, help='Override charm quark mass (mc) and recalculate kappa')
     p.set_defaults(func=do_mres)
 
 def do_mres(args):
@@ -345,6 +358,10 @@ def do_mres(args):
         mail_user      = job_dict.get('mail_user'),
         ranks          = int(job_dict.get('ranks', 4)),
         ogeom          = job_dict.get('ogeom'),
+        # Mass overrides
+        ml             = args.ml,
+        ms             = args.ms,
+        mc             = args.mc,
     )
     
     # Save parameters to default params if requested
