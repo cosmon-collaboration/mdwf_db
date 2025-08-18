@@ -542,7 +542,7 @@ for cfg in $(seq {config_start} {config_inc} {config_end}); do
         
         echo "Running cfg $cfg with seed $seed"
         srun -n {ranks} {bind_sh} {exec_path} \\
-             -i DWF.in -ogeom {ogeom[0]} {ogeom[1]} {ogeom[2]} {ogeom[3]} \\
+             -i {wit_input_file} -ogeom {ogeom[0]} {ogeom[1]} {ogeom[2]} {ogeom[3]} \\
              -lgeom {lgeom[0]} {lgeom[1]} {lgeom[2]} {lgeom[3]}
     fi
 done

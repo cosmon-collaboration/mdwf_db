@@ -47,6 +47,7 @@ JOB SCRIPT GENERATION:
   smear-script       Generate GLU smearing SLURM script
   wflow-script       Generate gradient flow SLURM script
   meson-2pt          Generate WIT meson correlator measurement script
+  mres-script        Generate WIT mres measurement script
   glu-input          Generate GLU input file for gauge field utilities
   wit-input          Generate WIT input file for correlator measurements
 

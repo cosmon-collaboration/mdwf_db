@@ -207,7 +207,7 @@ echo "MPICH_OFI_NIC_MAPPING=${{MPICH_OFI_NIC_MAPPING}}"
 EXEC="{exec_path}"
 BIND="{bind_sh}"
 echo "Running mres range {config_start}-{config_end} step {config_inc}"
-srun -n {ranks} $BIND $EXEC -i DWF.in -ogeom {ogeom[0]} {ogeom[1]} {ogeom[2]} {ogeom[3]} -lgeom {lgeom[0]} {lgeom[1]} {lgeom[2]} {lgeom[3]}
+srun -n {ranks} $BIND $EXEC -i {wit_input_file} -ogeom {ogeom[0]} {ogeom[1]} {ogeom[2]} {ogeom[3]} -lgeom {lgeom[0]} {lgeom[1]} {lgeom[2]} {lgeom[3]}
 
 echo "All done in $SECONDS seconds"
 """
