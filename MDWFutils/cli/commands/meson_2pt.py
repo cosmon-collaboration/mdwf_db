@@ -365,7 +365,8 @@ def do_meson_2pt(args):
     # Check for unused WIT parameters and warn
     unused_w = find_unused_keys(wdict, valid_wit_params)
     for param in unused_w:
-        print(f"WARNING: WIT parameter '{param}' was provided but is not used in DWF.in", file=sys.stderr)
+        print(f"\n ERROR: WIT parameter '{param}' was provided but is not used in DWF.in \n", file=sys.stderr)
+        sys.exit(1)
     
     # Remove unused keys from wdict
     remove_unused_keys(wdict, unused_w)

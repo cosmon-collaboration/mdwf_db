@@ -87,13 +87,13 @@ def generate_glu_input(
             if child in defaults:
                 params[child] = str(value)
             else:
-                print(f"Warning: Unknown parameter '{child}' in '{key}'")
+                raise ValueError(f"ERROR: Unknown GLU parameter '{child}' in '{key}'. Valid parameters: {', '.join(sorted(defaults.keys()))}")
         else:
             # Flat parameter name (preferred)
             if key in defaults:
                 params[key] = str(value)
             else:
-                print(f"Warning: Unknown parameter '{key}'")
+                raise ValueError(f"ERROR: Unknown GLU parameter '{key}'. Valid parameters: {', '.join(sorted(defaults.keys()))}")
     
     # Generate content using f-string template
     content = f"""MODE = {params['MODE']}    
