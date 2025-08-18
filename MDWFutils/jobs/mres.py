@@ -192,7 +192,7 @@ export SLURM_CPU_BIND=cores
 export CRAY_ACCEL_TARGET=nvidia80
 
 ### QUDA specific flags
-export QUDA_RESOURCE_PATH=`pwd`/quda_resource
+export QUDA_RESOURCE_PATH=`pwd`/../quda_resource
 [[ -d $QUDA_RESOURCE_PATH ]] || mkdir -p $QUDA_RESOURCE_PATH
 export QUDA_ENABLE_GDR=1
 
