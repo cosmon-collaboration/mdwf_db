@@ -49,17 +49,20 @@ Measurement setup:
   Witness.no_solver: 2              # Number of solvers
 
 Solver parameters:
-  Solver 0.solver: CG               # Conjugate gradient solver
-  Solver 0.nmx: 8000                # Maximum iterations
-  Solver 0.exact_deflation: true    # Use exact deflation
-  Solver 1.exact_deflation: false   # Second solver settings
+  Solver_0.solver: CG               # Conjugate gradient solver
+  Solver_0.nmx: 8000                # Maximum iterations
+  Solver_0.exact_deflation: true    # Use exact deflation
+  Solver_1.exact_deflation: false   # Second solver settings
 
 Propagator parameters:
-  Propagator 0.Source: Wall         # Source type (Wall, Point)
-  Propagator 0.Dilution: PS         # Dilution scheme
-  Propagator 0.kappa: (auto from ml) # Light quark kappa
-  Propagator 1.kappa: (auto from ms) # Strange quark kappa
-  Propagator 2.kappa: (auto from mc) # Charm quark kappa
+  Propagator_0.Source: Wall         # Source type (Wall, Point)
+  Propagator_0.Dilution: PS         # Dilution scheme
+  Propagator_0.pos: 0,0,0,-1        # Source position (comma-separated)
+  Propagator_0.mom: 0,0,0,0         # Momentum (comma-separated)
+  Propagator_0.twist: 0,0,0         # Twist angles (comma-separated)
+  Propagator_0.kappa: (auto from ml) # Light quark kappa
+  Propagator_1.kappa: (auto from ms) # Strange quark kappa
+  Propagator_2.kappa: (auto from mc) # Charm quark kappa
 
 Note: Kappa values are automatically calculated from quark masses
 stored in the ensemble parameters. Do not set these manually.

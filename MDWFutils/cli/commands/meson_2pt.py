@@ -263,22 +263,26 @@ def do_meson_2pt(args):
             d = d[p]
         d[parts[-1]] = val
 
-    # List of valid WIT parameters (only those that go into DWF.in)
+    # List of valid WIT parameters (only those that go into DWF.in) - CLI underscore format
     valid_wit_params = {
-        'name', 'cnfg_dir', 'Configurations.first', 'Configurations.last', 'Configurations.step',
-        'Random number generator.level', 'Random number generator.seed', 'Ls', 'M5', 'b', 'c',
-        'type', 'Witness.no_prop', 'Witness.no_solver', 'Solver 0.solver', 'Solver 0.nkv',
-        'Solver 0.isolv', 'Solver 0.nmr', 'Solver 0.ncy', 'Solver 0.nmx', 'Solver 0.exact_deflation',
-        'Solver 1.solver', 'Solver 1.nkv', 'Solver 1.isolv', 'Solver 1.nmr', 'Solver 1.ncy',
-        'Solver 1.nmx', 'Solver 1.exact_deflation', 'Exact Deflation.Cheby_fine',
-        'Exact Deflation.Cheby_smooth', 'Exact Deflation.Cheby_coarse', 'Exact Deflation.kappa',
-        'Exact Deflation.res', 'Exact Deflation.nmx', 'Exact Deflation.Ns', 'Propagator 0.Noise',
-        'Propagator 0.Source', 'Propagator 0.Dilution', 'Propagator 0.pos', 'Propagator 0.mom',
-        'Propagator 0.twist', 'Propagator 0.kappa', 'Propagator 0.mu', 'Propagator 1.Noise',
-        'Propagator 1.Source', 'Propagator 1.Dilution', 'Propagator 1.pos', 'Propagator 1.mom',
-        'Propagator 1.twist', 'Propagator 1.kappa', 'Propagator 1.mu', 'Propagator 2.Noise',
-        'Propagator 2.Source', 'Propagator 2.Dilution', 'Propagator 2.pos', 'Propagator 2.mom',
-        'Propagator 2.twist', 'Propagator 2.kappa', 'Propagator 2.mu'
+        'Run_name.name', 'Directories.cnfg_dir', 'Configurations.first', 'Configurations.last', 'Configurations.step',
+        'Random_number_generator.level', 'Random_number_generator.seed', 'Lattice_parameters.Ls', 
+        'Lattice_parameters.M5', 'Lattice_parameters.b', 'Lattice_parameters.c', 'Boundary_conditions.type',
+        'Witness.no_prop', 'Witness.no_solver', 'Solver_0.solver', 'Solver_0.nkv', 'Solver_0.isolv', 
+        'Solver_0.nmr', 'Solver_0.ncy', 'Solver_0.nmx', 'Solver_0.exact_deflation', 'Solver_1.solver', 
+        'Solver_1.nkv', 'Solver_1.isolv', 'Solver_1.nmr', 'Solver_1.ncy', 'Solver_1.nmx', 
+        'Solver_1.exact_deflation', 'Exact_Deflation.Cheby_fine', 'Exact_Deflation.Cheby_smooth', 
+        'Exact_Deflation.Cheby_coarse', 'Exact_Deflation.kappa', 'Exact_Deflation.res', 
+        'Exact_Deflation.nmx', 'Exact_Deflation.Ns', 'Propagator_0.Noise', 'Propagator_0.Source', 
+        'Propagator_0.Dilution', 'Propagator_0.pos', 'Propagator_0.mom', 'Propagator_0.twist', 
+        'Propagator_0.kappa', 'Propagator_0.mu', 'Propagator_0.Seed', 'Propagator_0.idx_solver', 
+        'Propagator_0.res', 'Propagator_0.sloppy_res', 'Propagator_1.Noise', 'Propagator_1.Source', 
+        'Propagator_1.Dilution', 'Propagator_1.pos', 'Propagator_1.mom', 'Propagator_1.twist', 
+        'Propagator_1.kappa', 'Propagator_1.mu', 'Propagator_1.Seed', 'Propagator_1.idx_solver', 
+        'Propagator_1.res', 'Propagator_1.sloppy_res', 'Propagator_2.Noise', 'Propagator_2.Source', 
+        'Propagator_2.Dilution', 'Propagator_2.pos', 'Propagator_2.mom', 'Propagator_2.twist', 
+        'Propagator_2.kappa', 'Propagator_2.mu', 'Propagator_2.Seed', 'Propagator_2.idx_solver', 
+        'Propagator_2.res', 'Propagator_2.sloppy_res', 'AMA.NEXACT', 'AMA.SLOPPY_PREC', 'AMA.NHITS', 'AMA.NT'
     }
 
     # Helper to recursively check for unused WIT parameters
