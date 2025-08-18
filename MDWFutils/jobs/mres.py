@@ -8,13 +8,13 @@ from MDWFutils.jobs.wit import generate_wit_input, update_nested_dict
 
 DEFAULT_WIT_ENV = 'source /global/cfs/cdirs/m2986/cosmon/mdwf/software/scripts/env_gpu.sh'
 DEFAULT_WIT_BIND = '/global/cfs/cdirs/m2986/cosmon/mdwf/ANALYSIS/WIT/bind.sh'
-DEFAULT_WIT_EXEC = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Meson'
+DEFAULT_WIT_EXEC = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Mres'
 
 
 
 
 
-def generate_meson2pt_sbatch(
+def generate_mres_sbatch(
     *,
     output_file=None,
     db_file=None,
@@ -35,8 +35,7 @@ def generate_meson2pt_sbatch(
     ogeom=None,
 ):
     """
-    Create a meson2pt SBATCH script under ensemble_dir/meson2pt/.
-    Mirrors smear-script style inputs.
+    Create a mres SBATCH script under ensemble_dir/mres/
     """
     if mail_user is None:
         raise ValueError("mail_user is required")
@@ -107,14 +106,14 @@ def generate_meson2pt_sbatch(
     bind_sh   = bind_script or DEFAULT_WIT_BIND
     exec_path = wit_exec_path or DEFAULT_WIT_EXEC
 
-    workdir = Path(ensemble_dir) / "meson2pt"
+    workdir = Path(ensemble_dir) / "mres"
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "jlog").mkdir(parents=True, exist_ok=True)
     # Build SBATCH output path under slurm/
     sbatch_dir = Path(ensemble_dir) / "slurm"
     sbatch_dir.mkdir(parents=True, exist_ok=True)
 
-    wit_input_file = workdir / "DWF_meson2pt.in"
+    wit_input_file = workdir / "DWF_mres.in"
     wit_params = {
         'Propagator_0': {'kappa': str(kappaL)},
         'Propagator_1': {'kappa': str(kappaS)},
@@ -135,7 +134,7 @@ def generate_meson2pt_sbatch(
 
     # Default output filename if not provided
     if not output_file:
-        output_file = str(sbatch_dir / f"meson2pt_{config_start}_{config_end}.sh")
+        output_file = str(sbatch_dir / f"mres_{config_start}_{config_end}_{config_inc}.sh")
 
     params_str = f"config_start={config_start} config_end={config_end} config_increment={config_inc}"
 
@@ -158,7 +157,7 @@ conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 # Prepare DB update variables and queue RUNNING update off-node
 DB="{db_file}"
 EID={ensemble_id}
-OP="WIT_MESON2PT"
+OP="WIT_MRES"
 SC={config_start}
 EC={config_end}
 IC={config_inc}
@@ -174,7 +173,7 @@ update_status() {{
 
   echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname)\"" >> "$LOGFILE"
 
-  echo "Meson2pt job $ST ($EC)"
+  echo "mres job $ST ($EC)"
 }}
 trap update_status EXIT TERM INT HUP QUIT
 
@@ -207,7 +206,7 @@ echo "MPICH_OFI_NIC_MAPPING=${{MPICH_OFI_NIC_MAPPING}}"
 
 EXEC="{exec_path}"
 BIND="{bind_sh}"
-echo "Running meson2pt range {config_start}-{config_end} step {config_inc}"
+echo "Running mres range {config_start}-{config_end} step {config_inc}"
 srun -n {ranks} $BIND $EXEC -i DWF.in -ogeom {ogeom[0]} {ogeom[1]} {ogeom[2]} {ogeom[3]} -lgeom {lgeom[0]} {lgeom[1]} {lgeom[2]} {lgeom[3]}
 
 echo "All done in $SECONDS seconds"
@@ -220,7 +219,7 @@ echo "All done in $SECONDS seconds"
 
 
 __all__ = [
-    'generate_meson2pt_sbatch',
+    'generate_mres_sbatch',
 ]
 
 

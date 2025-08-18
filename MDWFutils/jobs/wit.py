@@ -444,7 +444,7 @@ def generate_wit_sbatch(
     workdir.mkdir(parents=True, exist_ok=True)
 
     if not output_file:
-        output_file = str(workdir / f"meson2pt_{config_start}_{config_end}.sh")
+        output_file = str(workdir / f"meson2pt_{config_start}_{config_end}_{config_inc}.sh")
 
     # Generate WIT input file with kappa values
     wit_input_file = Path(ensemble_dir) / "meson2pt" / "DWF.in"
