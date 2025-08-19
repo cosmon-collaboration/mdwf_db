@@ -223,24 +223,24 @@ echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --sta
 
 # On exit/failure, update status + code + runtime
 update_status() {{
-  local EC=\$?
+  local EC=$?
   local ST="COMPLETED"
   local REASON=""
   
   # Check if we were interrupted by a signal (user cancel/SLURM kill)
-  if [[ \$EC -eq 143 ]] || [[ \$EC -eq 130 ]] || [[ \$EC -eq 129 ]]; then
+  if [[ $EC -eq 143 ]] || [[ $EC -eq 130 ]] || [[ $EC -eq 129 ]]; then
     ST="CANCELED"
     REASON="job_killed"
-  elif [[ \$EC -ne 0 ]]; then
+  elif [[ $EC -ne 0 ]]; then
     ST="FAILED"
     REASON="job_failed"
   else
     REASON="job_completed"
   fi
 
-  echo "mdwf_db update --db-file=\$DB --ensemble-id=\$EID --operation-type=\$OP --status=\$ST --user=\$USER --params=\"exit_code=\$EC runtime=\$SECONDS slurm_job=\$SLURM_JOB_ID host=\$(hostname) reason=\$REASON\"" >> "\$LOGFILE"
+  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON\"" >> $LOGFILE
 
-  echo "mres job \$ST (\$EC) - \$REASON"
+  echo "mres job $ST ($EC) - $REASON"
 }}
 trap update_status EXIT TERM INT HUP QUIT
 
