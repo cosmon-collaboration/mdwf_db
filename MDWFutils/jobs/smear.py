@@ -141,12 +141,26 @@ mkdir -p "{ensemble_dir}/jlog" "{smear_dir}"
 echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=RUNNING --user=$USER --params=\"config_start=$SC config_end=$EC config_increment=$IC slurm_job=$SLURM_JOBID\"" >> $LOGFILE
 
 update_status() {{
-  code=$?
-  status=COMPLETED
-  (( code!=0 )) && status=FAILED
+  local EC=\$?
+  local ST="COMPLETED"
+  local REASON=""
+  
+  # Check if we were interrupted by a signal (user cancel/SLURM kill)
+  if [[ \$EC -eq 143 ]] || [[ \$EC -eq 130 ]] || [[ \$EC -eq 129 ]]; then
+    ST="CANCELED"
+    REASON="job_killed"
+  elif [[ \$EC -ne 0 ]]; then
+    ST="FAILED"
+    REASON="job_failed"
+  else
+    REASON="job_completed"
+  fi
+  
   # Queue DB update with final status (execute off-node)
-  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$status --user=$USER --params=\"slurm_job=$SLURM_JOBID runtime=$SECONDS\"" >> $LOGFILE
-  exit $code
+  echo "mdwf_db update --db-file=\$DB --ensemble-id=\$EID --operation-type=\$OP --status=\$ST --user=\$USER --params=\"slurm_job=\$SLURM_JOBID runtime=\$SECONDS exit_code=\$EC reason=\$REASON\"" >> \$LOGFILE
+  
+  echo "Smear job \$ST (\$EC) - \$REASON"
+  exit \$EC
 }}
 trap update_status EXIT TERM INT HUP QUIT
 SECONDS=0
