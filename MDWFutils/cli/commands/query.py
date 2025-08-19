@@ -173,6 +173,12 @@ def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
     # Data rows
     for row in ensemble_data:
         data_line = "  ".join([f"{str(row[header]):<{col_widths[header]}}" for header in headers])
+        # Find the ensemble to get its status
+        ensemble_id = int(row['EID'])
+        ensemble = next((ens for ens in ensembles if ens['id'] == ensemble_id), None)
+        if ensemble:
+            status = f"({ensemble['status']})"
+            data_line += f"  {status}"
         lines.append(data_line)
     
     return "\n".join(lines)
