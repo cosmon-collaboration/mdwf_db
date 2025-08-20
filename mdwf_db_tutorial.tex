@@ -54,19 +54,6 @@
 \tableofcontents
 \newpage
 
-\section{Introduction}
-
-The MDWF Database Management Tool is a comprehensive system for managing Domain Wall Fermion Lattice QCD ensembles and their associated operations. This tool provides:
-
-\begin{itemize}
-\item Database management for ensemble metadata and physics parameters
-\item Operation tracking with user attribution and timestamps
-\item Automatic script generation for HMC and smearing jobs
-\item Ensemble lifecycle management (TUNING $\rightarrow$ PRODUCTION)
-\item Complete audit trail of all operations
-\item \textbf{Default parameter system for reproducible workflows}
-\end{itemize}
-
 \section{Installation \& Setup}
 
 \subsection{Installing the CLI Tool}
@@ -81,9 +68,124 @@ Successfully installed MDWFutils-0.1
 $ mdwf_db --help
 \end{lstlisting}
 
-\section{Command Reference}
+\subsection{Perlmutter Environment Setup}
 
-The MDWF Database tool provides commands organized in the typical workflow order. Each command includes detailed options and examples.
+On Perlmutter, you can load the MDWF environment using:
+
+\begin{lstlisting}[language=bash]
+module load conda
+conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
+\end{lstlisting}
+
+This will make the \code{mdwf_db} command available in your shell.
+
+\section{Complete Command Reference}
+
+\subsection{Database Management Commands}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Command} & \textbf{Alias} & \textbf{Purpose} & \textbf{Key Options} \\
+\hline
+\texttt{init-db} & \texttt{init} & Initialize database and directory structure & \texttt{--base-dir}, \texttt{--db-file} \\
+\hline
+\texttt{add-ensemble} & \texttt{add} & Add ensemble to database & \texttt{-p/--params}, \texttt{-s/--status}, \texttt{-d/--directory} \\
+\hline
+\texttt{query} & \texttt{q} & List and inspect ensembles & \texttt{-e/--ensemble}, \texttt{--operations}, \texttt{--params} \\
+\hline
+\texttt{promote-ensemble} & \texttt{promote} & Move from TUNING to PRODUCTION & \texttt{-e/--ensemble}, \texttt{--force} \\
+\hline
+\texttt{remove-ensemble} & \texttt{remove} & Remove ensemble completely & \texttt{-e/--ensemble}, \texttt{--force} \\
+\hline
+\texttt{clear-history} & \texttt{clear} & Clear operation history & \texttt{-e/--ensemble}, \texttt{--force} \\
+\hline
+\end{tabular}
+\caption{Database Management Commands}
+\end{table}
+
+\subsection{Script Generation Commands}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Command} & \textbf{Alias} & \textbf{Purpose} & \textbf{Key Options} \\
+\hline
+\texttt{hmc-script} & \texttt{hmc} & Generate HMC XML and SLURM script & \texttt{-e}, \texttt{-a}, \texttt{-m}, \texttt{-x}, \texttt{-j}, \texttt{--use-default-params} \\
+\hline
+\texttt{hmc-xml} & \texttt{hmc-x} & Generate standalone HMC XML & \texttt{-e}, \texttt{-m}, \texttt{-x}, \texttt{-o} \\
+\hline
+\texttt{smear-script} & \texttt{smear} & Generate GLU smearing script & \texttt{-e}, \texttt{-j}, \texttt{-g}, \texttt{--use-default-params} \\
+\hline
+\texttt{wflow-script} & \texttt{wflow} & Generate gradient flow script & \texttt{-e}, \texttt{-j}, \texttt{-g}, \texttt{--use-default-params} \\
+\hline
+\texttt{meson2pt-script} & \texttt{meson} & Generate WIT meson script & \texttt{-e}, \texttt{-j}, \texttt{-w}, \texttt{--use-default-params} \\
+\hline
+\texttt{mres-script} & \texttt{mres} & Generate WIT MRES script & \texttt{-e}, \texttt{-j}, \texttt{-g}, \texttt{--use-default-params} \\
+\hline
+\texttt{glu-input} & \texttt{glu} & Generate GLU input file & \texttt{-e}, \texttt{-o}, \texttt{-g}, \texttt{-t} \\
+\hline
+\texttt{wit-input} & \texttt{wit} & Generate WIT input file & \texttt{-e}, \texttt{-o}, \texttt{-w} \\
+\hline
+\end{tabular}
+\caption{Script Generation Commands}
+\end{table}
+
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Command} & \textbf{Alias} & \textbf{Purpose} & \textbf{Key Options} \\
+\hline
+\texttt{default\_params} & \texttt{defaults} & Manage default parameter files & \texttt{generate}, \texttt{show}, \texttt{edit}, \texttt{validate} \\
+\hline
+\end{tabular}
+\caption{Parameter Management Commands}
+\end{table}
+
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Command} & \textbf{Alias} & \textbf{Purpose} & \textbf{Key Options} \\
+\hline
+\texttt{update} & \texttt{u} & Record/update operation status & \texttt{-e}, \texttt{-o}, \texttt{-s}, \texttt{-p}, \texttt{-u} \\
+\hline
+\end{tabular}
+\caption{Operation Tracking Commands}
+\end{table}
+
+\subsection{Common Options Across Commands}
+
+The following options are used consistently across most MDWF commands:
+
+\begin{itemize}
+\item \texttt{-e, --ensemble}: \textbf{Ensemble identifier} - Can be an ensemble ID (integer), directory path, or "." for current directory. This is the most commonly used option.
+
+\item \texttt{-j, --job-params}: \textbf{SLURM/Job parameters} - Space-separated key=value pairs for job submission parameters like \texttt{time\_limit}, \texttt{nodes}, \texttt{mail\_user}, etc.
+
+\item \texttt{-x, --xml-params}: \textbf{HMC XML parameters} - Used in HMC commands for physics parameters like \texttt{Trajectories}, \texttt{MDsteps}, \texttt{trajL}, etc.
+
+\item \texttt{-w, --wit-params}: \textbf{WIT input parameters} - Used in WIT-based commands for measurement parameters like \texttt{Configurations.first}, \texttt{Propagator 0.Source}, etc.
+
+\item \texttt{-g, --glu-params}: \textbf{GLU input parameters} - Used in GLU-based commands for smearing and utility parameters like \texttt{SMITERS}, \texttt{ALPHA1}, etc.
+
+\item \texttt{--db-file}: Database file path (auto-discovered by default)
+\item \texttt{--use-default-params}: Load from ensemble default parameter file
+\item \texttt{--save-default-params}: Save current parameters to default file
+\item \texttt{--params-variant}: Use specific parameter variant
+\item \texttt{--save-params-as}: Save under custom variant name
+\end{itemize}
+
+
+
+
+
+
 
 \subsection{init-db: Initialize Database}
 
@@ -188,52 +290,69 @@ TUNING/b6.0/b1.8Ls24/mc0.8555/ms0.0725
 
 \textbf{Purpose:} Query ensemble information from the database.
 
-Two modes: list all ensembles or show detailed information for one ensemble.
+The query command has two distinct modes: list mode (shows all ensembles) and detail mode (shows information for one specific ensemble).
 
 \textbf{Options:}
 \begin{itemize}
 \item \texttt{-e, --ensemble ENSEMBLE}: Show details for specific ensemble (ID, path, or ".")
-\item \texttt{--detailed}: In list mode, show physics parameters and operation counts
+\item \texttt{--detailed}: In list mode, show descriptions and operation counts
+\item \texttt{--sort-by-id}: In list mode, sort ensembles by EID instead of by parameters
+\item \texttt{--dir}: Show only the directory path (only works with \texttt{--ensemble})
+\end{itemize}
+
+\textbf{Two Modes:}
+
+\textbf{1. List Mode (no ensemble specified):}
+Shows a spreadsheet-like table of all ensembles with columns:
+\texttt{EID > beta > b > Ls > mc > ms > ml > L > T > LAST\_OP > LAST\_USER}
+
+By default, ensembles are sorted numerically/alphabetically by parameters. Use \texttt{--sort-by-id} to sort by EID.
+
+\textbf{2. Detail Mode (with ensemble specified):}
+Shows complete information for one ensemble including:
+\begin{itemize}
+\item All physics parameters (beta, masses, lattice dimensions)
+\item Full operation history with timestamps and parameters
+\item Job status and configuration ranges
 \end{itemize}
 
 \textbf{Flexible Ensemble Identification:}
+The \texttt{--ensemble} parameter accepts multiple formats:
 \begin{itemize}
 \item Ensemble ID: \texttt{-e 1}
-\item Relative path: \texttt{-e ./TUNING/b6.0/b1.8Ls24/...}
+\item Relative path: \texttt{-e ./TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64}
 \item Absolute path: \texttt{-e /full/path/to/ensemble}
-\item Current directory: \texttt{-e .} (when inside ensemble directory)
+\item Current directory: \texttt{-e .} (when run from within ensemble directory)
 \end{itemize}
 
 \textbf{Examples:}
 \begin{lstlisting}[language=bash]
-# List all ensembles (simple view)
+# List all ensembles in spreadsheet format (sorted by parameters)
 $ mdwf_db query
-[1] (TUNING) /private/tmp/mdwf_expanded_test/TUNING/b6.0/b1.8Ls24/mc0.8555/ms0.0725/ml0.0195/L32/T64
-[2] (PRODUCTION) /private/tmp/mdwf_expanded_test/ENSEMBLES/b5.8/b2.0Ls16/mc0.9/ms0.08/ml0.02/L24/T48
-[3] (PRODUCTION) /private/tmp/mdwf_expanded_test/ENSEMBLES/b6.2/b1.5Ls32/mc0.8/ms0.06/ml0.015/L48/T96
+EID > beta > b > Ls > mc > ms > ml > L > T > LAST_OP > LAST_USER
+1 > 6.0 > 1.8 > 24 > 0.8555 > 0.0725 > 0.0195 > 32 > 64 > HMC_TUNE > wyatt
+2 > 5.8 > 2.0 > 16 > 0.9 > 0.08 > 0.02 > 24 > 48 > GLU_SMEAR > alice
+3 > 6.2 > 1.5 > 32 > 0.8 > 0.06 > 0.015 > 48 > 96 > WIT_MESON2PT > bob
 
-# List with detailed parameters and operation counts
-$ mdwf_db query --detailed  
-[1] (TUNING) /private/tmp/mdwf_expanded_test/TUNING/b6.0/b1.8Ls24/mc0.8555/ms0.0725/ml0.0195/L32/T64
-    Parameters: L=32, Ls=24, T=64, b=1.8, beta=6.0, mc=0.8555, ml=0.0195, ms=0.0725
-    Operations: 0
-    Description: First test ensemble - 32^3x64
+# List all ensembles sorted by EID
+$ mdwf_db query --sort-by-id
+EID > beta > b > Ls > mc > ms > ml > L > T > LAST_OP > LAST_USER
+1 > 6.0 > 1.8 > 24 > 0.8555 > 0.0725 > 0.0195 > 32 > 64 > HMC_TUNE > wyatt
+2 > 5.8 > 2.0 > 16 > 0.9 > 0.08 > 0.02 > 24 > 48 > GLU_SMEAR > alice
+3 > 6.2 > 1.5 > 32 > 0.8 > 0.06 > 0.015 > 48 > 96 > WIT_MESON2PT > bob
 
-[2] (PRODUCTION) /private/tmp/mdwf_expanded_test/ENSEMBLES/b5.8/b2.0Ls16/mc0.9/ms0.08/ml0.02/L24/T48
-    Parameters: L=24, Ls=16, T=48, b=2.0, beta=5.8, mc=0.9, ml=0.02, ms=0.08
-    Operations: 0
-    Description: Second test ensemble - 24^3x48 with different parameters
-
-[3] (PRODUCTION) /private/tmp/mdwf_expanded_test/ENSEMBLES/b6.2/b1.5Ls32/mc0.8/ms0.06/ml0.015/L48/T96
-    Parameters: L=48, Ls=32, T=96, b=1.5, beta=6.2, mc=0.8, ml=0.015, ms=0.06
-    Operations: 0
-    Description: Large production ensemble - 48^3x96
+# List with descriptions and operation counts
+$ mdwf_db query --detailed
+EID > beta > b > Ls > mc > ms > ml > L > T > LAST_OP > LAST_USER > Description > Operations
+1 > 6.0 > 1.8 > 24 > 0.8555 > 0.0725 > 0.0195 > 32 > 64 > HMC_TUNE > wyatt > First test ensemble - 32^3x64 > 3
+2 > 5.8 > 2.0 > 16 > 0.9 > 0.08 > 0.02 > 24 > 48 > GLU_SMEAR > alice > Second test ensemble - 24^3x48 > 1
+3 > 6.2 > 1.5 > 32 > 0.8 > 0.06 > 0.015 > 48 > 96 > WIT_MESON2PT > bob > Large production ensemble - 48^3x96 > 2
 
 # Show detailed information for specific ensemble by ID
 $ mdwf_db query -e 2
 ID          = 2
-Directory   = /private/tmp/mdwf_expanded_test/TUNING/b5.8/b2.0Ls16/mc0.9/ms0.08/ml0.02/L24/T48
-Status      = TUNING
+Directory   = /path/to/ENSEMBLES/b5.8/b2.0Ls16/mc0.9/ms0.08/ml0.02/L24/T48
+Status      = PRODUCTION
 Created     = 2025-08-06T12:40:49.869456
 Description = Second test ensemble - 24^3x48 with different parameters
 Parameters:
@@ -247,39 +366,26 @@ Parameters:
     ms = 0.08
 
 === Operation history ===
-No operations recorded
+Op 1: GLU_SMEAR [COMPLETED]
+  Created: 2025-08-06T12:41:44.054003 (by alice)
+  Updated: 2025-08-06T12:42:15.123456
+    config_start = 10
+    config_end = 30
+    exit_code = 0
+    runtime = 1800
 
 # Query using relative path instead of ID
 $ mdwf_db query -e ./TUNING/b6.0/b1.8Ls24/mc0.8555/ms0.0725/ml0.0195/L32/T64
-ID          = 1
-Directory   = /private/tmp/mdwf_expanded_test/TUNING/b6.0/b1.8Ls24/mc0.8555/ms0.0725/ml0.0195/L32/T64
-Status      = TUNING
-Created     = 2025-08-06T12:40:48.237988
-Description = First test ensemble - 32^3x64
-Parameters:
-    L = 32
-    Ls = 24
-    T = 64
-    b = 1.8
-    beta = 6.0
-    hmc_bind_script = /usr/bin/hmc_exec
-    hmc_exec_path = /usr/bin/hmc_exec
-    mc = 0.8555
-    ml = 0.0195
-    ms = 0.0725
-
-=== Operation history ===
-Op 1: HMC_TUNE [RUNNING]
-  Created: 2025-08-06T12:41:44.054003 (by wyatt)
-  Updated: 2025-08-06T12:41:44.054003
-    config_end = 50
-    config_start = 0
-    slurm_job = 123456
+[Shows same detailed information as above]
 
 # Query from within ensemble directory using "."
 $ cd TUNING/b6.0/b1.8Ls24/mc0.8555/ms0.0725/ml0.0195/L32/T64
 $ mdwf_db query -e .
 [Shows same detailed information as above]
+
+# Show only the directory path for an ensemble
+$ mdwf_db query -e 1 --dir
+/path/to/TUNING/b6.0/b1.8Ls24/mc0.8555/ms0.0725/ml0.0195/L32/T64
 \end{lstlisting}
 
 \subsection{promote-ensemble: Move to Production}
@@ -871,41 +977,63 @@ BETA = 6.0            # Derived from ensemble physics parameters
     THERM = 100
 \end{lstlisting}
 
-\subsection{meson-2pt: Generate Meson Correlator Scripts}
+\subsection{meson2pt-script: Generate Meson Correlator Scripts}
 
-\textbf{Purpose:} Generate SLURM script for meson 2-point correlator measurements using WIT.
+\textbf{Purpose:} Generate WIT meson correlator measurement SLURM scripts.
 
 Creates WIT input files and SLURM scripts for meson correlator calculations.
 
 \textbf{Options:}
 \begin{itemize}
-\item \texttt{-e, --ensemble-id ENSEMBLE\_ID}: \textbf{Required.} Ensemble ID
-\item \texttt{-j, --job-params JOB\_PARAMS}: Space-separated SLURM job parameters
-\item \texttt{-w, --wit-params WIT\_PARAMS}: Space-separated WIT parameters (dot notation)
-\item \texttt{--use-default-params}: Load from ensemble default parameter file
-\item \texttt{--params-variant VARIANT}: Use specific parameter variant
-\item \texttt{--save-default-params}: Save current parameters to default file
-\item \texttt{--save-params-as VARIANT}: Save under custom variant name
+\item \texttt{-e, --ensemble ENSEMBLE}: \textbf{Required.} Ensemble ID, directory path, or "." for current directory
+\item \texttt{-j, --job-params JOB\_PARAMS}: \textbf{Required.} Space-separated key=val for SLURM job parameters
+\item \texttt{-w, --wit-params WIT\_PARAMS}: Space-separated key=val for WIT parameters (dot notation)
+\item \texttt{-o, --output-file OUTPUT\_FILE}: Output SBATCH script path (auto-generated if not specified)
+\item \texttt{--use-default-params}: Load parameters from ensemble default parameter file
+\item \texttt{--params-variant PARAMS\_VARIANT}: Specify which parameter variant to use
+\item \texttt{--save-default-params}: Save current command parameters to default parameter file
+\item \texttt{--save-params-as SAVE\_PARAMS\_AS}: Save current parameters under specific variant name
 \end{itemize}
 
 \textbf{Required Job Parameters:}
-queue, time\_limit, nodes, cpus\_per\_task
+\begin{itemize}
+\item \texttt{mail\_user}: Email address for job notifications
+\item \texttt{config\_start}: First configuration number to measure
+\item \texttt{config\_end}: Last configuration number to measure
+\item \texttt{config\_inc}: Step/increment between configurations
+\end{itemize}
 
 \textbf{Required WIT Parameters:}
-Configurations.first, Configurations.last
+\begin{itemize}
+\item \texttt{Configurations.first}: First configuration number
+\item \texttt{Configurations.last}: Last configuration number
+\item \texttt{Configurations.step}: Step between configurations
+\end{itemize}
 
 \textbf{Common WIT Parameters:}
-Configurations.step, Witness.no\_prop, Solver 0.nmx, Propagator 0.Source
+\begin{itemize}
+\item \texttt{Witness.no\_prop}: Number of witness propagators
+\item \texttt{Solver 0.nmx}: Maximum solver iterations
+\item \texttt{Propagator 0.Source}: Source type for propagators
+\end{itemize}
 
 \textbf{Examples:}
 \begin{lstlisting}[language=bash]
 # Basic meson measurement with debug queue
-$ mdwf_db meson-2pt -e 1 \
-    -j "queue=debug time_limit=2:00:00 nodes=1 cpus_per_task=8 mail_user=test@example.com" \
+$ mdwf_db meson2pt-script -e 1 \
+    -j "mail_user=test@example.com config_start=10 config_end=20 config_inc=2" \
     -w "Configurations.first=10 Configurations.last=20 Configurations.step=2"
-Generated WIT input file: /private/tmp/.../meson2pt/DWF.in
-Generated WIT SBATCH script: /private/tmp/.../meson2pt/meson2pt_10_20.sh
-Wrote WIT SBATCH script to /private/tmp/.../meson2pt/meson2pt_10_20.sh
+
+# Use stored default parameters
+$ mdwf_db meson2pt-script -e 1 --use-default-params
+
+# Save current parameters for later reuse
+$ mdwf_db meson2pt-script -e 1 \
+    -j "mail_user=user@nersc.gov config_start=100 config_end=200 config_inc=4" \
+    --save-default-params
+
+Generated WIT SBATCH script: \texttt{/private/tmp/.../meson2pt/meson2pt\_10\_20.sh}
+Wrote WIT SBATCH script to \texttt{/private/tmp/.../meson2pt/meson2pt\_10\_20.sh}
 
 # Large-scale measurement with wall sources
 $ mdwf_db meson-2pt -e 3 \
@@ -1061,6 +1189,84 @@ Remove ensemble 1 and all its operations? This cannot be undone. (y/N) y
 Removed ensemble 1 and 3 operations
 \end{lstlisting}
 
+\subsection{mres-script: Generate MRES Measurement Scripts}
+
+\textbf{Purpose:} Generate WIT MRES measurement SLURM scripts for mass renormalization.
+
+\textbf{Options:}
+\begin{itemize}
+\item \texttt{-e, --ensemble ENSEMBLE}: \textbf{Required.} Ensemble ID, directory path, or "." for current directory
+\item \texttt{-j, --job-params JOB\_PARAMS}: \textbf{Required.} Space-separated key=val for SLURM job parameters
+\item \texttt{-g, --glu-params GLU\_PARAMS}: Space-separated key=val for GLU parameters
+\item \texttt{-o, --output-file OUTPUT\_FILE}: Output SBATCH script path (auto-generated if not specified)
+\item \texttt{--use-default-params}: Load parameters from ensemble default parameter file
+\item \texttt{--params-variant PARAMS\_VARIANT}: Specify which parameter variant to use
+\item \texttt{--save-default-params}: Save current command parameters to default parameter file
+\item \texttt{--save-params-as SAVE\_PARAMS\_AS}: Save current parameters under specific variant name
+\end{itemize}
+
+\textbf{Required Job Parameters:}
+\begin{itemize}
+\item \texttt{mail\_user}: Email address for job notifications
+\item \texttt{config\_start}: First configuration number to measure
+\item \texttt{config\_end}: Last configuration number to measure
+\item \texttt{config\_inc}: Step/increment between configurations
+\end{itemize}
+
+\textbf{Examples:}
+\begin{lstlisting}[language=bash]
+# Basic MRES measurement job
+mdwf_db mres-script -e 1 \
+  -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4"
+
+# Use stored default parameters
+mdwf_db mres-script -e 1 --use-default-params
+
+# Save current parameters for later reuse
+mdwf_db mres-script -e 1 \
+  -j "mail_user=user@nersc.gov config_start=100 config_end=200 config_inc=4" \
+  --save-default-params
+\end{lstlisting}
+
+\subsection{wflow-script: Generate Gradient Flow Scripts}
+
+\textbf{Purpose:} Generate gradient flow SLURM scripts for Wilson flow measurements.
+
+\textbf{Options:}
+\begin{itemize}
+\item \texttt{-e, --ensemble ENSEMBLE}: \textbf{Required.} Ensemble ID, directory path, or "." for current directory
+\item \texttt{-j, --job-params JOB\_PARAMS}: \textbf{Required.} Space-separated key=val for SLURM job parameters
+\item \texttt{-g, --glu-params GLU\_PARAMS}: Space-separated key=val for GLU parameters
+\item \texttt{-o, --output-file OUTPUT\_FILE}: Output SBATCH script path (auto-generated if not specified)
+\item \texttt{--use-default-params}: Load parameters from ensemble default parameter file
+\item \texttt{--params-variant PARAMS\_VARIANT}: Specify which parameter variant to use
+\item \texttt{--save-default-params}: Save current command parameters to default parameter file
+\item \texttt{--save-params-as SAVE\_PARAMS\_AS}: Save current parameters under specific variant name
+\end{itemize}
+
+\textbf{Required Job Parameters:}
+\begin{itemize}
+\item \texttt{mail\_user}: Email address for job notifications
+\item \texttt{config\_start}: First configuration number to measure
+\item \texttt{config\_end}: Last configuration number to measure
+\item \texttt{config\_inc}: Step/increment between configurations
+\end{itemize}
+
+\textbf{Examples:}
+\begin{lstlisting}[language=bash]
+# Basic gradient flow job
+mdwf_db wflow-script -e 1 \
+  -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4"
+
+# Use stored default parameters
+mdwf_db wflow-script -e 1 --use-default-params
+
+# Save current parameters for later reuse
+mdwf_db wflow-script -e 1 \
+  -j "mail_user=user@nersc.gov config_start=100 config_end=200 config_inc=4" \
+  --save-default-params
+\end{lstlisting}
+
 \subsection{default\_params: Parameter Management}
 
 \textbf{Purpose:} Manage default parameter files for storing operation parameters.
@@ -1151,6 +1357,16 @@ Available operation configurations:
       params: mass_preset=physical
       job_params: time_limit=8:00:00 nodes=2
 
+  mres:
+    default:
+      params: mass_preset=physical
+      job_params: time_limit=6:00:00 nodes=1
+
+  wflow:
+    default:
+      params: flow_time=0.1
+      job_params: time_limit=2:00:00 nodes=1
+
 # Show updated parameters after saving new ones
 $ mdwf_db default_params show -e 1
 Configuration file: /private/tmp/.../mdwf_default_params.yaml
@@ -1170,6 +1386,79 @@ $ mdwf_db hmc-script -e 1 -a m2986 -m continue --use-default-params -j "nodes=2"
 Loaded HMC continue default parameters from .../mdwf_default_params.yaml
 $ mdwf_db smear-script -e 1 --use-default-params --params-variant stout8
 Loaded smearing.stout8 default parameters from .../mdwf_default_params.yaml
+\end{lstlisting}
+
+\section{Default Parameter System}
+
+The MDWF system includes a comprehensive default parameter management system for reproducible workflows. This system allows you to save "recipes" of parameters that work well for specific ensembles and reuse them across different operations.
+
+\subsection{Default Parameter Files}
+
+Default parameters are stored in \texttt{mdwf\_default\_params.yaml} files within each ensemble directory:
+
+\begin{lstlisting}
+---
+hmc:
+  tepid:
+    xml_params: "StartTrajectory=0 Trajectories=100 MDsteps=2 trajL=0.75"
+    job_params: "cfg_max=100 time_limit=12:00:00 nodes=1 constraint=gpu"
+  continue:
+    xml_params: "Trajectories=50 MDsteps=2 trajL=0.75"
+    job_params: "cfg_max=500 time_limit=6:00:00"
+    
+smearing:
+  stout8:
+    params: "nsteps=8 rho=0.1"
+    job_params: "time_limit=2:00:00"
+
+meson_2pt:
+  default:
+    params: "source_type=point sink_type=point"
+    job_params: "time_limit=4:00:00"
+\end{lstlisting}
+
+\subsection{Parameter Precedence}
+
+When using default parameters, the system follows this precedence order:
+
+\begin{enumerate}
+\item \textbf{CLI parameters} (highest priority) - explicitly specified on command line
+\item \textbf{Default parameters} - loaded from ensemble's \texttt{mdwf\_default\_params.yaml}
+\item \textbf{Command defaults} - built-in defaults for each command
+\end{enumerate}
+
+This means you can:
+\begin{itemize}
+\item Use \texttt{--use-default-params} to load all parameters from the file
+\item Override specific parameters with CLI options
+\item Mix default and CLI parameters for flexible workflows
+\end{itemize}
+
+\subsection{CLI Parameter Handling}
+
+The system provides several options for managing default parameters:
+
+\begin{itemize}
+\item \texttt{--use-default-params}: Load parameters from ensemble's default parameter file
+\item \texttt{--save-default-params}: Save current command parameters to the default file
+\item \texttt{--params-variant PARAMS\_VARIANT}: Use a specific parameter variant (e.g., "tepid", "continue")
+\item \texttt{--save-params-as SAVE\_PARAMS\_AS}: Save current parameters under a custom variant name
+\end{itemize}
+
+\textbf{Examples:}
+
+\begin{lstlisting}[language=bash]
+# Load default parameters for HMC continue mode
+$ mdwf_db hmc-script -e 1 -a m2986 -m continue --use-default-params
+
+# Save current parameters as new variant
+$ mdwf_db hmc-script -e 1 -a m2986 -m continue \
+    -x "Trajectories=200 MDsteps=4" \
+    -j "time_limit=24:00:00" \
+    --save-params-as long_run
+
+# Use new variant
+mdwf_db smear-script -e 1 --use-default-params --params-variant stout12
 \end{lstlisting}
 
 \end{document}
