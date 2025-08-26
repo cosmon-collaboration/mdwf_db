@@ -221,13 +221,22 @@ def do_smear_script(args):
                 except:
                     glu_dict[key] = val
 
+    # Extract SMEARTYPE and SMITERS from glu_dict to pass as direct arguments
+    # These parameters affect folder/script naming and must be passed directly
+    smear_kwargs = {}
+    if 'SMEARTYPE' in glu_dict:
+        smear_kwargs['SMEARTYPE'] = glu_dict.pop('SMEARTYPE')
+    if 'SMITERS' in glu_dict:
+        smear_kwargs['SMITERS'] = int(glu_dict.pop('SMITERS'))
+    
     # Generate the script
     sbatch = generate_smear_sbatch(
         db_file       = args.db_file,
         ensemble_id   = ensemble_id,
         ensemble_dir  = str(ens_dir),
         custom_changes = glu_dict,
-        **job_dict
+        **job_dict,
+        **smear_kwargs
     )
     print("Wrote smearing SBATCH script to", sbatch)
     
