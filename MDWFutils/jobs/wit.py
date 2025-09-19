@@ -2,6 +2,7 @@ import os
 import copy
 from pathlib import Path
 from MDWFutils.db import get_ensemble_details
+from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
 
 # CLI-facing parameters use underscores to avoid space parsing issues
 CLI_WIT_PARAMS = {
@@ -276,7 +277,8 @@ def generate_wit_input(
     *,
     ensemble_params=None,
     custom_params=None,
-    cli_format=False
+    cli_format=False,
+    prune_prop_solvers=None
 ):
     """
     Write a WIT .ini‐style input file.
@@ -344,6 +346,39 @@ def generate_wit_input(
         except (ValueError, TypeError):
             # If b is not a valid number, keep existing c value
             pass
+
+    # Optionally prune sections and/or hide Witness
+    def _to_int(value, default):
+        try:
+            return int(value)
+        except Exception:
+            return default
+
+    # Determine pruning counts
+    if prune_prop_solvers is not None:
+        prune_props, prune_solvers = prune_prop_solvers
+    else:
+        witness = params.get('Witness', {})
+        prune_props = _to_int(witness.get('no_prop', 3), 3)
+        prune_solvers = _to_int(witness.get('no_solver', 2), 2)
+
+    prune_props = max(0, min(3, prune_props))
+    prune_solvers = max(0, min(2, prune_solvers))
+
+    # Remove extra propagator sections beyond prune_props
+    for idx in range(prune_props, 3):
+        section_name = f"Propagator {idx}"
+        if section_name in params:
+            del params[section_name]
+
+    # Remove extra solver sections beyond prune_solvers
+    for idx in range(prune_solvers, 2):
+        section_name = f"Solver {idx}"
+        if section_name in params:
+            del params[section_name]
+
+    # Always ensure Witness section is present
+    params.setdefault('Witness', {})
 
     outf = Path(output_file)
     outf.parent.mkdir(parents=True, exist_ok=True)
@@ -483,30 +518,8 @@ EID={ensemble_id}
 OP="WIT_MESON2PT"
 USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
-echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=RUNNING --user=$USER --params=\"$PARAMS\"" >> $LOGFILE
-
-# On exit/failure, update status + code + runtime
-update_status() {{
-  local EC=$?
-  local ST="COMPLETED"
-  local REASON=""
-  
-  # Check if we were interrupted by a signal (user cancel/SLURM kill)
-  if [[ $EC -eq 143 ]] || [[ $EC -eq 130 ]] || [[ $EC -eq 129 ]]; then
-    ST="CANCELED"
-    REASON="job_killed"
-  elif [[ $EC -ne 0 ]]; then
-    ST="FAILED"
-    REASON="job_failed"
-  else
-    REASON="job_completed"
-  fi
-
-  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON\"" >> $LOGFILE
-
-  echo "Meson2pt job $ST ($EC) - $REASON"
-}}
-trap update_status EXIT TERM INT HUP QUIT
+# Source logging helper via process substitution
+source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 

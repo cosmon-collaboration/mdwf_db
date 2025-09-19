@@ -211,7 +211,6 @@ cd {workdir}
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-# Prepare DB update variables and queue RUNNING update off-node
 DB="{db_file}"
 EID={ensemble_id}
 OP="WIT_MESON2PT"
@@ -220,30 +219,9 @@ EC={config_end}
 IC={config_inc}
 USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
-echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=RUNNING --user=$USER --params=\"config_start=$SC config_end=$EC config_increment=$IC slurm_job=$SLURM_JOB_ID\"" >> "$LOGFILE"
 
-# On exit/failure, update status + code + runtime
-update_status() {{
-  local EC=$?
-  local ST="COMPLETED"
-  local REASON=""
-  
-  # Check if we were interrupted by a signal (user cancel/SLURM kill)
-  if [[ $EC -eq 143 ]] || [[ $EC -eq 130 ]] || [[ $EC -eq 129 ]]; then
-    ST="CANCELED"
-    REASON="job_killed"
-  elif [[ $EC -ne 0 ]]; then
-    ST="FAILED"
-    REASON="job_failed"
-  else
-    REASON="job_completed"
-  fi
-
-  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON\"" >> $LOGFILE
-
-  echo "Meson2pt job $ST ($EC) - $REASON"
-}}
-trap update_status EXIT TERM INT HUP QUIT
+# Source logging helper via process substitution
+source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 

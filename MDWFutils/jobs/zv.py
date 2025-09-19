@@ -9,13 +9,13 @@ from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
 
 DEFAULT_WIT_ENV = 'source /global/cfs/cdirs/m2986/cosmon/mdwf/software/scripts/env_gpu.sh'
 DEFAULT_WIT_BIND = '/global/cfs/cdirs/m2986/cosmon/mdwf/ANALYSIS/WIT/bind.sh'
-DEFAULT_WIT_EXEC = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Mres'
+DEFAULT_WIT_EXEC = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/FDiagonal_3pt'
 
 
 
 
 
-def generate_mres_sbatch(
+def generate_zv_sbatch(
     *,
     output_file=None,
     db_file=None,
@@ -27,20 +27,17 @@ def generate_mres_sbatch(
     account='m2986_g',
     constraint='gpu',
     queue='regular',
-    time_limit='06:00:00',
+    time_limit='00:10:00',
     nodes=1,
     gpus=4,
     gpu_bind='none',
     mail_user=None,
     ranks=4,
     ogeom=None,
-    # Mass overrides (optional)
-    ml=None,
-    ms=None,
-    mc=None,
 ):
     """
-    Create a mres SBATCH script under ensemble_dir/mres/
+    Create a Zv SBATCH script under ensemble_dir/Zv/.
+    Mirrors smear-script style inputs.
     """
     if mail_user is None:
         raise ValueError("mail_user is required")
@@ -60,36 +57,15 @@ def generate_mres_sbatch(
     except Exception:
         raise RuntimeError("Failed to get lattice dimensions from ensemble parameters")
 
-    # Get quark masses from ensemble parameters, with optional overrides
+    # Get light quark mass from ensemble parameters (only need ml for Zv)
     try:
-        ml_ens = float(p['ml']); ms_ens = float(p['ms']); mc_ens = float(p['mc'])
-        if ml_ens <= 0 or ms_ens <= 0 or mc_ens <= 0:
+        ml_ens = float(p['ml'])
+        if ml_ens <= 0:
             raise ValueError
     except Exception:
-        raise RuntimeError("Failed to get quark masses (ml, ms, mc) from ensemble parameters")
+        raise RuntimeError("Failed to get light quark mass (ml) from ensemble parameters")
 
-    # Use overrides if provided, otherwise use ensemble values
-    ml_final = float(ml) if ml is not None else ml_ens
-    ms_final = float(ms) if ms is not None else ms_ens
-    mc_final = float(mc) if mc is not None else mc_ens
-    
-    # Validate final mass values
-    if ml_final <= 0 or ms_final <= 0 or mc_final <= 0:
-        raise ValueError(f"Invalid quark masses: ml={ml_final}, ms={ms_final}, mc={mc_final}")
-
-    kappaL = 1 / (2 * ml_final + 8)
-    kappaS = 1 / (2 * ms_final + 8)
-    kappaC = 1 / (2 * mc_final + 8)
-    
-    # Print override information if any mass was overridden
-    if ml is not None or ms is not None or mc is not None:
-        print(f"Mass overrides applied:")
-        if ml is not None:
-            print(f"  ml: {ml_ens} -> {ml_final} (kappa: {kappaL:.8f})")
-        if ms is not None:
-            print(f"  ms: {ms_ens} -> {ms_final} (kappa: {kappaS:.8f})")
-        if mc is not None:
-            print(f"  mc: {mc_ens} -> {mc_final} (kappa: {kappaC:.8f})")
+    kappaL = 1 / (2 * ml_ens + 8)
 
     # Parse/normalize ogeom
     if ogeom is None:
@@ -148,13 +124,12 @@ def generate_mres_sbatch(
     b_final = b_override if b_override is not None else b_ens
     
     # Create custom folder name if any parameters are overridden
-    if (ml is not None or ms is not None or mc is not None or 
-        ls_override is not None or b_override is not None):
+    if ls_override is not None or b_override is not None:
         print("Warning: overriding ensemble parameters")
-        folder_name = f"mres_Ls{ls_final}_b{b_final}_mc{mc_final}_ms{ms_final}_ml{ml_final}"
+        folder_name = f"Zv_Ls{ls_final}_b{b_final}_ml{ml_ens}"
         print(f"Using custom output folder: {folder_name}")
     else:
-        folder_name = "mres"
+        folder_name = "Zv"
     
     workdir = Path(ensemble_dir) / folder_name
     workdir.mkdir(parents=True, exist_ok=True)
@@ -163,22 +138,21 @@ def generate_mres_sbatch(
     sbatch_dir = Path(ensemble_dir) / "slurm"
     sbatch_dir.mkdir(parents=True, exist_ok=True)
 
-    wit_input_file = workdir / "DWF_mres.in"
+    wit_input_file = workdir / "DWF_Zv.in"
     wit_params = {
         'Propagator_0': {'kappa': str(kappaL)},
-        'Propagator_1': {'kappa': str(kappaS)},
-        'Propagator_2': {'kappa': str(kappaC)}
+        'Witness': {'no_prop': 1, 'no_solver': 1}  # Zv only needs 1 propagator and 1 solver
     }
     if custom_changes:
         update_nested_dict(wit_params, custom_changes)
     
-    # Create modified ensemble parameters with mass overrides for WIT input generation
-    modified_ensemble_params = p.copy()
-    modified_ensemble_params['ml'] = ml_final
-    modified_ensemble_params['ms'] = ms_final
-    modified_ensemble_params['mc'] = mc_final
-    
-    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=modified_ensemble_params, cli_format=True)
+    generate_wit_input(
+        str(wit_input_file),
+        custom_params=wit_params,
+        ensemble_params=p,
+        cli_format=True,
+        prune_prop_solvers=(1, 1)
+    )
 
     # Extract required config range from WIT parameters
     cfg_section = (custom_changes or {}).get('Configurations', {})
@@ -191,7 +165,7 @@ def generate_mres_sbatch(
 
     # Default output filename if not provided
     if not output_file:
-        output_file = str(sbatch_dir / f"mres_{config_start}_{config_end}_{config_inc}.sh")
+        output_file = str(sbatch_dir / f"Zv_{config_start}_{config_end}.sh")
 
     params_str = f"config_start={config_start} config_end={config_end} config_increment={config_inc}"
 
@@ -214,14 +188,14 @@ conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 # Prepare DB update variables and queue RUNNING update off-node
 DB="{db_file}"
 EID={ensemble_id}
-OP="WIT_MRES"
+OP="WIT_Zv"
 SC={config_start}
 EC={config_end}
 IC={config_inc}
 USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
-# Source logging helper via process substitution
+# Source logging helper with process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
@@ -229,12 +203,15 @@ SECONDS=0
 {env_setup}
 export LD_LIBRARY_PATH=/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/quda/lib:$LD_LIBRARY_PATH
 
+ranks=4 # TBD: find how to determine this via SLURM environment variables
+
 ### MPI flags
 export MPICH_RDMA_ENABLED_CUDA=1
 export MPICH_GPU_SUPPORT_ENABLED=1
 export MPICH_NEMESIS_ASYNC_PROGRESS=1
 
 ### Cray/Slurm flags
+export OMP_NUM_THREADS=16
 export SLURM_CPU_BIND=cores
 export CRAY_ACCEL_TARGET=nvidia80
 
@@ -253,7 +230,7 @@ echo "MPICH_OFI_NIC_MAPPING=${{MPICH_OFI_NIC_MAPPING}}"
 
 EXEC="{exec_path}"
 BIND="{bind_sh}"
-echo "Running mres range {config_start}-{config_end} step {config_inc}"
+echo "Running Zv range {config_start}-{config_end} step {config_inc}"
 srun -n {ranks} $BIND $EXEC -i {wit_input_file} -ogeom {ogeom[0]} {ogeom[1]} {ogeom[2]} {ogeom[3]} -lgeom {lgeom[0]} {lgeom[1]} {lgeom[2]} {lgeom[3]}
 
 echo "All done in $SECONDS seconds"
@@ -266,7 +243,7 @@ echo "All done in $SECONDS seconds"
 
 
 __all__ = [
-    'generate_mres_sbatch',
+    'generate_zv_sbatch',
 ]
 
 

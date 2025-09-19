@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.dom import minidom
 from MDWFutils.db import get_ensemble_details, get_connection, update_operation
+from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
 import sys
 
 def _make_default_tree(mode: str, seed_override: int = None):
@@ -312,8 +313,8 @@ mpi="{mpi}"
 trajL="{trajL}"
 lvl_sizes="{lvl_sizes}"
 
-    cd {ensemble_dir}
-    LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+cd {ensemble_dir}
+LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
 echo "ens = $ens"
 echo "ens_dir = {ensemble_dir}"
@@ -345,30 +346,12 @@ echo "cfg_current = $start"
 
 # Prepare DB update variables and queue RUNNING update off-node
 USER=$(whoami)
-echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$mode --status=RUNNING --user=$USER --params=\"config_start=$start config_end=$(( start + n_trajec )) config_increment=$n_trajec slurm_job=$SLURM_JOB_ID exec_path=$EXEC bind_script=$BIND\"" >> "$LOGFILE"
-
-# On exit/failure, update status + code + runtime
-update_status() {{
-  local EC=$?
-  local ST="COMPLETED"
-  local REASON=""
-  
-  # Check if we were interrupted by a signal (user cancel/SLURM kill)
-  if [[ $EC -eq 143 ]] || [[ $EC -eq 130 ]] || [[ $EC -eq 129 ]]; then
-    ST="CANCELED"
-    REASON="job_killed"
-  elif [[ $EC -ne 0 ]]; then
-    ST="FAILED"
-    REASON="job_failed"
-  else
-    REASON="job_completed"
-  fi
-
-  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$mode --status=$ST --user=$USER --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON\"" >> $LOGFILE
-
-  echo "HMC job $ST ($EC) - $REASON"
-}}
-trap update_status EXIT TERM INT HUP QUIT
+OP="$mode"
+SC=$start
+EC=$(( start + n_trajec ))
+IC=$n_trajec
+# Source logging helper via process substitution
+source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 

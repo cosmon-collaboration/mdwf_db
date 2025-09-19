@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from MDWFutils.db            import get_ensemble_details
 from MDWFutils.jobs.glu      import generate_glu_input
+from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
 
 def generate_wflow_sbatch(
     *,
@@ -120,37 +121,14 @@ EID={ensemble_id}
 OP="GLU_WFLOW"
 SC={config_start}
 EC={config_end}
+IC={config_inc}
 USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
 mkdir -p "{ensemble_dir}/jlog" "{t0_dir}"
 
-# Queue DB update to mark RUNNING (execute off-node)
-echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=RUNNING --user=$USER --params=\"config_start=$SC config_end=$EC config_increment={config_inc} slurm_job=$SLURM_JOBID\"" >> $LOGFILE
-
-update_status() {{
-  local EC=$?
-  local ST="COMPLETED"
-  local REASON=""
-  
-  # Check if we were interrupted by a signal (user cancel/SLURM kill)
-  if [[ $EC -eq 143 ]] || [[ $EC -eq 130 ]] || [[ $EC -eq 129 ]]; then
-    ST="CANCELED"
-    REASON="job_killed"
-  elif [[ $EC -ne 0 ]]; then
-    ST="FAILED"
-    REASON="job_failed"
-  else
-    REASON="job_completed"
-  fi
-  
-  # Queue DB update with final status (execute off-node)
-  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"slurm_job=$SLURM_JOBID runtime=$SECONDS exit_code=$EC reason=$REASON\"" >> $LOGFILE
-  
-  echo "Wflow job $ST ($EC) - $REASON"
-  exit $EC
-}}
-trap update_status EXIT TERM INT HUP QUIT
+# Source logging helper via process substitution
+source <(python -m MDWFutils.jobs.slurm_update_trap)
 SECONDS=0
 
 GLU="{glu_path}"

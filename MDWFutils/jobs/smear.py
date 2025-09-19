@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from MDWFutils.db            import get_ensemble_details
 from MDWFutils.jobs.glu      import generate_glu_input
+from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
 
 def generate_smear_sbatch(
     *,
@@ -137,32 +138,8 @@ LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
 mkdir -p "{ensemble_dir}/jlog" "{smear_dir}"
 
-# Queue DB update to mark RUNNING (execute off-node)
-echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=RUNNING --user=$USER --params=\"config_start=$SC config_end=$EC config_increment=$IC slurm_job=$SLURM_JOBID\"" >> $LOGFILE
-
-update_status() {{
-  local EC=$?
-  local ST="COMPLETED"
-  local REASON=""
-  
-  # Check if we were interrupted by a signal (user cancel/SLURM kill)
-  if [[ $EC -eq 143 ]] || [[ $EC -eq 130 ]] || [[ $EC -eq 129 ]]; then
-    ST="CANCELED"
-    REASON="job_killed"
-  elif [[ $EC -ne 0 ]]; then
-    ST="FAILED"
-    REASON="job_failed"
-  else
-    REASON="job_completed"
-  fi
-  
-  # Queue DB update with final status (execute off-node)
-  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"slurm_job=$SLURM_JOBID runtime=$SECONDS exit_code=$EC reason=$REASON\"" >> $LOGFILE
-  
-  echo "Smear job $ST ($EC) - $REASON"
-  exit $EC
-}}
-trap update_status EXIT TERM INT HUP QUIT
+# Source logging helper via process substitution
+source <(python -m MDWFutils.jobs.slurm_update_trap)
 SECONDS=0
 
 GLU="{glu_path}"
