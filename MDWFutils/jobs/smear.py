@@ -123,10 +123,6 @@ module load cray-fftw/3.3.10.8
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-# On many network filesystems WAL journal mode causes SQLite disk I/O errors.
-# Default to DELETE unless the user overrides MDWF_DB_JOURNAL in the environment.
-export MDWF_DB_JOURNAL="${{MDWF_DB_JOURNAL:-DELETE}}"
-
 DB="{db_file}"
 EID={ensemble_id}
 OP="GLU_SMEAR"
