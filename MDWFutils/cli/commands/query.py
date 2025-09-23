@@ -288,6 +288,87 @@ EXAMPLES:
     p.set_defaults(func=do_query)
 
 
+def _fetch_operations_summary(db_file, ensemble_id):
+    """
+    Fetch a compact summary of operations for an ensemble.
+    Returns a list of dict rows with selected fields.
+    """
+    try:
+        from MDWFutils.db import get_connection
+        conn = get_connection(db_file)
+        c = conn.cursor()
+
+        c.execute(
+            """
+            SELECT id, operation_type, status, update_time, user
+              FROM operations
+             WHERE ensemble_id = ?
+             ORDER BY id
+            """,
+            (ensemble_id,)
+        )
+        ops = c.fetchall()
+
+        rows = []
+        for oid, op_type, status, utime, user in ops:
+            # Fetch a few common parameters
+            pcur = conn.cursor()
+            pcur.execute(
+                """
+                SELECT name, value FROM operation_parameters
+                 WHERE operation_id=?
+            """,
+                (oid,)
+            )
+            params = {name: value for name, value in pcur.fetchall()}
+
+            # Build compact fields
+            cfg_start = params.get('config_start') or params.get('SC')
+            cfg_end   = params.get('config_end') or params.get('EC')
+            cfg_inc   = params.get('config_increment') or params.get('IC')
+            rng = ""
+            if cfg_start is not None and cfg_end is not None:
+                rng = f"{cfg_start}-{cfg_end}"
+                if cfg_inc is not None:
+                    rng += f"({cfg_inc})"
+
+            row = {
+                'ID': str(oid),
+                'TYPE': op_type,
+                'STATUS': status,
+                'UPDATED': utime or '',
+                'USER': user or '',
+                'RANGE': rng,
+                'JOB': params.get('slurm_job', ''),
+                'EXIT': params.get('exit_code', ''),
+            }
+            rows.append(row)
+
+        conn.close()
+        return rows
+    except Exception:
+        return []
+
+
+def _format_operations_table(rows):
+    if not rows:
+        return "No operations recorded"
+    headers = ['ID', 'TYPE', 'STATUS', 'UPDATED', 'USER', 'RANGE', 'JOB', 'EXIT']
+    # compute widths
+    widths = {h: len(h) for h in headers}
+    for r in rows:
+        for h in headers:
+            widths[h] = max(widths[h], len(str(r.get(h, ''))))
+    # build lines
+    header = "  ".join(f"{h:<{widths[h]}}" for h in headers)
+    sep    = "  ".join("-" * widths[h] for h in headers)
+    lines  = [header, sep]
+    for r in rows:
+        line = "  ".join(f"{str(r.get(h, '')):<{widths[h]}}" for h in headers)
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def do_query(args):
     if not args.ensemble:
         # 1. List mode (no --ensemble):
@@ -337,8 +418,7 @@ def do_query(args):
             print(spreadsheet_output)
 
     else:
-        # 2. Detail mode (with --ensemble):
-        #    Show full details + history for one ensemble
+        # 2. Detail mode (with --ensemble)
         ensemble_id, ens = resolve_ensemble_identifier(args.db_file, args.ensemble)
         if ensemble_id is None:
             print(f"ERROR: Ensemble not found: {args.ensemble}")
@@ -349,22 +429,25 @@ def do_query(args):
             print(ens['directory'])
             return 0
 
-        # Print ensemble details
-        print(f"ID          = {ens['id']}")
-        print(f"Directory   = {ens['directory']}")
-        print(f"Status      = {ens['status']}")
-        print(f"Created     = {ens['creation_time']}")
+        # Print ensemble details (compact header)
+        print(f"ID        = {ens['id']}")
+        print(f"Directory = {ens['directory']}")
+        print(f"Status    = {ens['status']}")
         if ens['description']:
             print(f"Description = {ens['description']}")
-        
-        # Print parameters
-        if ens['parameters']:
-            print("Parameters:")
-            for k, v in sorted(ens['parameters'].items()):
-                print(f"    {k} = {v}")
-        
-        # Print operation history
-        print("\n=== Operation history ===")
-        print_history(args.db_file, ensemble_id)
+
+        if args.detailed:
+            # Full detailed output (existing behavior)
+            if ens['parameters']:
+                print("Parameters:")
+                for k, v in sorted(ens['parameters'].items()):
+                    print(f"    {k} = {v}")
+            print("\n=== Operation history ===")
+            print_history(args.db_file, ensemble_id)
+        else:
+            # Compact operations table
+            rows = _fetch_operations_summary(args.db_file, ensemble_id)
+            print("\nOperations:")
+            print(_format_operations_table(rows))
 
     return 0
