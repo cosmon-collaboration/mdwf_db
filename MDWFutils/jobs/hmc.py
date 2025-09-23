@@ -223,44 +223,18 @@ def generate_hmc_slurm_gpu(
     L, T = int(p['L']), int(p['T'])
     VOL = f"{L}.{L}.{L}.{T}"
 
-    # Check for HMC parameters in ensemble parameters
+    # Get HMC executable path: prefer explicit arg, then ensemble param; otherwise error
     if exec_path is None:
         if 'hmc_exec_path' in p:
             exec_path = p['hmc_exec_path']
         else:
-            # Prompt user for executable path
-            exec_path = input("Please enter the path to the HMC executable: ").strip()
-            if not exec_path:
-                raise RuntimeError("HMC executable path is required")
-            
-            # Save to ensemble parameters
-            conn = get_connection(db_file)
-            c = conn.cursor()
-            c.execute("""
-                INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
-                VALUES (?, ?, ?)
-            """, (ensemble_id, 'hmc_exec_path', exec_path))
-            conn.commit()
-            conn.close()
+            raise RuntimeError("HMC executable path (exec_path) is required. Pass via CLI or save in ensemble parameters as hmc_exec_path.")
 
     if bind_script is None:
         if 'hmc_bind_script' in p:
             bind_script = p['hmc_bind_script']
         else:
-            # Prompt user for binding script path
-            bind_script = input("Please enter the path to the core binding script: ").strip()
-            if not bind_script:
-                raise RuntimeError("Core binding script path is required")
-            
-            # Save to ensemble parameters
-            conn = get_connection(db_file)
-            c = conn.cursor()
-            c.execute("""
-                INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
-                VALUES (?, ?, ?)
-            """, (ensemble_id, 'hmc_bind_script', bind_script))
-            conn.commit()
-            conn.close()
+            raise RuntimeError("HMC core binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script.")
 
     if n_trajec is None and cfg_max is not None:
         n_trajec = cfg_max

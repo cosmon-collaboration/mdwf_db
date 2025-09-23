@@ -8,7 +8,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from MDWFutils.db import get_ensemble_details, resolve_ensemble_identifier
+from MDWFutils.db import get_ensemble_details, resolve_ensemble_identifier, get_connection
 from MDWFutils.jobs.hmc import generate_hmc_parameters, generate_hmc_slurm_gpu
 from MDWFutils.config import get_operation_config, merge_params, get_config_path, save_operation_config
 
@@ -114,6 +114,10 @@ CLI parameters override default parameter file parameters.
                    help='Space-separated key=val pairs for SLURM job parameters. Required: cfg_max')
     p.add_argument('-o', '--output-file',
                    help='Output SBATCH script path (auto-generated if not specified)')
+    p.add_argument('--exec-path',
+                   help='Path to HMC executable (saved to DB as hmc_exec_path)')
+    p.add_argument('--bind-script',
+                   help='Path to core binding script (saved to DB as hmc_bind_script)')
     p.add_argument('--use-default-params', action='store_true',
                    help='Load parameters from ensemble default parameter file (mdwf_default_params.yaml)')
     p.add_argument('--params-variant',
@@ -259,6 +263,41 @@ def do_hmc_script(args):
     
     # Generate SLURM script
     try:
+        # Determine exec and bind paths: CLI overrides DB; if missing, error out
+        p_params = ens.get('parameters', {})
+        exec_path = args.exec_path if getattr(args, 'exec_path', None) else p_params.get('hmc_exec_path')
+        bind_script = args.bind_script if getattr(args, 'bind_script', None) else p_params.get('hmc_bind_script')
+
+        if not exec_path or not bind_script:
+            print("ERROR: Missing required paths. Provide both --exec-path and --bind-script (they will be saved to the database).", file=sys.stderr)
+            return 1
+
+        # Save provided paths to ensemble parameters if passed via CLI
+        if getattr(args, 'exec_path', None) or getattr(args, 'bind_script', None):
+            try:
+                conn = get_connection(args.db_file)
+                cur = conn.cursor()
+                if getattr(args, 'exec_path', None):
+                    cur.execute(
+                        """
+                        INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
+                        VALUES (?, 'hmc_exec_path', ?)
+                        """,
+                        (ensemble_id, exec_path)
+                    )
+                if getattr(args, 'bind_script', None):
+                    cur.execute(
+                        """
+                        INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
+                        VALUES (?, 'hmc_bind_script', ?)
+                        """,
+                        (ensemble_id, bind_script)
+                    )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"WARNING: Failed to save paths to DB: {e}", file=sys.stderr)
+
         generate_hmc_slurm_gpu(
             out_path=str(out_file),
             db_file=args.db_file,
@@ -271,6 +310,8 @@ def do_hmc_script(args):
             mode=args.mode,
             trajL=xml_dict['trajL'],
             lvl_sizes=xml_dict['lvl_sizes'],
+            exec_path=exec_path,
+            bind_script=bind_script,
             **job_params
         )
         print(f"Generated HMC script: {out_file}")
