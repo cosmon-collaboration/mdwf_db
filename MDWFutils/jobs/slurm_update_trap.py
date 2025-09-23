@@ -19,7 +19,7 @@ mdwf_queue_running_update() {
 # Install a trap to update status on exit with details
 mdwf_setup_update_trap() {
   update_status() {
-    local EC=$?
+    local EXIT_CODE=$?
     local ST="COMPLETED"
     local REASON=""
     local SLURM_STATUS=""
@@ -34,10 +34,10 @@ mdwf_setup_update_trap() {
       SLURM_STATUS="NO_JOBID"
     fi
     
-    if [[ $EC -eq 143 || $EC -eq 130 || $EC -eq 129 ]]; then
+    if [[ $EXIT_CODE -eq 143 || $EXIT_CODE -eq 130 || $EXIT_CODE -eq 129 ]]; then
       ST="CANCELED"
       REASON="job_killed"
-    elif [[ $EC -ne 0 ]]; then
+    elif [[ $EXIT_CODE -ne 0 ]]; then
       ST="FAILED"
       REASON="job_failed"
     else
@@ -51,8 +51,8 @@ mdwf_setup_update_trap() {
       PARAMS_STR="$PARAMS"
     fi
 
-    echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EC runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON slurm_status=$SLURM_STATUS $PARAMS_STR\"" >> "$LOGFILE"
-    echo \"$OP job $ST ($EC) - $REASON (SLURM: $SLURM_STATUS)\"
+    echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON slurm_status=$SLURM_STATUS $PARAMS_STR\"" >> "$LOGFILE"
+    echo \"$OP job $ST ($EXIT_CODE) - $REASON (SLURM: $SLURM_STATUS)\"
   }
   trap update_status EXIT TERM INT HUP QUIT
 }
