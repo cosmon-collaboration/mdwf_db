@@ -111,10 +111,6 @@ def do_add(args):
 
     # determine target ensemble directory (may need params to construct)
     base       = Path(args.base_dir).resolve()
-    tuning_root= base / 'TUNING'
-    prod_root  = base / 'ENSEMBLES'
-    tuning_root.mkdir(parents=True, exist_ok=True)
-    prod_root.mkdir(parents=True, exist_ok=True)
 
     if args.directory:
         ens_dir = Path(args.directory).resolve()
@@ -123,6 +119,11 @@ def do_add(args):
             inferred = _parse_params_from_path(ens_dir)
             pdict.update(inferred)
     else:
+        # Only create TUNING/ and ENSEMBLES/ roots when auto-generating the directory
+        tuning_root= base / 'TUNING'
+        prod_root  = base / 'ENSEMBLES'
+        tuning_root.mkdir(parents=True, exist_ok=True)
+        prod_root.mkdir(parents=True, exist_ok=True)
         rel = (
           f"b{pdict['beta']}/b{pdict['b']}Ls{pdict['Ls']}/"
           f"mc{pdict['mc']}/ms{pdict['ms']}/ml{pdict['ml']}/"
