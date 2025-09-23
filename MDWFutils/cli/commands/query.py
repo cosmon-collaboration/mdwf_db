@@ -445,6 +445,17 @@ def do_query(args):
             print("\n=== Operation history ===")
             print_history(args.db_file, ensemble_id)
         else:
+            # Show important paths (exec/bind) even in compact view
+            params = ens.get('parameters', {}) or {}
+            exec_path = params.get('hmc_exec_path')
+            bind_script = params.get('hmc_bind_script')
+            if exec_path or bind_script:
+                print("HMC paths:")
+                if exec_path:
+                    print(f"  hmc_exec_path   = {exec_path}")
+                if bind_script:
+                    print(f"  hmc_bind_script = {bind_script}")
+
             # Compact operations table
             rows = _fetch_operations_summary(args.db_file, ensemble_id)
             print("\nOperations:")
