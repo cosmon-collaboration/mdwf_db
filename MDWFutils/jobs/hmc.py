@@ -201,8 +201,7 @@ def generate_hmc_slurm_gpu(
     bind_script: str = None,     # optional - will check DB first
     run_dir: str = None,
     gres: str = None,
-    n_trajec: str = None,        
-    cfg_max: str = None,
+    n_trajec: str = None,
     mpi: str = None,
     queue: str = 'regular',
     trajL: str = None,           # required - trajectory length
@@ -238,10 +237,8 @@ def generate_hmc_slurm_gpu(
         else:
             raise RuntimeError("HMC GPU binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script_gpu.")
 
-    if n_trajec is None and cfg_max is not None:
-        n_trajec = cfg_max
-    elif n_trajec is None and cfg_max is None:
-        raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
+    if n_trajec is None:
+        raise RuntimeError("n_trajec (Trajectories) must be provided from XML params.")
 
     # Validate required HMC parameters
     if trajL is None:
@@ -289,7 +286,6 @@ VOL="{VOL}"
 EXEC="{exec_path}"
 BIND="{bind_script}"
 n_trajec={n_trajec}
-cfg_max={cfg_max}
 mpi="{mpi}"
 trajL="{trajL}"
 lvl_sizes="{lvl_sizes}"
@@ -304,7 +300,7 @@ echo "work_root = $work_root"
 echo "EXEC = $EXEC"
 echo "BIND = $BIND"
 echo "n_trajec = $n_trajec"
-echo "cfg_max = $cfg_max"
+:
 
 mkdir -p cnfg
 mkdir -p log_hmc
@@ -319,12 +315,7 @@ if [[ -z $start ]]; then
     start=0
 fi
 
-# check if start <= cfg_max
-if [[ $start -ge $cfg_max ]]; then
-    echo "your latest config is greater than the target:"
-    echo "  $start >= $cfg_max"
-    exit
-fi
+:
 
 echo "cfg_current = $start"
 
@@ -386,7 +377,6 @@ def generate_hmc_slurm_cpu(
     bind_script: str = None,
     run_dir: str = None,
     n_trajec: str = None,
-    cfg_max: str = None,
     queue: str = 'regular',
     mpi: str = None,
     cacheblocking: str = None,
@@ -412,10 +402,8 @@ def generate_hmc_slurm_cpu(
     if bind_script is None:
         raise RuntimeError("HMC CPU binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script_cpu.")
 
-    if n_trajec is None and cfg_max is not None:
-        n_trajec = cfg_max
-    elif n_trajec is None and cfg_max is None:
-        raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
+    if n_trajec is None:
+        raise RuntimeError("n_trajec (Trajectories) must be provided from XML params.")
 
     if trajL is None:
         raise RuntimeError("trajL parameter is required")
@@ -455,7 +443,6 @@ VOL="{VOL}"
 EXEC="{exec_path}"
 BIND="{bind_script}"
 n_trajec={n_trajec}
-cfg_max={cfg_max}
 mpi="{mpi_val}"
 cacheblocking="{cb_val}"
 trajL="{trajL}"
@@ -471,7 +458,6 @@ echo "work_root = $work_root"
 echo "EXEC = $EXEC"
 echo "BIND = $BIND"
 echo "n_trajec = $n_trajec"
-echo "cfg_max = $cfg_max"
 
 mkdir -p cnfg
 mkdir -p log_hmc
@@ -485,11 +471,7 @@ if [[ -z $start ]]; then
     start=0
 fi
 
-if [[ $start -ge $cfg_max ]]; then
-    echo "your latest config is greater than the target:"
-    echo "  $start >= $cfg_max"
-    exit
-fi
+# No cfg_max threshold; controlled by Trajectories in XML
 
 echo "cfg_current = $start"
 

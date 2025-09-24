@@ -31,9 +31,6 @@ HMC MODES:
   reseed:   Start new run with different seed (CheckpointStartReseed)
 
 JOB PARAMETERS (via -j/--job-params):
-Required parameters:
-  cfg_max:     Maximum configuration number to generate
-
 Optional parameters (with defaults):
   constraint: gpu           # Node constraint
   time_limit: 17:00:00      # Job time limit
@@ -206,13 +203,9 @@ def do_hmc_script_gpu(args):
             normalized[k2] = v
         job_dict = normalized
     
-    # Check required job parameters
-    if 'cfg_max' not in job_dict:
-        if args.use_default_params:
-            print("ERROR: cfg_max is required. Add it to your default parameter file or use -j 'cfg_max=N'", file=sys.stderr)
-        else:
-            print("ERROR: cfg_max is required in job parameters", file=sys.stderr)
-        return 1
+    # Remove deprecated cfg_max if provided (no longer used; controlled by XML Trajectories)
+    if 'cfg_max' in job_dict:
+        job_dict.pop('cfg_max', None)
     
     # Parse merged XML parameters
     xml_dict = {}
@@ -228,6 +221,8 @@ def do_hmc_script_gpu(args):
         missing_params.append('trajL')
     if 'lvl_sizes' not in xml_dict:
         missing_params.append('lvl_sizes')
+    if 'Trajectories' not in xml_dict:
+        missing_params.append('Trajectories')
     
     if missing_params:
         if args.use_default_params:
@@ -345,6 +340,7 @@ def do_hmc_script_gpu(args):
             exec_path=exec_path,
             bind_script=bind_script,
             run_dir=getattr(args, 'run_dir', None),
+            n_trajec=xml_dict['Trajectories'],
             **job_params
         )
         print(f"Generated HMC GPU script: {out_file}")
@@ -433,13 +429,9 @@ def do_hmc_script_cpu(args):
             normalized[k2] = v
         job_dict = normalized
 
-    # Check required job parameters
-    if 'cfg_max' not in job_dict:
-        if args.use_default_params:
-            print("ERROR: cfg_max is required. Add it to your default parameter file or use -j 'cfg_max=N'", file=sys.stderr)
-        else:
-            print("ERROR: cfg_max is required in job parameters", file=sys.stderr)
-        return 1
+    # Remove deprecated cfg_max if provided (no longer used; controlled by XML Trajectories)
+    if 'cfg_max' in job_dict:
+        job_dict.pop('cfg_max', None)
 
     # Parse merged XML parameters
     xml_dict = {}
@@ -455,6 +447,8 @@ def do_hmc_script_cpu(args):
         missing_params.append('trajL')
     if 'lvl_sizes' not in xml_dict:
         missing_params.append('lvl_sizes')
+    if 'Trajectories' not in xml_dict:
+        missing_params.append('Trajectories')
 
     if missing_params:
         if args.use_default_params:
@@ -565,6 +559,7 @@ def do_hmc_script_cpu(args):
             exec_path=exec_path,
             bind_script=bind_script,
             run_dir=getattr(args, 'run_dir', None),
+            n_trajec=xml_dict['Trajectories'],
             **job_params
         )
         print(f"Generated HMC CPU script: {out_file}")
