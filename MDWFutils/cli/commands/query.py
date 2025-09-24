@@ -448,10 +448,12 @@ def do_query(args):
             # Show important paths (exec/bind) even in compact view
             params = ens.get('parameters', {}) or {}
             exec_path = params.get('hmc_exec_path')
-            bind_script = params.get('hmc_bind_script')
+            bind_script_gpu = params.get('hmc_bind_script_gpu') or params.get('hmc_bind_script')
+            bind_script_cpu = params.get('hmc_bind_script_cpu')
             print("HMC paths:")
             print(f"  hmc_exec_path   = {exec_path if exec_path else 'NOT SET'}")
-            print(f"  hmc_bind_script = {bind_script if bind_script else 'NOT SET'}")
+            print(f"  hmc_bind_script_gpu = {bind_script_gpu if bind_script_gpu else 'NOT SET'}")
+            print(f"  hmc_bind_script_cpu = {bind_script_cpu if bind_script_cpu else 'NOT SET'}")
 
             # Compact operations table
             rows = _fetch_operations_summary(args.db_file, ensemble_id)

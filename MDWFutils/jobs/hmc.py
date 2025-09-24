@@ -231,10 +231,12 @@ def generate_hmc_slurm_gpu(
             raise RuntimeError("HMC executable path (exec_path) is required. Pass via CLI or save in ensemble parameters as hmc_exec_path.")
 
     if bind_script is None:
-        if 'hmc_bind_script' in p:
+        if 'hmc_bind_script_gpu' in p:
+            bind_script = p['hmc_bind_script_gpu']
+        elif 'hmc_bind_script' in p:  # backward compatibility
             bind_script = p['hmc_bind_script']
         else:
-            raise RuntimeError("HMC core binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script.")
+            raise RuntimeError("HMC GPU binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script_gpu.")
 
     if n_trajec is None and cfg_max is not None:
         n_trajec = cfg_max
@@ -338,11 +340,8 @@ source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 
-# Generate HMC parameters XML in the ensemble directory (DB-resolved)
-mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
-
-# Copy XML from shared ensemble directory into the run directory
-cp "{ensemble_dir}/HMCparameters.xml" cnfg/
+# Generate HMC parameters XML directly in the work directory 'cnfg/'
+mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes" --out-dir "$work_root/cnfg"
 cd cnfg
 
 export CRAY_ACCEL_TARGET=nvidia80
@@ -389,6 +388,8 @@ def generate_hmc_slurm_cpu(
     n_trajec: str = None,
     cfg_max: str = None,
     queue: str = 'regular',
+    mpi: str = None,
+    cacheblocking: str = None,
     trajL: str = None,
     lvl_sizes: str = None
 ):
@@ -407,9 +408,9 @@ def generate_hmc_slurm_cpu(
         if exec_path is None:
             raise RuntimeError("HMC executable path (exec_path) is required. Pass via CLI or save in ensemble parameters as hmc_exec_path.")
     if bind_script is None:
-        bind_script = p.get('hmc_bind_script')
-        if bind_script is None:
-            raise RuntimeError("HMC core binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script.")
+        bind_script = p.get('hmc_bind_script_cpu')
+    if bind_script is None:
+        raise RuntimeError("HMC CPU binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script_cpu.")
 
     if n_trajec is None and cfg_max is not None:
         n_trajec = cfg_max
@@ -427,6 +428,10 @@ def generate_hmc_slurm_cpu(
     ensemble_dir = Path(ens['directory']).resolve()
     work_root = Path(run_dir).resolve() if run_dir else ensemble_dir
     db_file_abs = Path(db_file).resolve()
+
+    # defaults for optional compute params
+    mpi_val = mpi if mpi else "4.4.4.8"
+    cb_val = cacheblocking if cacheblocking else "2.2.2.2"
 
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
@@ -451,6 +456,8 @@ EXEC="{exec_path}"
 BIND="{bind_script}"
 n_trajec={n_trajec}
 cfg_max={cfg_max}
+mpi="{mpi_val}"
+cacheblocking="{cb_val}"
 trajL="{trajL}"
 lvl_sizes="{lvl_sizes}"
 work_root="{str(work_root)}"
@@ -497,20 +504,18 @@ source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 
-# Generate HMC parameters XML in the ensemble directory (DB-resolved)
-mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
-
-# Copy XML from shared ensemble directory into the run directory
-cp "{ensemble_dir}/HMCparameters.xml" cnfg/
+# Generate HMC parameters XML directly in the work directory 'cnfg/'
+mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes" --out-dir "$work_root/cnfg"
 cd cnfg
 
+export I_MPI_PIN=1
 export SLURM_CPU_BIND="cores"
-export OMP_NUM_THREADS=8
+export OMP_NUM_THREADS=4
 
 echo "Nthreads $OMP_NUM_THREADS"
 
 echo "START `date`"
-srun $BIND $EXEC --grid $VOL > ../log_hmc/log_{ens_name}.$start
+srun $BIND $EXEC --mpi $mpi --grid $VOL --dslash-unroll --cacheblocking $cacheblocking > ../log_hmc/log_{ens_name}.$start
 echo "STOP `date`"
 
 echo "All done in $SECONDS seconds"

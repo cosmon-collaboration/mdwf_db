@@ -63,6 +63,10 @@ Example:
         help=('Space-separated key=val pairs to override XML defaults. Required: trajL, lvl_sizes. '
               'Example: "StartTrajectory=0 Trajectories=100 trajL=0.75 lvl_sizes=9,1,1"')
     )
+    p.add_argument(
+        '--out-dir',
+        help='Optional output directory for HMCparameters.xml (defaults to the ensemble directory)'
+    )
     p.set_defaults(func=do_hmc_xml)
 
 
@@ -75,6 +79,7 @@ def do_hmc_xml(args):
 
     # resolve its on‐disk path
     ens_dir = Path(ens['directory']).resolve()
+    target_dir = Path(args.out_dir).resolve() if getattr(args, 'out_dir', None) else ens_dir
 
     # parse the xml‐params string into a dict
     xdict = {}
@@ -97,12 +102,12 @@ def do_hmc_xml(args):
         return 1
 
     # generate the XML
-    # This will produce HMCparameters.xml under ens_dir
+    # This will produce HMCparameters.xml under target_dir
     generate_hmc_parameters(
-        ensemble_dir = str(ens_dir),
+        ensemble_dir = str(target_dir),
         mode         = args.mode,
         **xdict
     )
 
-    print(f"Wrote HMCparameters.xml to {ens_dir} (mode: {args.mode})")
+    print(f"Wrote HMCparameters.xml to {target_dir} (mode: {args.mode})")
     return 0

@@ -120,7 +120,7 @@ CLI parameters override default parameter file parameters.
         pp.add_argument('--exec-path',
                         help='Path to HMC executable (saved to DB as hmc_exec_path)')
         pp.add_argument('--bind-script',
-                        help='Path to core binding script (saved to DB as hmc_bind_script)')
+                        help='Path to binding script. GPU: saved as hmc_bind_script_gpu, CPU: hmc_bind_script_cpu')
         pp.add_argument('--run-dir',
                         help='Directory to run the job from (must contain a full copy of the ensemble directory)')
         pp.add_argument('--use-default-params', action='store_true',
@@ -260,8 +260,9 @@ def do_hmc_script_gpu(args):
     ens_rel = str(rel)   # e.g. "TUNING/b6.0/.../T32"
     ens_name = ens_rel.replace('TUNING/', '').replace('ENSEMBLES/', '').replace('/', '_')
     
-    # Ensure slurm folder & output path
-    slurm_dir = ens_dir / 'slurm'
+    # Ensure slurm folder & output path (prefer run_dir when provided)
+    work_root = Path(getattr(args, 'run_dir', '')).resolve() if getattr(args, 'run_dir', None) else ens_dir
+    slurm_dir = work_root / 'slurm'
     slurm_dir.mkdir(parents=True, exist_ok=True)
     out_file = args.output_file or slurm_dir / f"hmc_gpu_{ensemble_id}_{args.mode}.sbatch"
     
@@ -296,7 +297,8 @@ def do_hmc_script_gpu(args):
         # Determine exec and bind paths: CLI overrides DB; if missing, error out
         p_params = ens.get('parameters', {})
         exec_path = args.exec_path if getattr(args, 'exec_path', None) else p_params.get('hmc_exec_path')
-        bind_script = args.bind_script if getattr(args, 'bind_script', None) else p_params.get('hmc_bind_script')
+        # Prefer GPU-specific key, fall back to legacy
+        bind_script = args.bind_script if getattr(args, 'bind_script', None) else (p_params.get('hmc_bind_script_gpu') or p_params.get('hmc_bind_script'))
 
         if not exec_path or not bind_script:
             print("ERROR: Missing required paths. Provide both --exec-path and --bind-script (they will be saved to the database).", file=sys.stderr)
@@ -319,7 +321,7 @@ def do_hmc_script_gpu(args):
                     cur.execute(
                         """
                         INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
-                        VALUES (?, 'hmc_bind_script', ?)
+                        VALUES (?, 'hmc_bind_script_gpu', ?)
                         """,
                         (ensemble_id, bind_script)
                     )
@@ -484,8 +486,9 @@ def do_hmc_script_cpu(args):
     ens_rel = str(rel)
     ens_name = ens_rel.replace('TUNING/', '').replace('ENSEMBLES/', '').replace('/', '_')
 
-    # Ensure slurm folder & output path
-    slurm_dir = ens_dir / 'slurm'
+    # Ensure slurm folder & output path (prefer run_dir when provided)
+    work_root = Path(getattr(args, 'run_dir', '')).resolve() if getattr(args, 'run_dir', None) else ens_dir
+    slurm_dir = work_root / 'slurm'
     slurm_dir.mkdir(parents=True, exist_ok=True)
     out_file = args.output_file or slurm_dir / f"hmc_cpu_{ensemble_id}_{args.mode}.sbatch"
 
@@ -512,7 +515,8 @@ def do_hmc_script_cpu(args):
     # Determine exec and bind paths
     p_params = ens.get('parameters', {})
     exec_path = args.exec_path if getattr(args, 'exec_path', None) else p_params.get('hmc_exec_path')
-    bind_script = args.bind_script if getattr(args, 'bind_script', None) else p_params.get('hmc_bind_script')
+    # Prefer CPU-specific key, fall back to legacy
+    bind_script = args.bind_script if getattr(args, 'bind_script', None) else (p_params.get('hmc_bind_script_cpu') or p_params.get('hmc_bind_script'))
 
     if not exec_path or not bind_script:
         print("ERROR: Missing required paths. Provide both --exec-path and --bind-script (they will be saved to the database).", file=sys.stderr)
@@ -535,7 +539,7 @@ def do_hmc_script_cpu(args):
                 cur.execute(
                     """
                     INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
-                    VALUES (?, 'hmc_bind_script', ?)
+                    VALUES (?, 'hmc_bind_script_cpu', ?)
                     """,
                     (ensemble_id, bind_script)
                 )
