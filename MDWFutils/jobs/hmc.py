@@ -196,7 +196,7 @@ def generate_hmc_slurm_gpu(
     ntasks_per_node: str,
     gpus_per_task: str,
     gpu_bind: str,
-    mail_user: str,
+    mail_user: str = None,
     exec_path: str = None,       # optional - will check DB first
     bind_script: str = None,     # optional - will check DB first
     run_dir: str = None,
