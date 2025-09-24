@@ -329,6 +329,8 @@ def do_hmc_script_gpu(args):
             except Exception as e:
                 print(f"WARNING: Failed to save paths to DB: {e}", file=sys.stderr)
 
+        # Avoid passing omp_num_threads twice (explicit kw + **job_params)
+        _omp_threads = job_params.pop('omp_num_threads', None)
         generate_hmc_slurm_gpu(
             out_path=str(out_file),
             db_file=args.db_file,
@@ -345,7 +347,7 @@ def do_hmc_script_gpu(args):
             bind_script=bind_script,
             run_dir=getattr(args, 'run_dir', None),
             n_trajec=xml_dict['Trajectories'],
-            omp_num_threads=job_params.get('omp_num_threads'),
+            omp_num_threads=_omp_threads,
             **job_params
         )
         print(f"Generated HMC GPU script: {out_file}")
@@ -552,6 +554,8 @@ def do_hmc_script_cpu(args):
 
     # Generate SLURM script (CPU)
     try:
+        # Avoid passing omp_num_threads twice (explicit kw + **job_params)
+        _omp_threads = job_params.pop('omp_num_threads', None)
         generate_hmc_slurm_cpu(
             out_path=str(out_file),
             db_file=args.db_file,
@@ -568,7 +572,7 @@ def do_hmc_script_cpu(args):
             bind_script=bind_script,
             run_dir=getattr(args, 'run_dir', None),
             n_trajec=xml_dict['Trajectories'],
-            omp_num_threads=job_params.get('omp_num_threads'),
+            omp_num_threads=_omp_threads,
             **job_params
         )
         print(f"Generated HMC CPU script: {out_file}")
