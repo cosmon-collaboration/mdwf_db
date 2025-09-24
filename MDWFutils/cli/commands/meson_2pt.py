@@ -4,8 +4,8 @@ from MDWFutils.db    import get_ensemble_details, resolve_ensemble_identifier
 from MDWFutils.jobs.meson2pt import generate_meson2pt_sbatch
 from MDWFutils.config import get_operation_config, merge_params, get_config_path, save_operation_config
 
-# Required job params: time_limit, nodes, mail_user. Config range lives in WIT params.
-REQUIRED_JOB_PARAMS = ['mail_user', 'time_limit', 'nodes']
+# Required job params: time_limit, nodes. Config range lives in WIT params.
+REQUIRED_JOB_PARAMS = ['time_limit', 'nodes']
 DEFAULT_JOB_PARAMS = {
     'account'    : 'm2986_g',
     'constraint' : 'gpu',

@@ -200,10 +200,10 @@ def generate_hmc_slurm_gpu(
     exec_path: str = None,       # optional - will check DB first
     bind_script: str = None,     # optional - will check DB first
     run_dir: str = None,
+    gres: str = None,
     n_trajec: str = None,        
     cfg_max: str = None,
     mpi: str = None,
-    resubmit: str = 'true',
     queue: str = 'regular',
     trajL: str = None,           # required - trajectory length
     lvl_sizes: str = None        # required - level sizes as comma-separated string
@@ -213,7 +213,6 @@ def generate_hmc_slurm_gpu(
       - handles tepid/continue/reseed modes
       - sets up proper environment variables
       - runs HMC with appropriate parameters
-      - handles resubmission if needed
       - tracks job history in database
     """
     # fetch ensemble metadata & parameters
@@ -255,10 +254,13 @@ def generate_hmc_slurm_gpu(
     ensemble_dir = Path(ens['directory']).resolve()
     work_root = Path(run_dir).resolve() if run_dir else ensemble_dir
     
-    # Make database path absolute to ensure it works in resubmitted jobs
+    # Make database path absolute for robustness
     db_file_abs = Path(db_file).resolve()
     
     ens_name = f"b{ens['parameters']['beta']}_b{ens['parameters']['b']}Ls{ens['parameters']['Ls']}_mc{ens['parameters']['mc']}_ms{ens['parameters']['ms']}_ml{ens['parameters']['ml']}_L{ens['parameters']['L']}_T{ens['parameters']['T']}"
+
+    # Build optional SBATCH resource lines
+    gres_line = f"#SBATCH --gres={gres}" if gres else f"#SBATCH --gres=gpu:{gpus_per_task}"
 
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
@@ -268,10 +270,11 @@ def generate_hmc_slurm_gpu(
 #SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH -N {nodes}
 #SBATCH --ntasks-per-node={ntasks_per_node}
-#SBATCH --gres=gpu:{gpus_per_task}
+#SBATCH --gpus-per-task={gpus_per_task}
 #SBATCH --gpu-bind={gpu_bind}
+#SBATCH --gres={gres if gres else f"gpu:{gpus_per_task}"}
 #SBATCH --mail-type=BEGIN,END
-#SBATCH --mail-user={mail_user}
+{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
 #SBATCH --signal=B:TERM@60
 
 batch="$0"
@@ -303,6 +306,7 @@ echo "cfg_max = $cfg_max"
 
 mkdir -p cnfg
 mkdir -p log_hmc
+mkdir -p out
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
@@ -334,10 +338,11 @@ source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 
-# Generate HMC parameters XML
-mdwf_db hmc-xml -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
+# Generate HMC parameters XML in the ensemble directory (DB-resolved)
+mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
 
-cp HMCparameters.xml cnfg/
+# Copy XML from shared ensemble directory into the run directory
+cp "{ensemble_dir}/HMCparameters.xml" cnfg/
 cd cnfg
 
 export CRAY_ACCEL_TARGET=nvidia80
@@ -354,6 +359,158 @@ echo "Nthreads $OMP_NUM_THREADS"
 
 echo "START `date`"
 srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_{ens_name}.$start
+echo "STOP `date`"
+
+echo "All done in $SECONDS seconds"
+"""
+    script_file.write_text(txt, encoding='utf-8')
+    return True
+
+
+def generate_hmc_slurm_cpu(
+    out_path: str,
+    db_file: str,
+    ensemble_id: int,
+    base_dir: str,
+    type_: str,
+    ens_relpath: str,
+    ens_name: str,
+    account: str,
+    mode: str,
+    constraint: str,
+    time_limit: str,
+    cpus_per_task: str,
+    nodes: str,
+    ntasks_per_node: str,
+    mail_user: str = None,
+    exec_path: str = None,
+    bind_script: str = None,
+    run_dir: str = None,
+    n_trajec: str = None,
+    cfg_max: str = None,
+    queue: str = 'regular',
+    trajL: str = None,
+    lvl_sizes: str = None
+):
+    """
+    CPU variant of HMC SLURM script: omits GPU directives, reuses logging and XML logic.
+    """
+    ens = get_ensemble_details(db_file, ensemble_id)
+    if not ens:
+        raise RuntimeError(f"Ensemble {ensemble_id} not found")
+    p = ens['parameters']
+    L, T = int(p['L']), int(p['T'])
+    VOL = f"{L}.{L}.{L}.{T}"
+
+    if exec_path is None:
+        exec_path = p.get('hmc_exec_path')
+        if exec_path is None:
+            raise RuntimeError("HMC executable path (exec_path) is required. Pass via CLI or save in ensemble parameters as hmc_exec_path.")
+    if bind_script is None:
+        bind_script = p.get('hmc_bind_script')
+        if bind_script is None:
+            raise RuntimeError("HMC core binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script.")
+
+    if n_trajec is None and cfg_max is not None:
+        n_trajec = cfg_max
+    elif n_trajec is None and cfg_max is None:
+        raise RuntimeError("cfg_max must be provided (or n_trajec passed) for default.")
+
+    if trajL is None:
+        raise RuntimeError("trajL parameter is required")
+    if lvl_sizes is None:
+        raise RuntimeError("lvl_sizes parameter is required")
+
+    script_file = Path(out_path)
+    script_file.parent.mkdir(parents=True, exist_ok=True)
+
+    ensemble_dir = Path(ens['directory']).resolve()
+    work_root = Path(run_dir).resolve() if run_dir else ensemble_dir
+    db_file_abs = Path(db_file).resolve()
+
+    txt = f"""#!/bin/bash
+#SBATCH -A {account}
+#SBATCH -C {constraint}
+#SBATCH -q {queue}
+#SBATCH -t {time_limit}
+#SBATCH --cpus-per-task={cpus_per_task}
+#SBATCH -N {nodes}
+#SBATCH --ntasks-per-node={ntasks_per_node}
+#SBATCH --mail-type=BEGIN,END
+{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
+#SBATCH --signal=B:TERM@60
+
+batch="$0"
+DB="{db_file_abs}"
+EID={ensemble_id}
+mode="{mode}"
+ens="{ens_name}"
+ens_rel="{ens_relpath}"
+VOL="{VOL}"
+EXEC="{exec_path}"
+BIND="{bind_script}"
+n_trajec={n_trajec}
+cfg_max={cfg_max}
+trajL="{trajL}"
+lvl_sizes="{lvl_sizes}"
+work_root="{str(work_root)}"
+
+cd "$work_root"
+LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+
+echo "ens = $ens"
+echo "ens_dir = {ensemble_dir}"
+echo "work_root = $work_root"
+echo "EXEC = $EXEC"
+echo "BIND = $BIND"
+echo "n_trajec = $n_trajec"
+echo "cfg_max = $cfg_max"
+
+mkdir -p cnfg
+mkdir -p log_hmc
+mkdir -p out
+module load conda
+conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
+
+start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
+if [[ -z $start ]]; then
+    echo "no configs - start is empty - doing TepidStart"
+    start=0
+fi
+
+if [[ $start -ge $cfg_max ]]; then
+    echo "your latest config is greater than the target:"
+    echo "  $start >= $cfg_max"
+    exit
+fi
+
+echo "cfg_current = $start"
+
+# Prepare DB update variables and queue RUNNING update off-node
+USER=$(whoami)
+OP="$mode"
+SC=$start
+EC=$(( start + n_trajec ))
+IC=$n_trajec
+RUN_DIR="$work_root"
+source <(python -m MDWFutils.jobs.slurm_update_trap)
+
+SECONDS=0
+
+# Generate HMC parameters XML in the ensemble directory (DB-resolved)
+mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes"
+
+# Copy XML from shared ensemble directory into the run directory
+cp "{ensemble_dir}/HMCparameters.xml" cnfg/
+cd cnfg
+
+export SLURM_CPU_BIND="cores"
+export OMP_NUM_THREADS=8
+
+echo "Nthreads $OMP_NUM_THREADS"
+
+echo "START `date`"
+srun $BIND $EXEC --grid $VOL > ../log_hmc/log_{ens_name}.$start
 echo "STOP `date`"
 
 echo "All done in $SECONDS seconds"

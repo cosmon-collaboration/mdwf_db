@@ -11,7 +11,7 @@ from MDWFutils.db           import get_ensemble_details, resolve_ensemble_identi
 from MDWFutils.jobs.smear   import generate_smear_sbatch
 from MDWFutils.config       import get_operation_config, merge_params, get_config_path, save_operation_config
 
-REQUIRED_JOB_PARAMS = ['mail_user', 'config_start', 'config_end', 'config_inc']
+REQUIRED_JOB_PARAMS = ['config_start', 'config_end', 'config_inc']
 DEFAULT_PARAMS = {
     'account': 'm2986',
     'constraint': 'cpu',

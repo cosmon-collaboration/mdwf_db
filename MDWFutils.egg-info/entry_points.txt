@@ -1,0 +1,2 @@
+[console_scripts]
+mdwf_db = MDWFutils.cli:main

@@ -43,8 +43,7 @@ def generate_mres_sbatch(
     """
     Create a mres SBATCH script under ensemble_dir/mres/
     """
-    if mail_user is None:
-        raise ValueError("mail_user is required")
+    # mail_user optional
 
     ensemble_dir = os.path.abspath(ensemble_dir)
     db_file      = os.path.abspath(db_file)
@@ -204,8 +203,8 @@ def generate_mres_sbatch(
 #SBATCH --gpus={gpus}
 #SBATCH --time={time_limit}
 #SBATCH --qos={queue}
-#SBATCH --mail-user={mail_user}
 #SBATCH --mail-type=ALL
+{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
 #SBATCH -o {workdir}/jlog/%J.log
 
 cd {workdir}

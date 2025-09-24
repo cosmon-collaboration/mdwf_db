@@ -106,7 +106,7 @@ def generate_wflow_sbatch(
 #SBATCH -N {nodes}
 #SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH --signal=B:TERM@60
-#SBATCH --mail-user={mail_user}
+{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
 
 module load cpu
 module load intel-mixed/2023.2.0
