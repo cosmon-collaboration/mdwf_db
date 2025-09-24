@@ -20,6 +20,7 @@ def generate_meson2pt_sbatch(
     db_file=None,
     ensemble_id=None,
     ensemble_dir=None,
+    run_dir=None,
     custom_changes=None,
     wit_exec_path=None,
     bind_script=None,
@@ -156,7 +157,8 @@ def generate_meson2pt_sbatch(
     else:
         folder_name = "meson2pt"
     
-    workdir = Path(ensemble_dir) / folder_name
+    base_work = Path(run_dir).resolve() if run_dir else Path(ensemble_dir)
+    workdir = base_work / folder_name
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "jlog").mkdir(parents=True, exist_ok=True)
     # Build SBATCH output path under slurm/
@@ -211,6 +213,7 @@ cd {workdir}
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
+RUN_DIR="{str(base_work)}"
 DB="{db_file}"
 EID={ensemble_id}
 OP="WIT_MESON2PT"

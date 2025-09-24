@@ -98,6 +98,8 @@ generated DWF.in files for all available options.
                    help='Save current command parameters to default parameter file for later reuse')
     p.add_argument('--save-params-as',
                    help='Save current parameters under specific variant name (default: default)')
+    p.add_argument('--run-dir',
+                   help='Directory to run the job from (must contain a full copy of the ensemble directory)')
     p.set_defaults(func=do_zv)
 
 def do_zv(args):
@@ -305,6 +307,7 @@ def do_zv(args):
         db_file        = args.db_file,
         ensemble_id    = ensemble_id,
         ensemble_dir   = str(ens_dir),
+        run_dir        = args.run_dir,
         custom_changes = wdict,
         output_file    = args.output_file,
         account        = job_dict.get('account'),

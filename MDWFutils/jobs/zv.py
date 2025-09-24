@@ -21,6 +21,7 @@ def generate_zv_sbatch(
     db_file=None,
     ensemble_id=None,
     ensemble_dir=None,
+    run_dir=None,
     custom_changes=None,
     wit_exec_path=None,
     bind_script=None,
@@ -131,7 +132,9 @@ def generate_zv_sbatch(
     else:
         folder_name = "Zv"
     
-    workdir = Path(ensemble_dir) / folder_name
+    # Determine workdir: run in run_dir if provided, else under ensemble_dir
+    base_work = Path(run_dir).resolve() if run_dir else Path(ensemble_dir)
+    workdir = base_work / folder_name
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "jlog").mkdir(parents=True, exist_ok=True)
     # Build SBATCH output path under slurm/
@@ -185,6 +188,7 @@ cd {workdir}
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
+RUN_DIR="{str(base_work)}"
 # Prepare DB update variables and queue RUNNING update off-node
 DB="{db_file}"
 EID={ensemble_id}

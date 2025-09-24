@@ -13,6 +13,9 @@ mdwf_queue_running_update() {
   elif [[ -n "$PARAMS" ]]; then
     PARAMS_STR="$PARAMS"
   fi
+  if [[ -n "$RUN_DIR" ]]; then
+    PARAMS_STR="$PARAMS_STR run_dir=$RUN_DIR"
+  fi
   echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=RUNNING --user=$USER --params=\"$PARAMS_STR slurm_job=$SLURM_JOB_ID\"" >> "$LOGFILE"
 }
 
@@ -50,11 +53,26 @@ mdwf_setup_update_trap() {
     elif [[ -n "$PARAMS" ]]; then
       PARAMS_STR="$PARAMS"
     fi
+    if [[ -n "$RUN_DIR" ]]; then
+      PARAMS_STR="$PARAMS_STR run_dir=$RUN_DIR"
+    fi
 
     echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON slurm_status=$SLURM_STATUS $PARAMS_STR\"" >> "$LOGFILE"
     echo \"$OP job $ST ($EXIT_CODE) - $REASON (SLURM: $SLURM_STATUS)\"
   }
   trap update_status EXIT TERM INT HUP QUIT
+}
+
+# Log a post-run ingest/move of files from a scratch dir to shared
+# Usage: mdwf_log_ingest SRC_DIR DEST_DIR [OP_TYPE]
+# OP_TYPE defaults to FILE_INGEST
+mdwf_log_ingest() {
+  local SRC="$1"
+  local DEST="$2"
+  local OPTYPE="${3:-FILE_INGEST}"
+  local FILES="$(find "$SRC" -type f 2>/dev/null | wc -l | tr -d ' ')"
+  local BYTES="$(du -sb "$SRC" 2>/dev/null | awk '{print $1}')"
+  echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OPTYPE --status=COMPLETED --user=$USER --params=\"action=ingest source=$SRC dest=$DEST file_count=$FILES bytes=$BYTES\"" >> "$LOGFILE"
 }
 
 # Auto-run when sourced if required variables are present

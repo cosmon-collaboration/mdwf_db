@@ -118,6 +118,8 @@ CLI parameters override default parameter file parameters.
                    help='Path to HMC executable (saved to DB as hmc_exec_path)')
     p.add_argument('--bind-script',
                    help='Path to core binding script (saved to DB as hmc_bind_script)')
+    p.add_argument('--run-dir',
+                   help='Directory to run the job from (must contain a full copy of the ensemble directory)')
     p.add_argument('--use-default-params', action='store_true',
                    help='Load parameters from ensemble default parameter file (mdwf_default_params.yaml)')
     p.add_argument('--params-variant',
@@ -312,6 +314,7 @@ def do_hmc_script(args):
             lvl_sizes=xml_dict['lvl_sizes'],
             exec_path=exec_path,
             bind_script=bind_script,
+            run_dir=getattr(args, 'run_dir', None),
             **job_params
         )
         print(f"Generated HMC script: {out_file}")

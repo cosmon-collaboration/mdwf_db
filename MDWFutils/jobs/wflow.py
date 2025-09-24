@@ -11,6 +11,7 @@ def generate_wflow_sbatch(
     db_file: str,
     ensemble_id: int,
     ensemble_dir: str,
+    run_dir: str = None,
     glu_path: str         = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU',
     # SBATCH arguments
     account: str       = 'm2986',
@@ -46,6 +47,7 @@ def generate_wflow_sbatch(
     write SBATCH script under slurm/
     """
     ensemble_dir = Path(ensemble_dir).expanduser().resolve()
+    base_work    = Path(run_dir).expanduser().resolve() if run_dir else ensemble_dir
     db_file      = str(Path(db_file).expanduser().resolve())
 
     # fetch L,T
@@ -56,7 +58,7 @@ def generate_wflow_sbatch(
     L = int(p['L']); T = int(p['T'])
 
     # build GLU input
-    t0_dir = ensemble_dir / f"t0"
+    t0_dir = base_work / f"t0"
     t0_dir.mkdir(parents=True, exist_ok=True)
     inp = t0_dir / "glu_smear.in"
 
@@ -124,6 +126,7 @@ EC={config_end}
 IC={config_inc}
 USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+RUN_DIR="{str(base_work)}"
 
 mkdir -p "{ensemble_dir}/jlog" "{t0_dir}"
 
@@ -154,7 +157,7 @@ for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
         echo "Config $c: CPUs $lo-$hi $loh-$hih"
         export GOMP_CPU_AFFINITY="${{lo}}-${{hi}} ${{loh}}-${{hih}}"
         
-        in_cfg="{ensemble_dir}/cnfg/{config_prefix}${{c}}"
+        in_cfg="{str(base_work)}/cnfg/{config_prefix}${{c}}"
         out_cfg="{t0_dir}/{output_prefix}.${{c}}.out"
         $GLU -i "{inp}" -c "$in_cfg" > "$out_cfg" &
     done

@@ -11,6 +11,7 @@ def generate_smear_sbatch(
     db_file: str,
     ensemble_id: int,
     ensemble_dir: str,
+    run_dir: str = None,
     glu_path: str         = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU',
     # SBATCH arguments
     account: str       = 'm2986',
@@ -46,6 +47,7 @@ def generate_smear_sbatch(
     write SBATCH script under slurm/
     """
     ensemble_dir = Path(ensemble_dir).expanduser().resolve()
+    base_work    = Path(run_dir).expanduser().resolve() if run_dir else ensemble_dir
     db_file      = str(Path(db_file).expanduser().resolve())
 
     # fetch L,T
@@ -56,7 +58,7 @@ def generate_smear_sbatch(
     L = int(p['L']); T = int(p['T'])
 
     # build GLU input
-    smear_dir = ensemble_dir / f"cnfg_{SMEARTYPE}{SMITERS}"
+    smear_dir = base_work / f"cnfg_{SMEARTYPE}{SMITERS}"
     smear_dir.mkdir(parents=True, exist_ok=True)
     inp = smear_dir / "glu_smear.in"
 
@@ -131,6 +133,7 @@ EC={config_end}
 IC={config_inc}
 USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+RUN_DIR="{str(base_work)}"
 
 mkdir -p "{ensemble_dir}/jlog" "{smear_dir}"
 

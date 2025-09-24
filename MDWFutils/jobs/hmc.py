@@ -199,6 +199,7 @@ def generate_hmc_slurm_gpu(
     mail_user: str,
     exec_path: str = None,       # optional - will check DB first
     bind_script: str = None,     # optional - will check DB first
+    run_dir: str = None,
     n_trajec: str = None,        
     cfg_max: str = None,
     mpi: str = None,
@@ -252,6 +253,7 @@ def generate_hmc_slurm_gpu(
     script_file.parent.mkdir(parents=True, exist_ok=True)
 
     ensemble_dir = Path(ens['directory']).resolve()
+    work_root = Path(run_dir).resolve() if run_dir else ensemble_dir
     
     # Make database path absolute to ensure it works in resubmitted jobs
     db_file_abs = Path(db_file).resolve()
@@ -286,12 +288,14 @@ cfg_max={cfg_max}
 mpi="{mpi}"
 trajL="{trajL}"
 lvl_sizes="{lvl_sizes}"
+work_root="{str(work_root)}"
 
-cd {ensemble_dir}
+cd "$work_root"
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
 echo "ens = $ens"
 echo "ens_dir = {ensemble_dir}"
+echo "work_root = $work_root"
 echo "EXEC = $EXEC"
 echo "BIND = $BIND"
 echo "n_trajec = $n_trajec"
@@ -324,6 +328,7 @@ OP="$mode"
 SC=$start
 EC=$(( start + n_trajec ))
 IC=$n_trajec
+RUN_DIR="$work_root"
 # Source logging helper via process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)
 

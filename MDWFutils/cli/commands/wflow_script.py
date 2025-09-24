@@ -53,6 +53,8 @@ Generate a complete SLURM script for gradient flow using GLU.
                    help='Save current command parameters to default parameter file for later reuse')
     p.add_argument('--save-params-as',
                    help='Save current parameters under specific variant name (default: stout8)')
+    p.add_argument('--run-dir',
+                   help='Directory to run the job from (must contain a full copy of the ensemble directory)')
     p.set_defaults(func=do_smear_script)
 
 def do_smear_script(args):
@@ -147,6 +149,7 @@ def do_smear_script(args):
         db_file       = args.db_file,
         ensemble_id   = ensemble_id,
         ensemble_dir  = str(ens_dir),
+        run_dir       = args.run_dir,
         custom_changes = glu_dict,
         **job_dict
     )

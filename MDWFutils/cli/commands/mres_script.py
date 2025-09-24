@@ -108,6 +108,8 @@ parameters, even if they don't match the file path naming convention.
                    help='Save current command parameters to default parameter file for later reuse')
     p.add_argument('--save-params-as',
                    help='Save current parameters under specific variant name (default: default)')
+    p.add_argument('--run-dir',
+                   help='Directory to run the job from (must contain a full copy of the ensemble directory)')
     # Mass override parameters
     p.add_argument('--ml', type=float, help='Override light quark mass (ml) and recalculate kappa')
     p.add_argument('--ms', type=float, help='Override strange quark mass (ms) and recalculate kappa')
@@ -346,6 +348,7 @@ def do_mres(args):
         db_file        = args.db_file,
         ensemble_id    = ensemble_id,
         ensemble_dir   = str(ens_dir),
+        run_dir        = args.run_dir,
         custom_changes = wdict,
         output_file    = args.output_file,
         account        = job_dict.get('account'),
