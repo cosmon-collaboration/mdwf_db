@@ -202,6 +202,9 @@ def do_hmc_script_gpu(args):
             k2 = k.replace('-', '_')
             normalized[k2] = v
         job_dict = normalized
+        # Map uppercase env-style key to our normalized key
+        if 'OMP_NUM_THREADS' in job_dict:
+            job_dict['omp_num_threads'] = job_dict.pop('OMP_NUM_THREADS')
     
     # Remove deprecated cfg_max if provided (no longer used; controlled by XML Trajectories)
     if 'cfg_max' in job_dict:
@@ -278,6 +281,7 @@ def do_hmc_script_gpu(args):
         'gpu_bind': 'none',
         # 'mail_user': only include if provided via -j; no default
         'mpi': '2.1.1.2',
+        'omp_num_threads': '16',
     }
     job_params.update(job_dict)
     
@@ -341,6 +345,7 @@ def do_hmc_script_gpu(args):
             bind_script=bind_script,
             run_dir=getattr(args, 'run_dir', None),
             n_trajec=xml_dict['Trajectories'],
+            omp_num_threads=job_params.get('omp_num_threads'),
             **job_params
         )
         print(f"Generated HMC GPU script: {out_file}")
@@ -428,6 +433,8 @@ def do_hmc_script_cpu(args):
             k2 = k.replace('-', '_')
             normalized[k2] = v
         job_dict = normalized
+        if 'OMP_NUM_THREADS' in job_dict:
+            job_dict['omp_num_threads'] = job_dict.pop('OMP_NUM_THREADS')
 
     # Remove deprecated cfg_max if provided (no longer used; controlled by XML Trajectories)
     if 'cfg_max' in job_dict:
@@ -500,6 +507,7 @@ def do_hmc_script_cpu(args):
         'cpus_per_task': '32',
         'nodes': '1',
         'queue': 'regular',
+        'omp_num_threads': '4',
     }
     job_params.update(job_dict)
 
@@ -560,6 +568,7 @@ def do_hmc_script_cpu(args):
             bind_script=bind_script,
             run_dir=getattr(args, 'run_dir', None),
             n_trajec=xml_dict['Trajectories'],
+            omp_num_threads=job_params.get('omp_num_threads'),
             **job_params
         )
         print(f"Generated HMC CPU script: {out_file}")

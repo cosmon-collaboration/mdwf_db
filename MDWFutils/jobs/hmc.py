@@ -203,6 +203,7 @@ def generate_hmc_slurm_gpu(
     gres: str = None,
     n_trajec: str = None,
     mpi: str = None,
+    omp_num_threads: str = None,
     queue: str = 'regular',
     trajL: str = None,           # required - trajectory length
     lvl_sizes: str = None        # required - level sizes as comma-separated string
@@ -260,6 +261,8 @@ def generate_hmc_slurm_gpu(
 
     # Build optional SBATCH resource lines
     gres_line = f"#SBATCH --gres={gres}" if gres else f"#SBATCH --gres=gpu:{gpus_per_task}"
+    # OMP threads default
+    omp_threads = str(omp_num_threads) if omp_num_threads else "16"
 
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
@@ -343,7 +346,7 @@ export MPICH_RDMA_ENABLED_CUDA=1
 export MPICH_GPU_IPC_ENABLED=1
 export MPICH_GPU_EAGER_REGISTER_HOST_MEM=0
 export MPICH_GPU_NO_ASYNC_MEMCPY=0
-export OMP_NUM_THREADS=8
+export OMP_NUM_THREADS={omp_threads}
 
 echo "Nthreads $OMP_NUM_THREADS"
 
@@ -380,6 +383,7 @@ def generate_hmc_slurm_cpu(
     queue: str = 'regular',
     mpi: str = None,
     cacheblocking: str = None,
+    omp_num_threads: str = None,
     trajL: str = None,
     lvl_sizes: str = None
 ):
@@ -420,6 +424,7 @@ def generate_hmc_slurm_cpu(
     # defaults for optional compute params
     mpi_val = mpi if mpi else "4.4.4.8"
     cb_val = cacheblocking if cacheblocking else "2.2.2.2"
+    omp_threads = str(omp_num_threads) if omp_num_threads else "4"
 
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
@@ -492,7 +497,7 @@ cd cnfg
 
 export I_MPI_PIN=1
 export SLURM_CPU_BIND="cores"
-export OMP_NUM_THREADS=4
+export OMP_NUM_THREADS={omp_threads}
 
 echo "Nthreads $OMP_NUM_THREADS"
 
