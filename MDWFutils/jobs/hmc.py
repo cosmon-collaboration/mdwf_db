@@ -311,6 +311,9 @@ mkdir -p out
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
+  # Ensure SQLite uses a network-FS friendly journal mode to avoid 'disk I/O error'
+  export MDWF_DB_JOURNAL=${{MDWF_DB_JOURNAL:-DELETE}}
+
 
 start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
 if [[ -z $start ]]; then
@@ -469,6 +472,9 @@ mkdir -p log_hmc
 mkdir -p out
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
+
+  # Ensure SQLite uses a network-FS friendly journal mode to avoid 'disk I/O error'
+  export MDWF_DB_JOURNAL=${{MDWF_DB_JOURNAL:-DELETE}}
 
 start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
 if [[ -z $start ]]; then
