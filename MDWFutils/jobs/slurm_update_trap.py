@@ -5,8 +5,27 @@ import os
 SLURM_UPDATE_TRAP_BASH = """# mdwf_db slurm update helpers
 # Sourced or inlined into generated SLURM scripts.
 
+# Ensure the updater log file is present and writable by all users
+mdwf_ensure_logfile() {
+  if [[ -z "$LOGFILE" ]]; then
+    return
+  fi
+  local dir="$(dirname "$LOGFILE")"
+  mkdir -p "$dir"
+  # Create file if missing and relax permissions only on creation
+  local created=0
+  if [[ ! -e "$LOGFILE" ]]; then
+    : > "$LOGFILE"
+    created=1
+  fi
+  if [[ $created -eq 1 ]]; then
+    chmod a+rw "$LOGFILE" 2>/dev/null || true
+  fi
+}
+
 # Queue a RUNNING update line to the mdwf_db updater log
 mdwf_queue_running_update() {
+  mdwf_ensure_logfile
   local PARAMS_STR=""
   if [[ -n "$SC" && -n "$EC" && -n "$IC" ]]; then
     PARAMS_STR="config_start=$SC config_end=$EC config_increment=$IC"
@@ -26,6 +45,7 @@ mdwf_setup_update_trap() {
     local ST="COMPLETED"
     local REASON=""
     local SLURM_STATUS=""
+    mdwf_ensure_logfile
     
     if [[ -n "$SLURM_JOB_ID" ]]; then
       SLURM_STATUS=$(sacct -j $SLURM_JOB_ID -n -o State --parsable2 | head -1)
@@ -72,6 +92,7 @@ mdwf_log_ingest() {
   local OPTYPE="${3:-FILE_INGEST}"
   local FILES="$(find "$SRC" -type f 2>/dev/null | wc -l | tr -d ' ')"
   local BYTES="$(du -sb "$SRC" 2>/dev/null | awk '{print $1}')"
+  mdwf_ensure_logfile
   echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OPTYPE --status=COMPLETED --user=$USER --params=\"action=ingest source=$SRC dest=$DEST file_count=$FILES bytes=$BYTES\"" >> "$LOGFILE"
 }
 
