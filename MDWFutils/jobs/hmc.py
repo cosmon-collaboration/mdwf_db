@@ -496,7 +496,6 @@ source <(python -m MDWFutils.jobs.slurm_update_trap)
 SECONDS=0
 
 cd cnfg
-cd cnfg
 
 export I_MPI_PIN=1
 export SLURM_CPU_BIND="cores"
