@@ -337,8 +337,6 @@ source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 
-# Generate HMC parameters XML directly in the work directory 'cnfg/'
-mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes" --out-dir "$work_root/cnfg"
 cd cnfg
 
 export CRAY_ACCEL_TARGET=nvidia80
@@ -497,8 +495,7 @@ source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 
-# Generate HMC parameters XML directly in the work directory 'cnfg/'
-mdwf_db hmc-xml --db-file=$DB -e $EID -m $mode -x "StartTrajectory=$start Trajectories=$n_trajec trajL=$trajL lvl_sizes=$lvl_sizes" --out-dir "$work_root/cnfg"
+cd cnfg
 cd cnfg
 
 export I_MPI_PIN=1

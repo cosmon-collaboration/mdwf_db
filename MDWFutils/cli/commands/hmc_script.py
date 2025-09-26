@@ -7,6 +7,7 @@ Generate HMC XML and SLURM script for gauge configuration generation.
 import argparse
 import os
 import sys
+import re
 from pathlib import Path
 from MDWFutils.db import get_ensemble_details, resolve_ensemble_identifier, get_connection
 from MDWFutils.jobs.hmc import generate_hmc_parameters, generate_hmc_slurm_gpu, generate_hmc_slurm_cpu
@@ -264,9 +265,33 @@ def do_hmc_script_gpu(args):
     slurm_dir.mkdir(parents=True, exist_ok=True)
     out_file = args.output_file or slurm_dir / f"hmc_gpu_{ensemble_id}_{args.mode}.sbatch"
     
-    # Generate HMC XML parameters
+    # Generate HMC XML parameters into run directory 'cnfg' with computed StartTrajectory
     try:
-        generate_hmc_parameters(str(ens_dir), mode=args.mode, **xml_dict)
+        work_root = Path(getattr(args, 'run_dir', '')).resolve() if getattr(args, 'run_dir', None) else ens_dir
+        cnfg_dir = work_root / 'cnfg'
+        cnfg_dir.mkdir(parents=True, exist_ok=True)
+
+        # Compute current start by scanning existing 'lat*' files in cnfg
+        start = 0
+        numbers = []
+        for f in cnfg_dir.iterdir():
+            if not f.is_file():
+                continue
+            if 'lat' not in f.name:
+                continue
+            m = re.findall(r"(\d+)", f.name)
+            if m:
+                try:
+                    numbers.append(int(m[-1]))
+                except ValueError:
+                    pass
+        if numbers:
+            start = max(numbers)
+
+        # Force StartTrajectory to detected start
+        xml_dict['StartTrajectory'] = str(start)
+
+        generate_hmc_parameters(str(cnfg_dir), mode=args.mode, **xml_dict)
     except Exception as e:
         print(f"ERROR: Failed to generate HMC XML: {e}", file=sys.stderr)
         return 1
@@ -495,9 +520,33 @@ def do_hmc_script_cpu(args):
     slurm_dir.mkdir(parents=True, exist_ok=True)
     out_file = args.output_file or slurm_dir / f"hmc_cpu_{ensemble_id}_{args.mode}.sbatch"
 
-    # Generate HMC XML parameters
+    # Generate HMC XML parameters into run directory 'cnfg' with computed StartTrajectory
     try:
-        generate_hmc_parameters(str(ens_dir), mode=args.mode, **xml_dict)
+        work_root = Path(getattr(args, 'run_dir', '')).resolve() if getattr(args, 'run_dir', None) else ens_dir
+        cnfg_dir = work_root / 'cnfg'
+        cnfg_dir.mkdir(parents=True, exist_ok=True)
+
+        # Compute current start by scanning existing 'lat*' files in cnfg
+        start = 0
+        numbers = []
+        for f in cnfg_dir.iterdir():
+            if not f.is_file():
+                continue
+            if 'lat' not in f.name:
+                continue
+            m = re.findall(r"(\d+)", f.name)
+            if m:
+                try:
+                    numbers.append(int(m[-1]))
+                except ValueError:
+                    pass
+        if numbers:
+            start = max(numbers)
+
+        # Force StartTrajectory to detected start
+        xml_dict['StartTrajectory'] = str(start)
+
+        generate_hmc_parameters(str(cnfg_dir), mode=args.mode, **xml_dict)
     except Exception as e:
         print(f"ERROR: Failed to generate HMC XML: {e}", file=sys.stderr)
         return 1
