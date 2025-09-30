@@ -83,6 +83,27 @@ def get_last_operation_and_user(db_file, ensemble_id):
         return "N/A", "N/A"
 
 
+def get_nicknames_map(db_file):
+    """
+    Return a mapping {ensemble_id: nickname} for all ensembles that have one.
+    """
+    try:
+        from MDWFutils.db import get_connection
+        conn = get_connection(db_file)
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT ensemble_id, value FROM ensemble_parameters
+             WHERE name='nickname'
+            """
+        )
+        rows = c.fetchall()
+        conn.close()
+        return {eid: nick for eid, nick in rows if nick is not None}
+    except Exception:
+        return {}
+
+
 def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
     """
     Format ensembles in a spreadsheet-like format with columns.
@@ -99,10 +120,11 @@ def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
         return "No ensembles found"
     
     # Column headers in the specified order - EID first as row labels
-    headers = ['EID', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'LAST_OP', 'LAST_USER']
+    headers = ['EID', 'NICK', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'LAST_OP', 'LAST_USER']
     
     # Extract and prepare data for each ensemble
     ensemble_data = []
+    nick_map = get_nicknames_map(db_file)
     for ens in ensembles:
         params = extract_ensemble_params_from_path(ens['directory'])
         last_op, last_user = get_last_operation_and_user(db_file, ens['id'])
@@ -110,6 +132,7 @@ def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
         # Create row with all parameters, using "N/A" for missing values
         row = {
             'EID': str(ens['id']),
+            'NICK': nick_map.get(ens['id'], ''),
             'beta': params.get('beta', 'N/A'),
             'b': params.get('b', 'N/A'),
             'Ls': params.get('Ls', 'N/A'),
@@ -128,13 +151,12 @@ def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
         # Sort by EID only (numerical order)
         ensemble_data.sort(key=lambda row: int(row['EID']))
     else:
-        # Sort ensembles numerically/alphabetically by parameters (excluding EID from sorting)
+        # Sort ensembles numerically/alphabetically by parameters only (exclude EID/NICK/last columns)
         def sort_key(row):
+            param_headers = ['beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T']
             sort_values = []
-            for header in headers:
-                if header == 'EID':
-                    continue  # Skip EID for sorting - it's just a row label
-                value = row[header]
+            for header in param_headers:
+                value = row.get(header, 'N/A')
                 if header in ['beta', 'b', 'mc', 'ms', 'ml'] and value != 'N/A':
                     try:
                         sort_values.append(float(value))
@@ -198,23 +220,38 @@ def format_ensemble_list_entry(ens, detailed=False):
     # Extract parameters from directory path
     params = extract_ensemble_params_from_path(ens['directory'])
     
-    # Create the main line with ID, status, and parameters
+    # Create the main line with ID, status, optional nickname, and parameters
     status_str = f"({ens['status']})"
+    nickname = None
+    # Prefer nickname from parameters if present (in detailed mode it's included)
+    if ens.get('parameters') and isinstance(ens['parameters'], dict):
+        nickname = ens['parameters'].get('nickname')
+    if not nickname:
+        # Try to pull from directory parsing (not applicable), so leave None
+        nickname = None
     
     if params:
         # Order parameters consistently: beta, b, Ls, mc, ms, ml, L, T
         param_order = ['beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T']
         param_str = ' '.join([f"{param}={params.get(param, '?')}" for param in param_order if param in params])
-        main_line = f"[{ens['id']}] {status_str} {param_str}"
+        if nickname:
+            main_line = f"[{ens['id']}] {status_str} nick={nickname} {param_str}"
+        else:
+            main_line = f"[{ens['id']}] {status_str} {param_str}"
     else:
         # Fallback to directory name if parameter extraction fails
         dir_name = Path(ens['directory']).name
-        main_line = f"[{ens['id']}] {status_str} {dir_name}"
+        if nickname:
+            main_line = f"[{ens['id']}] {status_str} nick={nickname} {dir_name}"
+        else:
+            main_line = f"[{ens['id']}] {status_str} {dir_name}"
     
     lines = [main_line]
     
     if detailed:
         # Add detailed information
+        if nickname:
+            lines.append(f"    Nickname: {nickname}")
         if ens.get('description'):
             lines.append(f"    Description: {ens['description']}")
         if 'operation_count' in ens:
