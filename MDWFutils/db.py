@@ -121,6 +121,7 @@ def init_database(db_file):
     );
 
     CREATE INDEX IF NOT EXISTS idx_ensemble_dir ON ensembles(directory);
+    CREATE INDEX IF NOT EXISTS idx_ens_params_name_value ON ensemble_parameters(name,value);
     CREATE INDEX IF NOT EXISTS idx_ops_ensemble ON operations(ensemble_id);
     """)
     conn.commit()
@@ -393,6 +394,64 @@ def update_ensemble(db_file, ensemble_id, *, status=None, directory=None):
 
 # -----------------------------------------------------------------------------
 @retry_db()
+def set_ensemble_parameter(db_file, ensemble_id, name, value):
+    """
+    Set a dynamic ensemble parameter (INSERT OR REPLACE semantics).
+    """
+    conn = get_connection(db_file)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT OR REPLACE INTO ensemble_parameters (ensemble_id, name, value)
+        VALUES (?, ?, ?)
+        """,
+        (ensemble_id, name, str(value))
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+# -----------------------------------------------------------------------------
+@retry_db()
+def delete_ensemble_parameter(db_file, ensemble_id, name):
+    """
+    Delete a dynamic ensemble parameter by name for a given ensemble.
+    """
+    conn = get_connection(db_file)
+    c = conn.cursor()
+    c.execute(
+        "DELETE FROM ensemble_parameters WHERE ensemble_id=? AND name=?",
+        (ensemble_id, name)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+# -----------------------------------------------------------------------------
+def get_ensemble_id_by_nickname(db_file, nickname):
+    """
+    Look up ensemble ID by nickname stored in ensemble_parameters.
+    Returns int ID or None if not found.
+    """
+    conn = sqlite3.connect(db_file)
+    cur  = conn.cursor()
+    cur.execute(
+        """
+        SELECT ensemble_id FROM ensemble_parameters
+         WHERE name='nickname' AND value=?
+         LIMIT 1
+        """,
+        (nickname,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+# -----------------------------------------------------------------------------
+@retry_db()
 def print_history(db_file, ensemble_id):
     """
     Pretty‐print all operations (with their parameters) for one ensemble.
@@ -504,16 +563,20 @@ def resolve_ensemble_identifier(db_file, identifier):
         try:
             ensemble_id = int(identifier)
         except (ValueError, TypeError):
-            # Not an integer, treat as path
+            # Not an integer; try as filesystem path first
             try:
-                # Resolve to absolute path for comparison
                 abs_path = str(Path(identifier).resolve())
                 ensemble_id = get_ensemble_id_by_directory(db_file, abs_path)
                 if ensemble_id is None:
-                    # Try the path as-is (in case it's already the stored format)
                     ensemble_id = get_ensemble_id_by_directory(db_file, identifier)
             except Exception:
-                return None, None
+                ensemble_id = None
+
+            # If not found as a path, try resolving as a nickname
+            if ensemble_id is None and isinstance(identifier, str):
+                nid = get_ensemble_id_by_nickname(db_file, identifier)
+                if nid is not None:
+                    ensemble_id = nid
     
     if ensemble_id is None:
         return None, None

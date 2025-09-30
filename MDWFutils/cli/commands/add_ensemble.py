@@ -7,7 +7,7 @@ Sub‐command "add-ensemble" for mdwf_db:
 import sys
 import re
 from pathlib import Path
-from MDWFutils.db import add_ensemble, update_ensemble
+from MDWFutils.db import add_ensemble, update_ensemble, set_ensemble_parameter
 
 REQUIRED = ['beta','b','Ls','mc','ms','ml','L','T']
 
@@ -70,6 +70,11 @@ You can either:
         '--description',
         default=None,
         help='Optional free-form text description of the ensemble'
+    )
+    p.add_argument(
+        '--nickname',
+        default=None,
+        help='Optional nickname to attach to this ensemble for quick lookup'
     )
     p.set_defaults(func=do_add)
 
@@ -159,5 +164,13 @@ def do_add(args):
             directory=str(ens_dir)
         )
         print(f"Marked PRODUCTION in DB: {'OK' if ok else 'FAIL'}")
+
+    # Set optional nickname
+    if getattr(args, 'nickname', None):
+        try:
+            set_ensemble_parameter(args.db_file, eid, 'nickname', args.nickname)
+            print(f"Set nickname: {args.nickname}")
+        except Exception as e:
+            print(f"WARNING: Failed to set nickname: {e}", file=sys.stderr)
 
     return 0
