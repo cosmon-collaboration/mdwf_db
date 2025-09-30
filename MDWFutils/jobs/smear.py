@@ -86,7 +86,7 @@ def generate_smear_sbatch(
     generate_glu_input(str(inp), glu_overrides)
 
     # build SBATCH
-    sbatch_dir = ensemble_dir / "slurm"
+    sbatch_dir = (base_work / "slurm") if run_dir else (ensemble_dir / "slurm")
     sbatch_dir.mkdir(parents=True, exist_ok=True)
 
     if not output_file:
@@ -113,8 +113,8 @@ def generate_smear_sbatch(
 #SBATCH -q {queue}
 #SBATCH -t {time_limit}
 #SBATCH -J {job_name}
-#SBATCH --output={ensemble_dir}/jlog/%j.out
-#SBATCH --error={ensemble_dir}/jlog/%j.err
+#SBATCH --output={base_work}/jlog/%j.out
+#SBATCH --error={base_work}/jlog/%j.err
 #SBATCH -N {nodes}
 #SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH --signal=B:TERM@60
@@ -136,7 +136,7 @@ USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 RUN_DIR="{str(base_work)}"
 
-mkdir -p "{ensemble_dir}/jlog" "{smear_dir}"
+mkdir -p "{base_work}/jlog" "{smear_dir}"
 
 # Source logging helper via process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)
@@ -165,7 +165,7 @@ for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
         echo "Config $c: CPUs $lo-$hi $loh-$hih"
         export GOMP_CPU_AFFINITY="${{lo}}-${{hi}} ${{loh}}-${{hih}}"
         
-        in_cfg="{ensemble_dir}/cnfg/{config_prefix}${{c}}"
+        in_cfg="{base_work}/cnfg/{config_prefix}${{c}}"
         out_cfg="{smear_dir}/{prefix_for_files}n${{c}}"
         $GLU -i "{inp}" -c "$in_cfg" -o "$out_cfg" &
     done

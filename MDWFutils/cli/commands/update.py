@@ -67,8 +67,8 @@ Example:
         '--status', '-s',
         dest='status',
         required=True,
-        choices=['RUNNING','COMPLETED','FAILED'],
-        help='Operation status: RUNNING, COMPLETED, or FAILED'
+        choices=['RUNNING','COMPLETED','FAILED','TIMEOUT','CANCELED'],
+        help='Operation status: RUNNING, COMPLETED, FAILED, TIMEOUT, or CANCELED'
     )
     p.add_argument(
         '--operation-id', '-i',

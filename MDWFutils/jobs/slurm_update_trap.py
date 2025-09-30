@@ -41,6 +41,13 @@ mdwf_queue_running_update() {
 # Install a trap to update status on exit with details
 mdwf_setup_update_trap() {
   update_status() {
+    # Guard to ensure this handler runs only once
+    if [[ -n "$__MDWF_UPDATE_RAN" ]]; then
+      return
+    fi
+    __MDWF_UPDATE_RAN=1
+    # Clear the EXIT trap immediately to avoid any re-entry
+    trap - EXIT
     local EXIT_CODE=$?
     local ST="COMPLETED"
     local REASON=""
@@ -57,7 +64,15 @@ mdwf_setup_update_trap() {
       SLURM_STATUS="NO_JOBID"
     fi
     
-    if [[ $EXIT_CODE -eq 143 || $EXIT_CODE -eq 130 || $EXIT_CODE -eq 129 ]]; then
+    # Normalize status: allow RUNNING, COMPLETED, FAILED, TIMEOUT, CANCELED
+    local SLURM_STATE_UPPER="$(echo "$SLURM_STATUS" | tr '[:lower:]' '[:upper:]')"
+    if [[ "$SLURM_STATE_UPPER" == *"TIMEOUT"* ]]; then
+      ST="TIMEOUT"
+      REASON="job_timeout"
+    elif [[ "$SLURM_STATE_UPPER" == *"CANCEL"* ]]; then
+      ST="CANCELED"
+      REASON="job_cancelled"
+    elif [[ $EXIT_CODE -eq 143 || $EXIT_CODE -eq 130 || $EXIT_CODE -eq 129 ]]; then
       ST="CANCELED"
       REASON="job_killed"
     elif [[ $EXIT_CODE -ne 0 ]]; then
@@ -80,7 +95,8 @@ mdwf_setup_update_trap() {
     echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON slurm_status=$SLURM_STATUS $PARAMS_STR\"" >> "$LOGFILE"
     echo \"$OP job $ST ($EXIT_CODE) - $REASON (SLURM: $SLURM_STATUS)\"
   }
-  trap update_status EXIT TERM INT HUP QUIT
+  # Trap only EXIT to avoid duplicate invocations on both signal and exit
+  trap update_status EXIT
 }
 
 # Log a post-run ingest/move of files from a scratch dir to shared
