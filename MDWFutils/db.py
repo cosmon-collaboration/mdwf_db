@@ -437,16 +437,21 @@ def get_ensemble_id_by_nickname(db_file, nickname):
     """
     conn = sqlite3.connect(db_file)
     cur  = conn.cursor()
-    cur.execute(
-        """
-        SELECT ensemble_id FROM ensemble_parameters
-         WHERE name='nickname' AND value=?
-         LIMIT 1
-        """,
-        (nickname,)
-    )
-    row = cur.fetchone()
-    conn.close()
+    try:
+        cur.execute(
+            """
+            SELECT ensemble_id FROM ensemble_parameters
+             WHERE name='nickname' AND value=?
+             LIMIT 1
+            """,
+            (nickname,)
+        )
+        row = cur.fetchone()
+    except sqlite3.OperationalError:
+        # Legacy DB without ensemble_parameters table
+        row = None
+    finally:
+        conn.close()
     return row[0] if row else None
 
 
