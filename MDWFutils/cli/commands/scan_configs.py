@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 
-from MDWFutils.db import list_ensembles, set_configuration_range, get_ensemble_id_by_directory
+from MDWFutils.db import list_ensembles, set_configuration_range, get_ensemble_id_by_directory, set_ensemble_parameter
 
 
 def _extract_numbers_from_cnfg(cnfg_dir: Path) -> List[int]:
@@ -96,11 +96,45 @@ def register(subparsers):
 
 
 def do_scan_configs(args):
-    ens_list = list_ensembles(args.db_file, detailed=False)
+    ens_list = list_ensembles(args.db_file, detailed=True)
     updated = 0
     for ens in ens_list:
         ens_dir = Path(ens['directory'])
         cnfg_dir = ens_dir / 'cnfg'
+        # Change detection: compute quick stats
+        file_count = 0
+        latest_mtime = 0
+        if cnfg_dir.exists() and cnfg_dir.is_dir():
+            for p in cnfg_dir.iterdir():
+                if not p.is_file():
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                file_count += 1
+                if st.st_mtime > latest_mtime:
+                    latest_mtime = st.st_mtime
+
+        # Compare with stored values to skip unchanged
+        params = ens.get('parameters') or {}
+        prev_count = None
+        prev_mtime = None
+        try:
+            if 'cnfg_count' in params:
+                prev_count = int(params['cnfg_count'])
+            if 'cnfg_mtime' in params:
+                prev_mtime = float(params['cnfg_mtime'])
+        except Exception:
+            prev_count = None
+            prev_mtime = None
+
+        if prev_count is not None and prev_mtime is not None:
+            if prev_count == file_count and abs(prev_mtime - latest_mtime) < 1e-6:
+                # No changes detected; skip detailed scan
+                continue
+
+        # Detailed scan only if changed or no prior record
         vals = _extract_numbers_from_cnfg(cnfg_dir)
         if not vals:
             continue
@@ -110,6 +144,9 @@ def do_scan_configs(args):
         total = len(vals)
         try:
             set_configuration_range(args.db_file, ens['id'], first=first, last=last, increment=inc, total=total)
+            # Persist change-detection markers
+            set_ensemble_parameter(args.db_file, ens['id'], 'cnfg_count', str(file_count))
+            set_ensemble_parameter(args.db_file, ens['id'], 'cnfg_mtime', str(latest_mtime))
             updated += 1
         except Exception as e:
             print(f"WARNING: Failed to set config range for ensemble {ens['id']}: {e}", file=sys.stderr)
