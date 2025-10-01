@@ -13,39 +13,57 @@ from pathlib import Path
 from MDWFutils.db import (
     list_ensembles,
     print_history,
-    resolve_ensemble_identifier
+    resolve_ensemble_identifier,
+    get_configuration_range,
 )
 from MDWFutils.cli.ensemble_utils import add_ensemble_argument
 
 
 def extract_ensemble_params_from_path(directory_path):
     """
-    Extract ensemble parameters from a directory path.
-    Expected format: .../b{beta}/b{b}Ls{Ls}/mc{mc}/ms{ms}/ml{ml}/L{L}/T{T}/
-    
-    Returns:
-        dict: Dictionary of parameter names and values, or empty dict if parsing fails
+    Robustly extract parameters from an ensemble directory path by parsing
+    only the expected segments after TUNING/ or ENSEMBLES/.
+    Expected tail: b{beta}/b{b}Ls{Ls}/mc{mc}/ms{ms}/ml{ml}/L{L}/T{T}
     """
-    path_str = str(directory_path)
-    
-    # Define regex patterns for each parameter
-    patterns = {
-        'beta': r'b(\d+\.?\d*)',
-        'b':    r'b(\d+\.?\d*)Ls',
-        'Ls':   r'Ls(\d+)',
-        'mc':   r'mc(\d+\.?\d*)',
-        'ms':   r'ms(\d+\.?\d*)',
-        'ml':   r'ml(\d+\.?\d*)',
-        'L':    r'L(\d+)',
-        'T':    r'T(\d+)',
-    }
-    
+    p = Path(str(directory_path))
+    parts = list(p.parts)
     params = {}
-    for param_name, pattern in patterns.items():
-        match = re.search(pattern, path_str)
-        if match:
-            params[param_name] = match.group(1)
-    
+    try:
+        # Find anchor (TUNING or ENSEMBLES)
+        anchor_idx = None
+        for i, seg in enumerate(parts):
+            if seg in ('TUNING', 'ENSEMBLES'):
+                anchor_idx = i
+                break
+        if anchor_idx is None:
+            # Fallback: assume the last 8 segments are the parameter segments
+            tail = parts[-8:]
+        else:
+            tail = parts[anchor_idx+1:anchor_idx+1+7]
+        if len(tail) < 7:
+            return params
+        beta_s, bLs_s, mc_s, ms_s, ml_s, L_s, T_s = tail[:7]
+        if beta_s.startswith('b'):
+            params['beta'] = beta_s[1:]
+        if bLs_s.startswith('b') and 'Ls' in bLs_s:
+            try:
+                b_part, ls_part = bLs_s.split('Ls', 1)
+                params['b'] = b_part[1:]
+                params['Ls'] = ls_part
+            except ValueError:
+                pass
+        if mc_s.startswith('mc'):
+            params['mc'] = mc_s[2:]
+        if ms_s.startswith('ms'):
+            params['ms'] = ms_s[2:]
+        if ml_s.startswith('ml'):
+            params['ml'] = ml_s[2:]
+        if L_s.startswith('L'):
+            params['L'] = L_s[1:]
+        if T_s.startswith('T'):
+            params['T'] = T_s[1:]
+    except Exception:
+        return {}
     return params
 
 
@@ -120,7 +138,7 @@ def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
         return "No ensembles found"
     
     # Column headers in the specified order - EID first as row labels
-    headers = ['EID', 'NICK', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'LAST_OP', 'LAST_USER']
+    headers = ['EID', 'NICK', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'N_CFG', 'LAST_OP', 'LAST_USER']
     
     # Extract and prepare data for each ensemble
     ensemble_data = []
@@ -128,6 +146,28 @@ def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
     for ens in ensembles:
         params = extract_ensemble_params_from_path(ens['directory'])
         last_op, last_user = get_last_operation_and_user(db_file, ens['id'])
+        # Compute number of configurations if stored (prefer cfg_total), otherwise derive
+        n_cfg_val = ''
+        try:
+            from MDWFutils.db import get_configuration_range
+            cfg = get_configuration_range(db_file, ens['id'])
+            if cfg:
+                total = cfg.get('total')
+                if total is not None:
+                    n_cfg_val = str(total)
+                else:
+                    f = cfg.get('first')
+                    l = cfg.get('last')
+                    inc = cfg.get('increment')
+                    if f is not None and l is not None and inc is not None:
+                        try:
+                            f_i = int(f); l_i = int(l); inc_i = int(inc)
+                            if inc_i > 0 and l_i >= f_i:
+                                n_cfg_val = str(((l_i - f_i) // inc_i) + 1)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
         
         # Create row with all parameters, using "N/A" for missing values
         row = {
@@ -141,6 +181,7 @@ def format_ensemble_list_spreadsheet(ensembles, db_file, sort_by_id=False):
             'ml': params.get('ml', 'N/A'),
             'L': params.get('L', 'N/A'),
             'T': params.get('T', 'N/A'),
+            'N_CFG': n_cfg_val,
             'LAST_OP': last_op,
             'LAST_USER': last_user
         }
@@ -472,6 +513,30 @@ def do_query(args):
         print(f"Status    = {ens['status']}")
         if ens['description']:
             print(f"Description = {ens['description']}")
+        # Show nickname explicitly if present
+        params = ens.get('parameters', {}) or {}
+        nickname = params.get('nickname')
+        if nickname:
+            print(f"Nickname  = {nickname}")
+        # Show configuration range if stored
+        try:
+            cfg = get_configuration_range(args.db_file, ensemble_id)
+            if cfg:
+                first = cfg.get('first')
+                last = cfg.get('last')
+                inc = cfg.get('increment')
+                total = cfg.get('total')
+                parts = []
+                if first is not None and last is not None:
+                    parts.append(f"range: {first}-{last}")
+                if inc is not None:
+                    parts.append(f"step: {inc}")
+                if total is not None:
+                    parts.append(f"total: {total}")
+                if parts:
+                    print("Config    = " + ", ".join(parts))
+        except Exception:
+            pass
 
         if args.detailed:
             # Full detailed output (existing behavior)

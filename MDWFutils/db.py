@@ -430,6 +430,65 @@ def delete_ensemble_parameter(db_file, ensemble_id, name):
 
 
 # -----------------------------------------------------------------------------
+def set_configuration_range(db_file, ensemble_id,
+                            first: int = None,
+                            last: int = None,
+                            increment: int = None,
+                            total: int = None) -> bool:
+    """
+    Convenience helper to set one or more configuration range fields for an ensemble
+    using the dynamic ensemble_parameters table. Any None values are skipped.
+
+    Stored keys:
+      - cfg_first
+      - cfg_last
+      - cfg_increment
+      - cfg_total
+    """
+    if first is None and last is None and increment is None and total is None:
+        return False
+
+    # Reuse the existing setter to avoid duplicating transaction logic.
+    if first is not None:
+        set_ensemble_parameter(db_file, ensemble_id, 'cfg_first', str(first))
+    if last is not None:
+        set_ensemble_parameter(db_file, ensemble_id, 'cfg_last', str(last))
+    if increment is not None:
+        set_ensemble_parameter(db_file, ensemble_id, 'cfg_increment', str(increment))
+    if total is not None:
+        set_ensemble_parameter(db_file, ensemble_id, 'cfg_total', str(total))
+    return True
+
+
+# -----------------------------------------------------------------------------
+def get_configuration_range(db_file, ensemble_id) -> dict:
+    """
+    Fetch configuration range fields for an ensemble. Returns a dict with keys
+    'first', 'last', 'increment', 'total' if present (otherwise missing).
+    """
+    conn = get_connection(db_file)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT name, value FROM ensemble_parameters
+         WHERE ensemble_id=? AND name IN ('cfg_first','cfg_last','cfg_increment','cfg_total')
+        """,
+        (ensemble_id,)
+    )
+    rows = c.fetchall()
+    conn.close()
+    out = {}
+    keymap = {
+        'cfg_first': 'first',
+        'cfg_last': 'last',
+        'cfg_increment': 'increment',
+        'cfg_total': 'total'
+    }
+    for name, val in rows:
+        out[keymap.get(name, name)] = val
+    return out
+
+# -----------------------------------------------------------------------------
 def get_ensemble_id_by_nickname(db_file, nickname):
     """
     Look up ensemble ID by nickname stored in ensemble_parameters.

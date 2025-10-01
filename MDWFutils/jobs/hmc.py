@@ -303,7 +303,7 @@ echo "work_root = $work_root"
 echo "EXEC = $EXEC"
 echo "BIND = $BIND"
 echo "n_trajec = $n_trajec"
-:
+
 
 mkdir -p cnfg
 mkdir -p log_hmc
@@ -321,7 +321,7 @@ if [[ -z $start ]]; then
     start=0
 fi
 
-:
+
 
 echo "cfg_current = $start"
 
@@ -330,7 +330,7 @@ USER=$(whoami)
 OP="$mode"
 SC=$start
 EC=$(( start + n_trajec ))
-IC=$n_trajec
+# No increment tracking for HMC; EC reflects StartTrajectory + Trajectories
 RUN_DIR="$work_root"
 # Source logging helper via process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)
@@ -489,7 +489,7 @@ USER=$(whoami)
 OP="$mode"
 SC=$start
 EC=$(( start + n_trajec ))
-IC=$n_trajec
+# No increment tracking for HMC; EC reflects StartTrajectory + Trajectories
 RUN_DIR="$work_root"
 source <(python -m MDWFutils.jobs.slurm_update_trap)
 

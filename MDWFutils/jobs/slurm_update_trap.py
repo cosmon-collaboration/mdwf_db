@@ -27,8 +27,11 @@ mdwf_ensure_logfile() {
 mdwf_queue_running_update() {
   mdwf_ensure_logfile
   local PARAMS_STR=""
-  if [[ -n "$SC" && -n "$EC" && -n "$IC" ]]; then
-    PARAMS_STR="config_start=$SC config_end=$EC config_increment=$IC"
+  if [[ -n "$SC" && -n "$EC" ]]; then
+    PARAMS_STR="config_start=$SC config_end=$EC"
+    if [[ -n "$IC" ]]; then
+      PARAMS_STR+=" config_increment=$IC"
+    fi
   elif [[ -n "$PARAMS" ]]; then
     PARAMS_STR="$PARAMS"
   fi
@@ -83,8 +86,11 @@ mdwf_setup_update_trap() {
     fi
 
     local PARAMS_STR=""
-    if [[ -n "$SC" && -n "$EC" && -n "$IC" ]]; then
-      PARAMS_STR="config_start=$SC config_end=$EC config_increment=$IC"
+    if [[ -n "$SC" && -n "$EC" ]]; then
+      PARAMS_STR="config_start=$SC config_end=$EC"
+      if [[ -n "$IC" ]]; then
+        PARAMS_STR+=" config_increment=$IC"
+      fi
     elif [[ -n "$PARAMS" ]]; then
       PARAMS_STR="$PARAMS"
     fi
@@ -113,7 +119,7 @@ mdwf_log_ingest() {
 }
 
 # Auto-run when sourced if required variables are present
-if [[ -n "$DB" && -n "$EID" && -n "$OP" && ( ( -n "$SC" && -n "$EC" && -n "$IC" ) || -n "$PARAMS" ) ]]; then
+if [[ -n "$DB" && -n "$EID" && -n "$OP" && ( ( -n "$SC" && -n "$EC" ) || -n "$PARAMS" ) ]]; then
   mdwf_queue_running_update
   mdwf_setup_update_trap
 fi
