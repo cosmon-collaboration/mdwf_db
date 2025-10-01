@@ -107,6 +107,15 @@ For detailed help: mdwf_db <command> --help
         parser.print_help()
         return 1
 
+    # Validate DB presence for commands that require an existing DB
+    # Allow init-db to create a new database
+    if args.cmd != 'init-db':
+        db_path = Path(getattr(args, 'db_file', find_database_file()))
+        if not db_path.exists():
+            print("ERROR: No database file found.")
+            print("Hint: Run from your mdwf project directory (where mdwf_ensembles.db lives) or pass --db-file.")
+            return 1
+
     # every module must set args.func to its handler in register()
     return args.func(args)
 
