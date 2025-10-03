@@ -327,7 +327,7 @@ echo "cfg_current = $start"
 
 # Prepare DB update variables and queue RUNNING update off-node
 USER=$(whoami)
-OP="$mode"
+OP="HMC_$mode"
 SC=$start
 EC=$(( start + n_trajec ))
 # No increment tracking for HMC; EC reflects StartTrajectory + Trajectories
@@ -486,7 +486,7 @@ echo "cfg_current = $start"
 
 # Prepare DB update variables and queue RUNNING update off-node
 USER=$(whoami)
-OP="$mode"
+OP="HMC_$mode"
 SC=$start
 EC=$(( start + n_trajec ))
 # No increment tracking for HMC; EC reflects StartTrajectory + Trajectories
