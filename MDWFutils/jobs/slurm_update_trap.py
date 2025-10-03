@@ -56,25 +56,57 @@ mdwf_setup_update_trap() {
     local REASON=""
     local SLURM_STATUS=""
     mdwf_ensure_logfile
-    
-    if [[ -n "$SLURM_JOB_ID" ]]; then
-      SLURM_STATUS=$(sacct -j $SLURM_JOB_ID -n -o State --parsable2 | head -1)
-      if [[ -z "$SLURM_STATUS" ]]; then
-        SLURM_STATUS=$(scontrol show job $SLURM_JOB_ID | grep -o 'JobState=[^ ]*' | cut -d= -f2)
+
+    # Helper: query current Slurm state (prefer .batch step via sacct, fallback to job and scontrol)
+    mdwf_query_state_once() {
+      local JID="$1"
+      local S=""
+      S=$(sacct -X -j ${JID}.batch -n -o State --parsable2 2>/dev/null | head -1)
+      if [[ -z "$S" ]]; then
+        S=$(sacct -X -j ${JID} -n -o State --parsable2 2>/dev/null | head -1)
       fi
+      if [[ -z "$S" ]]; then
+        S=$(scontrol show job ${JID} 2>/dev/null | grep -o 'JobState=[^ ]*' | cut -d= -f2)
+      fi
+      echo "$S"
+    }
+
+    # Wait briefly for Slurm to record a terminal state
+    mdwf_get_final_state() {
+      local JID="$1"
+      local MAX_TRIES=20
+      local S=""
+      for ((i=0;i<MAX_TRIES;i++)); do
+        S="$(mdwf_query_state_once "$JID")"
+        local U="$(echo "$S" | tr '[:lower:]' '[:upper:]')"
+        if [[ "$U" == *"COMPLETED"* || "$U" == *"FAILED"* || "$U" == *"TIMEOUT"* || "$U" == *"CANCEL"* || "$U" == *"PREEMPT"* || "$U" == *"NODE_FAIL"* || "$U" == *"OUT_OF_MEMORY"* ]]; then
+          echo "$S"
+          return 0
+        fi
+        sleep 1
+      done
+      echo "$S"
+      return 0
+    }
+
+    if [[ -n "$SLURM_JOB_ID" ]]; then
+      SLURM_STATUS="$(mdwf_get_final_state "$SLURM_JOB_ID")"
       [[ -z "$SLURM_STATUS" ]] && SLURM_STATUS="UNKNOWN"
     else
       SLURM_STATUS="NO_JOBID"
     fi
-    
-    # Normalize status: allow RUNNING, COMPLETED, FAILED, TIMEOUT, CANCELED
+
+    # Normalize status: map Slurm states to our limited set
     local SLURM_STATE_UPPER="$(echo "$SLURM_STATUS" | tr '[:lower:]' '[:upper:]')"
     if [[ "$SLURM_STATE_UPPER" == *"TIMEOUT"* ]]; then
       ST="TIMEOUT"
       REASON="job_timeout"
-    elif [[ "$SLURM_STATE_UPPER" == *"CANCEL"* ]]; then
+    elif [[ "$SLURM_STATE_UPPER" == *"CANCEL"* || "$SLURM_STATE_UPPER" == *"PREEMPT"* ]]; then
       ST="CANCELED"
       REASON="job_cancelled"
+    elif [[ "$SLURM_STATE_UPPER" == *"FAILED"* || "$SLURM_STATE_UPPER" == *"NODE_FAIL"* || "$SLURM_STATE_UPPER" == *"OUT_OF_MEMORY"* ]]; then
+      ST="FAILED"
+      REASON="job_failed"
     elif [[ $EXIT_CODE -eq 143 || $EXIT_CODE -eq 130 || $EXIT_CODE -eq 129 ]]; then
       ST="CANCELED"
       REASON="job_killed"
@@ -82,6 +114,7 @@ mdwf_setup_update_trap() {
       ST="FAILED"
       REASON="job_failed"
     else
+      ST="COMPLETED"
       REASON="job_completed"
     fi
 
