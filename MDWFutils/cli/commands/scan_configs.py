@@ -185,6 +185,11 @@ def register(subparsers):
         help='Also scan filesystem under base dir for ensembles not in DB and report their ranges'
     )
     p.add_argument(
+        '--force',
+        action='store_true',
+        help='Force rescan and refresh stats even if nothing appears to have changed'
+    )
+    p.add_argument(
         '--base-dir',
         default=None,
         help='Base directory containing TUNING/ and ENSEMBLES/. Defaults to the directory of the DB file.'
@@ -226,10 +231,11 @@ def do_scan_configs(args):
             prev_count = None
             prev_mtime = None
 
-        if prev_count is not None and prev_mtime is not None:
-            if prev_count == file_count and abs(prev_mtime - latest_mtime) < 1e-6:
-                # No changes detected; skip detailed scan
-                continue
+        if not getattr(args, 'force', False):
+            if prev_count is not None and prev_mtime is not None:
+                if prev_count == file_count and abs(prev_mtime - latest_mtime) < 1e-6:
+                    # No changes detected; skip detailed scan
+                    continue
 
         # Detailed scan only if changed or no prior record
         vals = _extract_numbers_from_cnfg(cnfg_dir)
