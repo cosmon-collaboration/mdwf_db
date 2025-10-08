@@ -562,19 +562,20 @@ def do_query(args):
                         parts.append(f"total: {total}")
                     return ", ".join(parts) if parts else ""
 
-                print("\nData:")
-                smear_line = fmt_summary('smear', 'smear_count')
-                print(f"  Smear: {smear_line if smear_line else (params.get('smear_count', 0))}")
-                # Per-smear-type detailed ranges
+                print("\nScanned files:")
                 smear_types = sorted({k[len('smear_'):-len('_total')] for k in params if isinstance(k, str) and k.startswith('smear_') and k.endswith('_total')})
-                for st in smear_types:
-                    line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
-                    if line:
-                        print(f"    - {st}: {line}")
-                print(f"  t0: {fmt_summary('t0','t0_count')}")
-                print(f"  meson2pt: {fmt_summary('meson2pt','meson2pt_count')}")
-                print(f"  mres: {fmt_summary('mres','mres_count')}")
-                print(f"  Zv: {fmt_summary('zv','zv_count')}")
+                if smear_types:
+                    for st in smear_types:
+                        line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
+                        if line:
+                            print(f"  {st} - {line}")
+                else:
+                    smear_line = fmt_summary('smear', 'smear_count')
+                    print(f"  Smear - {smear_line if smear_line else (params.get('smear_count', 0))}")
+                print(f"  t0 - {fmt_summary('t0','t0_count')}")
+                print(f"  meson2pt - {fmt_summary('meson2pt','meson2pt_count')}")
+                print(f"  mres - {fmt_summary('mres','mres_count')}")
+                print(f"  Zv - {fmt_summary('zv','zv_count')}")
             except Exception:
                 pass
             print("\n=== Operation history ===")
@@ -607,18 +608,20 @@ def do_query(args):
                         parts.append(f"total: {total}")
                     return ", ".join(parts) if parts else ""
 
-                print("\nData:")
-                smear_line = fmt_summary('smear', 'smear_count')
-                print(f"  Smear: {smear_line if smear_line else (params.get('smear_count', 0))}")
+                print("\nScanned files:")
                 smear_types = sorted({k[len('smear_'):-len('_total')] for k in params if isinstance(k, str) and k.startswith('smear_') and k.endswith('_total')})
-                for st in smear_types:
-                    line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
-                    if line:
-                        print(f"    - {st}: {line}")
-                print(f"  t0: {fmt_summary('t0','t0_count')}")
-                print(f"  meson2pt: {fmt_summary('meson2pt','meson2pt_count')}")
-                print(f"  mres: {fmt_summary('mres','mres_count')}")
-                print(f"  Zv: {fmt_summary('zv','zv_count')}")
+                if smear_types:
+                    for st in smear_types:
+                        line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
+                        if line:
+                            print(f"  {st} - {line}")
+                else:
+                    smear_line = fmt_summary('smear', 'smear_count')
+                    print(f"  Smear - {smear_line if smear_line else (params.get('smear_count', 0))}")
+                print(f"  t0 - {fmt_summary('t0','t0_count')}")
+                print(f"  meson2pt - {fmt_summary('meson2pt','meson2pt_count')}")
+                print(f"  mres - {fmt_summary('mres','mres_count')}")
+                print(f"  Zv - {fmt_summary('zv','zv_count')}")
             except Exception:
                 pass
 
