@@ -547,45 +547,34 @@ def do_query(args):
             # Data summary (measurements)
             try:
                 params = ens.get('parameters', {}) or {}
-                smear_total = int(params.get('smear_count', 0) or 0)
-                t0_total = int(params.get('t0_count', 0) or 0)
-                m2_total = int(params.get('meson2pt_count', 0) or 0)
-                mres_total = int(params.get('mres_count', 0) or 0)
-                zv_total = int(params.get('zv_count', 0) or 0)
-                # Per-smear-type breakdown
-                smear_types = []
-                for k, v in params.items():
-                    if not isinstance(k, str):
-                        continue
-                    if not k.startswith('smear_') or not k.endswith('_count'):
-                        continue
-                    if k == 'smear_count':
-                        continue
-                    stype = k[len('smear_'):-len('_count')]
-                    try:
-                        smear_types.append((stype, int(v)))
-                    except Exception:
-                        pass
-                print("\nData:")
-                print(f"  Smear: {smear_total}")
-                if smear_types:
-                    for st, cnt in sorted(smear_types):
-                        print(f"    - {st}: {cnt}")
-                # Ranges if available
-                def fmt_range(prefix: str) -> str:
+                def fmt_summary(prefix: str, count_key: str) -> str:
+                    total = params.get(f"{prefix}_total") or params.get(count_key)
+                    parts = []
                     first = params.get(f"{prefix}_first")
                     last  = params.get(f"{prefix}_last")
                     inc   = params.get(f"{prefix}_increment")
-                    if first and last:
-                        rng = f" {first}-{last}"
+                    if first is not None and last is not None and str(first) != '' and str(last) != '':
+                        rng = f"range: {first}-{last}"
                         if inc:
-                            rng += f"({inc})"
-                        return rng
-                    return ""
-                print(f"  t0: {t0_total}{fmt_range('t0')}")
-                print(f"  meson2pt: {m2_total}{fmt_range('meson2pt')}")
-                print(f"  mres: {mres_total}{fmt_range('mres')}")
-                print(f"  Zv: {zv_total}{fmt_range('zv')}")
+                            rng += f", step: {inc}"
+                        parts.append(rng)
+                    if total is not None and str(total) != '':
+                        parts.append(f"total: {total}")
+                    return ", ".join(parts) if parts else ""
+
+                print("\nData:")
+                smear_line = fmt_summary('smear', 'smear_count')
+                print(f"  Smear: {smear_line if smear_line else (params.get('smear_count', 0))}")
+                # Per-smear-type detailed ranges
+                smear_types = sorted({k[len('smear_'):-len('_total')] for k in params if isinstance(k, str) and k.startswith('smear_') and k.endswith('_total')})
+                for st in smear_types:
+                    line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
+                    if line:
+                        print(f"    - {st}: {line}")
+                print(f"  t0: {fmt_summary('t0','t0_count')}")
+                print(f"  meson2pt: {fmt_summary('meson2pt','meson2pt_count')}")
+                print(f"  mres: {fmt_summary('mres','mres_count')}")
+                print(f"  Zv: {fmt_summary('zv','zv_count')}")
             except Exception:
                 pass
             print("\n=== Operation history ===")
@@ -603,42 +592,33 @@ def do_query(args):
 
             # Data summary (measurements) in compact view
             try:
-                smear_total = int(params.get('smear_count', 0) or 0)
-                t0_total = int(params.get('t0_count', 0) or 0)
-                m2_total = int(params.get('meson2pt_count', 0) or 0)
-                mres_total = int(params.get('mres_count', 0) or 0)
-                zv_total = int(params.get('zv_count', 0) or 0)
-                smear_types = []
-                for k, v in params.items():
-                    if not isinstance(k, str):
-                        continue
-                    if not k.startswith('smear_') or not k.endswith('_count'):
-                        continue
-                    if k == 'smear_count':
-                        continue
-                    stype = k[len('smear_'):-len('_count')]
-                    try:
-                        smear_types.append((stype, int(v)))
-                    except Exception:
-                        pass
-                print("\nScanned files:")
-                if smear_types:
-                    for st, cnt in sorted(smear_types):
-                        print(f"  {st}: {cnt}")
-                def fmt_range(prefix: str) -> str:
+                def fmt_summary(prefix: str, count_key: str) -> str:
+                    total = params.get(f"{prefix}_total") or params.get(count_key)
+                    parts = []
                     first = params.get(f"{prefix}_first")
                     last  = params.get(f"{prefix}_last")
                     inc   = params.get(f"{prefix}_increment")
-                    if first and last:
-                        rng = f" {first}-{last}"
+                    if first is not None and last is not None and str(first) != '' and str(last) != '':
+                        rng = f"range: {first}-{last}"
                         if inc:
-                            rng += f"({inc})"
-                        return rng
-                    return ""
-                print(f"  t0: {t0_total}{fmt_range('t0')}")
-                print(f"  meson2pt: {m2_total}{fmt_range('meson2pt')}")
-                print(f"  mres: {mres_total}{fmt_range('mres')}")
-                print(f"  Zv: {zv_total}{fmt_range('zv')}")
+                            rng += f", step: {inc}"
+                        parts.append(rng)
+                    if total is not None and str(total) != '':
+                        parts.append(f"total: {total}")
+                    return ", ".join(parts) if parts else ""
+
+                print("\nData:")
+                smear_line = fmt_summary('smear', 'smear_count')
+                print(f"  Smear: {smear_line if smear_line else (params.get('smear_count', 0))}")
+                smear_types = sorted({k[len('smear_'):-len('_total')] for k in params if isinstance(k, str) and k.startswith('smear_') and k.endswith('_total')})
+                for st in smear_types:
+                    line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
+                    if line:
+                        print(f"    - {st}: {line}")
+                print(f"  t0: {fmt_summary('t0','t0_count')}")
+                print(f"  meson2pt: {fmt_summary('meson2pt','meson2pt_count')}")
+                print(f"  mres: {fmt_summary('mres','mres_count')}")
+                print(f"  Zv: {fmt_summary('zv','zv_count')}")
             except Exception:
                 pass
 
