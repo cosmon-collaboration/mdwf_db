@@ -399,11 +399,24 @@ def do_scan_configs(args):
             meas = _scan_measurements(ens_dir)
             set_ensemble_parameter(args.db_file, ens['id'], 'smear_count', str(meas.get('smear', (0,0.0))[0]))
             set_ensemble_parameter(args.db_file, ens['id'], 'smear_mtime', str(meas.get('smear', (0,0.0))[1]))
-            # Persist per-smear-type counts and mtimes under keys like smear_STOUT8_count
+            # Persist per-smear-type counts/ranges and mtimes under keys like smear_STOUT8_*
             for stype, (scount, smt) in (meas.get('smear_types') or {}).items():
                 key_base = f"smear_{stype}"
                 set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_count", str(scount))
                 set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_mtime", str(smt))
+            for stype, meta in (meas.get('smear_types_meta') or {}).items():
+                key_base = f"smear_{stype}"
+                set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_first", str(meta.get('first')))
+                set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_last", str(meta.get('last')))
+                inc = meta.get('increment'); set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_increment", str(inc) if inc is not None else '')
+                set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_total", str(meta.get('total')))
+            # Persist overall smear range if available
+            smear_meta = meas.get('smear_meta') or {}
+            if smear_meta:
+                set_ensemble_parameter(args.db_file, ens['id'], 'smear_first', str(smear_meta.get('first')))
+                set_ensemble_parameter(args.db_file, ens['id'], 'smear_last', str(smear_meta.get('last')))
+                inc = smear_meta.get('increment'); set_ensemble_parameter(args.db_file, ens['id'], 'smear_increment', str(inc) if inc is not None else '')
+                set_ensemble_parameter(args.db_file, ens['id'], 'smear_total', str(smear_meta.get('total')))
             set_ensemble_parameter(args.db_file, ens['id'], 't0_count', str(meas.get('t0', (0,0.0))[0]))
             set_ensemble_parameter(args.db_file, ens['id'], 't0_mtime', str(meas.get('t0', (0,0.0))[1]))
             t0_meta = meas.get('t0_meta') or {}
