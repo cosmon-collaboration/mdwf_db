@@ -571,10 +571,21 @@ def do_query(args):
                 if smear_types:
                     for st, cnt in sorted(smear_types):
                         print(f"    - {st}: {cnt}")
-                print(f"  t0: {t0_total}")
-                print(f"  meson2pt: {m2_total}")
-                print(f"  mres: {mres_total}")
-                print(f"  Zv: {zv_total}")
+                # Ranges if available
+                def fmt_range(prefix: str) -> str:
+                    first = params.get(f"{prefix}_first")
+                    last  = params.get(f"{prefix}_last")
+                    inc   = params.get(f"{prefix}_increment")
+                    if first and last:
+                        rng = f" {first}-{last}"
+                        if inc:
+                            rng += f"({inc})"
+                        return rng
+                    return ""
+                print(f"  t0: {t0_total}{fmt_range('t0')}")
+                print(f"  meson2pt: {m2_total}{fmt_range('meson2pt')}")
+                print(f"  mres: {mres_total}{fmt_range('mres')}")
+                print(f"  Zv: {zv_total}{fmt_range('zv')}")
             except Exception:
                 pass
             print("\n=== Operation history ===")
@@ -610,15 +621,24 @@ def do_query(args):
                         smear_types.append((stype, int(v)))
                     except Exception:
                         pass
-                print("\nData:")
-                print(f"  Smear: {smear_total}")
+                print("\nScanned files:")
                 if smear_types:
                     for st, cnt in sorted(smear_types):
-                        print(f"    - {st}: {cnt}")
-                print(f"  t0: {t0_total}")
-                print(f"  meson2pt: {m2_total}")
-                print(f"  mres: {mres_total}")
-                print(f"  Zv: {zv_total}")
+                        print(f"  {st}: {cnt}")
+                def fmt_range(prefix: str) -> str:
+                    first = params.get(f"{prefix}_first")
+                    last  = params.get(f"{prefix}_last")
+                    inc   = params.get(f"{prefix}_increment")
+                    if first and last:
+                        rng = f" {first}-{last}"
+                        if inc:
+                            rng += f"({inc})"
+                        return rng
+                    return ""
+                print(f"  t0: {t0_total}{fmt_range('t0')}")
+                print(f"  meson2pt: {m2_total}{fmt_range('meson2pt')}")
+                print(f"  mres: {mres_total}{fmt_range('mres')}")
+                print(f"  Zv: {zv_total}{fmt_range('zv')}")
             except Exception:
                 pass
 

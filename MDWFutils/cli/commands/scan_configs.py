@@ -111,64 +111,208 @@ def _scan_measurements(ensemble_dir: Path) -> Dict[str, object]:
     smear_total = 0
     smear_mtime = 0.0
     smear_types: Dict[str, Tuple[int, float]] = {}
+    smear_types_meta: Dict[str, Dict[str, Optional[int]]] = {}
+    smear_cfgs_union: set = set()
+    # helper to extract numeric config from filename (last number)
+    def _extract_last_int(name: str) -> Optional[int]:
+        m = list(re.finditer(r"(\d+)", name))
+        if not m:
+            return None
+        try:
+            return int(m[-1].group(1))
+        except Exception:
+            return None
     for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
         if d.is_dir() and d.name.startswith('cnfg_'):
             # Count files with a trailing number in the name (common for smeared cfgs)
             def smear_pred(p: Path) -> bool:
                 return any(ch.isdigit() for ch in p.name) and not p.name.endswith('.in')
-            c, m = _dir_latest_mtime_and_count(d, smear_pred)
+            # Build unique config set per type
+            uniq: set = set()
+            latest = 0.0
+            if d.exists():
+                for p in d.iterdir():
+                    if not p.is_file() or not smear_pred(p):
+                        continue
+                    cfg = _extract_last_int(p.name)
+                    if cfg is not None:
+                        uniq.add(cfg)
+                    try:
+                        st = p.stat()
+                        if st.st_mtime > latest:
+                            latest = st.st_mtime
+                    except OSError:
+                        pass
+            c = len(uniq)
+            m = latest
             smear_total += c
             smear_mtime = max(smear_mtime, m)
             smear_type = d.name[len('cnfg_'):]
             prev_c, prev_m = smear_types.get(smear_type, (0, 0.0))
             smear_types[smear_type] = (prev_c + c, max(prev_m, m))
+            # meta per smear type
+            if uniq:
+                vals = sorted(uniq)
+                inc = _infer_increment(vals)
+                smear_types_meta[smear_type] = {
+                    'first': vals[0],
+                    'last': vals[-1],
+                    'increment': inc,
+                    'total': len(vals)
+                }
+                smear_cfgs_union.update(uniq)
     results['smear'] = (smear_total, smear_mtime)
     results['smear_types'] = smear_types
+    # overall smear meta from union of types
+    if smear_cfgs_union:
+        vals = sorted(smear_cfgs_union)
+        results['smear_meta'] = {
+            'first': vals[0], 'last': vals[-1], 'increment': _infer_increment(vals), 'total': len(vals)
+        }
+    results['smear_types_meta'] = smear_types_meta
 
     # t0 (wflow): files in t0/ matching t0.*.out by default
     t0_dir = ensemble_dir / 't0'
     def t0_pred(p: Path) -> bool:
         return p.name.startswith('t0.') and p.name.endswith('.out')
-    results['t0'] = _dir_latest_mtime_and_count(t0_dir, t0_pred)
+    # dedupe by config number
+    t0_cfgs: set = set()
+    t0_latest = 0.0
+    if t0_dir.exists():
+        for p in t0_dir.iterdir():
+            if not p.is_file() or not t0_pred(p):
+                continue
+            m = re.match(r"^t0\.(\d+)\.out$", p.name)
+            if m:
+                try:
+                    t0_cfgs.add(int(m.group(1)))
+                except Exception:
+                    pass
+            try:
+                st = p.stat()
+                if st.st_mtime > t0_latest:
+                    t0_latest = st.st_mtime
+            except OSError:
+                pass
+    results['t0'] = (len(t0_cfgs), t0_latest)
+    if t0_cfgs:
+        vals = sorted(t0_cfgs)
+        results['t0_meta'] = {
+            'first': vals[0], 'last': vals[-1], 'increment': _infer_increment(vals), 'total': len(vals)
+        }
 
     # meson2pt: prefer meson2pt/DATA directories
     meson_total = 0
     meson_mtime = 0.0
     primary_m2 = ensemble_dir / 'meson2pt' / 'DATA'
-    if primary_m2.exists():
-        c, m = _dir_latest_mtime_and_count(primary_m2, lambda p: p.name.startswith('Meson_2pt_') and p.name.endswith('.bin'))
-        meson_total += c
-        meson_mtime = max(meson_mtime, m)
+    # collect unique cfg numbers from 'ckn<cfg>.bin'
+    m2_cfgs: set = set()
+    def m2_scan_dir(d: Path):
+        nonlocal meson_mtime
+        if not d.exists():
+            return
+        for p in d.iterdir():
+            if not p.is_file():
+                continue
+            n = p.name
+            if not (n.startswith('Meson_2pt_') and n.endswith('.bin')):
+                continue
+            m = re.search(r"ckn(\d+)\.bin$", n)
+            if m:
+                try:
+                    m2_cfgs.add(int(m.group(1)))
+                except Exception:
+                    pass
+            try:
+                st = p.stat()
+                if st.st_mtime > meson_mtime:
+                    meson_mtime = st.st_mtime
+            except OSError:
+                pass
+    m2_scan_dir(primary_m2)
     # Also scan any meson2pt* work directories that contain DATA
     for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
         if d.is_dir() and d.name.lower().startswith('meson2pt') and (d / 'DATA').exists():
-            c, m = _dir_latest_mtime_and_count(d / 'DATA', lambda p: p.name.startswith('Meson_2pt_') and p.name.endswith('.bin'))
-            meson_total += c
-            meson_mtime = max(meson_mtime, m)
-    results['meson2pt'] = (meson_total, meson_mtime)
+            m2_scan_dir(d / 'DATA')
+    if m2_cfgs:
+        vals = sorted(m2_cfgs)
+        results['meson2pt_meta'] = {
+            'first': vals[0], 'last': vals[-1], 'increment': _infer_increment(vals), 'total': len(vals)
+        }
+    results['meson2pt'] = (len(m2_cfgs), meson_mtime)
 
-    # mres: look under mres/ and mres_* directories; count non-input files
+    # mres: union unique cfgs across all mres*/DATA
+    mres_cfgs: set = set()
     mres_total = 0
     mres_mtime = 0.0
     for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
         if d.is_dir() and (d.name == 'mres' or d.name.startswith('mres_')):
-            c, m = _dir_latest_mtime_and_count(d, lambda p: not p.name.endswith('.in') and p.name != 'jlog')
-            mres_total += c
+            if (d / 'DATA').exists():
+                # dedupe by trailing number in filename
+                uniq: set = set()
+                latest = 0.0
+                for p in (d / 'DATA').iterdir():
+                    if not p.is_file():
+                        continue
+                    # filenames like Mres_0ckn12.bin -> capture 12
+                    m = re.search(r"ckn(\d+)\.bin$", p.name)
+                    cfg = int(m.group(1)) if m else _extract_last_int(p.name)
+                    if cfg is not None:
+                        uniq.add(cfg)
+                    try:
+                        st = p.stat()
+                        if st.st_mtime > latest:
+                            latest = st.st_mtime
+                    except OSError:
+                        pass
+                c, m = len(uniq), latest
+            else:
+                c, m = _dir_latest_mtime_and_count(d, lambda p: not p.name.endswith('.in') and p.name != 'jlog')
+            mres_cfgs.update(uniq if 'uniq' in locals() else [])
+            mres_total = len(mres_cfgs) if mres_cfgs else (mres_total + c)
             mres_mtime = max(mres_mtime, m)
-    results['mres'] = (mres_total, mres_mtime)
+    results['mres'] = (len(mres_cfgs) if mres_cfgs else mres_total, mres_mtime)
+    if mres_cfgs:
+        vals = sorted(mres_cfgs)
+        results['mres_meta'] = {
+            'first': vals[0], 'last': vals[-1], 'increment': _infer_increment(vals), 'total': len(vals)
+        }
 
     # Zv: look under Zv/ or Zv_* directories; prefer DATA/*.bin
+    zv_cfgs: set = set()
     zv_total = 0
     zv_mtime = 0.0
     for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
         if d.is_dir() and (d.name == 'Zv' or d.name.startswith('Zv')):
             if (d / 'DATA').exists():
-                c, m = _dir_latest_mtime_and_count(d / 'DATA', lambda p: p.suffix == '.bin')
+                uniq: set = set()
+                latest = 0.0
+                for p in (d / 'DATA').iterdir():
+                    if not p.is_file() or p.suffix != '.bin':
+                        continue
+                    # filenames like FDiagonal_2pt_ckn448.bin -> capture 448
+                    m = re.search(r"ckn(\d+)\.bin$", p.name)
+                    cfg = int(m.group(1)) if m else _extract_last_int(p.name)
+                    if cfg is not None:
+                        uniq.add(cfg)
+                    try:
+                        st = p.stat()
+                        if st.st_mtime > latest:
+                            latest = st.st_mtime
+                    except OSError:
+                        pass
+                c, m = len(uniq), latest
             else:
                 c, m = _dir_latest_mtime_and_count(d, lambda p: p.suffix == '.bin')
-            zv_total += c
+            zv_cfgs.update(uniq if 'uniq' in locals() else [])
+            zv_total = len(zv_cfgs) if zv_cfgs else (zv_total + c)
             zv_mtime = max(zv_mtime, m)
-    results['zv'] = (zv_total, zv_mtime)
+    results['zv'] = (len(zv_cfgs) if zv_cfgs else zv_total, zv_mtime)
+    if zv_cfgs:
+        vals = sorted(zv_cfgs)
+        results['zv_meta'] = {
+            'first': vals[0], 'last': vals[-1], 'increment': _infer_increment(vals), 'total': len(vals)
+        }
 
     return results
 
@@ -262,12 +406,36 @@ def do_scan_configs(args):
                 set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_mtime", str(smt))
             set_ensemble_parameter(args.db_file, ens['id'], 't0_count', str(meas.get('t0', (0,0.0))[0]))
             set_ensemble_parameter(args.db_file, ens['id'], 't0_mtime', str(meas.get('t0', (0,0.0))[1]))
+            t0_meta = meas.get('t0_meta') or {}
+            if t0_meta:
+                set_ensemble_parameter(args.db_file, ens['id'], 't0_first', str(t0_meta.get('first')))
+                set_ensemble_parameter(args.db_file, ens['id'], 't0_last', str(t0_meta.get('last')))
+                inc = t0_meta.get('increment'); set_ensemble_parameter(args.db_file, ens['id'], 't0_increment', str(inc) if inc is not None else '')
+                set_ensemble_parameter(args.db_file, ens['id'], 't0_total', str(t0_meta.get('total')))
             set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_count', str(meas.get('meson2pt', (0,0.0))[0]))
             set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_mtime', str(meas.get('meson2pt', (0,0.0))[1]))
+            m2_meta = meas.get('meson2pt_meta') or {}
+            if m2_meta:
+                set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_first', str(m2_meta.get('first')))
+                set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_last', str(m2_meta.get('last')))
+                inc = m2_meta.get('increment'); set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_increment', str(inc) if inc is not None else '')
+                set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_total', str(m2_meta.get('total')))
             set_ensemble_parameter(args.db_file, ens['id'], 'mres_count', str(meas.get('mres', (0,0.0))[0]))
             set_ensemble_parameter(args.db_file, ens['id'], 'mres_mtime', str(meas.get('mres', (0,0.0))[1]))
+            mres_meta = meas.get('mres_meta') or {}
+            if mres_meta:
+                set_ensemble_parameter(args.db_file, ens['id'], 'mres_first', str(mres_meta.get('first')))
+                set_ensemble_parameter(args.db_file, ens['id'], 'mres_last', str(mres_meta.get('last')))
+                inc = mres_meta.get('increment'); set_ensemble_parameter(args.db_file, ens['id'], 'mres_increment', str(inc) if inc is not None else '')
+                set_ensemble_parameter(args.db_file, ens['id'], 'mres_total', str(mres_meta.get('total')))
             set_ensemble_parameter(args.db_file, ens['id'], 'zv_count', str(meas.get('zv', (0,0.0))[0]))
             set_ensemble_parameter(args.db_file, ens['id'], 'zv_mtime', str(meas.get('zv', (0,0.0))[1]))
+            zv_meta = meas.get('zv_meta') or {}
+            if zv_meta:
+                set_ensemble_parameter(args.db_file, ens['id'], 'zv_first', str(zv_meta.get('first')))
+                set_ensemble_parameter(args.db_file, ens['id'], 'zv_last', str(zv_meta.get('last')))
+                inc = zv_meta.get('increment'); set_ensemble_parameter(args.db_file, ens['id'], 'zv_increment', str(inc) if inc is not None else '')
+                set_ensemble_parameter(args.db_file, ens['id'], 'zv_total', str(zv_meta.get('total')))
 
             updated += 1
         except Exception as e:
