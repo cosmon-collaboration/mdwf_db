@@ -564,18 +564,30 @@ def do_query(args):
 
                 print("\nScanned files:")
                 smear_types = sorted({k[len('smear_'):-len('_total')] for k in params if isinstance(k, str) and k.startswith('smear_') and k.endswith('_total')})
+                lines = []
                 if smear_types:
                     for st in smear_types:
                         line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
                         if line:
-                            print(f"  {st} - {line}")
+                            lines.append((st, line))
                 else:
-                    smear_line = fmt_summary('smear', 'smear_count')
-                    print(f"  Smear - {smear_line if smear_line else (params.get('smear_count', 0))}")
-                print(f"  t0 - {fmt_summary('t0','t0_count')}")
-                print(f"  meson2pt - {fmt_summary('meson2pt','meson2pt_count')}")
-                print(f"  mres - {fmt_summary('mres','mres_count')}")
-                print(f"  Zv - {fmt_summary('zv','zv_count')}")
+                    smear_line = fmt_summary('smear', 'smear_count') or str(params.get('smear_count', 0))
+                    lines.append(("Smear", smear_line))
+
+                lines.append(("t0", fmt_summary('t0','t0_count')))
+                lines.append(("meson2pt", fmt_summary('meson2pt','meson2pt_count')))
+                lines.append(("mres", fmt_summary('mres','mres_count')))
+                lines.append(("Zv", fmt_summary('zv','zv_count')))
+
+                # Align dashes by padding label column
+                width = 0
+                for k, v in lines:
+                    if v:
+                        width = max(width, len(k))
+                for k, v in lines:
+                    if not v:
+                        continue
+                    print(f"  {k.ljust(width)} - {v}")
             except Exception:
                 pass
             print("\n=== Operation history ===")
@@ -610,18 +622,29 @@ def do_query(args):
 
                 print("\nScanned files:")
                 smear_types = sorted({k[len('smear_'):-len('_total')] for k in params if isinstance(k, str) and k.startswith('smear_') and k.endswith('_total')})
+                lines = []
                 if smear_types:
                     for st in smear_types:
                         line = fmt_summary(f"smear_{st}", f"smear_{st}_count")
                         if line:
-                            print(f"  {st} - {line}")
+                            lines.append((st, line))
                 else:
-                    smear_line = fmt_summary('smear', 'smear_count')
-                    print(f"  Smear - {smear_line if smear_line else (params.get('smear_count', 0))}")
-                print(f"  t0 - {fmt_summary('t0','t0_count')}")
-                print(f"  meson2pt - {fmt_summary('meson2pt','meson2pt_count')}")
-                print(f"  mres - {fmt_summary('mres','mres_count')}")
-                print(f"  Zv - {fmt_summary('zv','zv_count')}")
+                    smear_line = fmt_summary('smear', 'smear_count') or str(params.get('smear_count', 0))
+                    lines.append(("Smear", smear_line))
+
+                lines.append(("t0", fmt_summary('t0','t0_count')))
+                lines.append(("meson2pt", fmt_summary('meson2pt','meson2pt_count')))
+                lines.append(("mres", fmt_summary('mres','mres_count')))
+                lines.append(("Zv", fmt_summary('zv','zv_count')))
+
+                width = 0
+                for k, v in lines:
+                    if v:
+                        width = max(width, len(k))
+                for k, v in lines:
+                    if not v:
+                        continue
+                    print(f"  {k.ljust(width)} - {v}")
             except Exception:
                 pass
 
