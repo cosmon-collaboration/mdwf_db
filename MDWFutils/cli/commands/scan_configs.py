@@ -76,6 +76,103 @@ def _extract_params_signature(ens_dir: Path) -> Optional[Tuple[str, str, str, st
     return (beta, b, Ls, mc, ms, ml, L, T)
 
 
+def _dir_latest_mtime_and_count(root: Path, file_pred=None) -> Tuple[int, float]:
+    """
+    Return (count, latest_mtime) for files under root matching file_pred.
+    file_pred: callable(Path) -> bool; if None, count all regular files.
+    """
+    count = 0
+    latest = 0.0
+    if not root.exists() or not root.is_dir():
+        return 0, 0.0
+    for p in root.iterdir():
+        if not p.is_file():
+            continue
+        if file_pred and not file_pred(p):
+            continue
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        count += 1
+        if st.st_mtime > latest:
+            latest = st.st_mtime
+    return count, latest
+
+
+def _scan_measurements(ensemble_dir: Path) -> Dict[str, object]:
+    """
+    Scan for measurement outputs and return a dict mapping metric keys to
+    (count, latest_mtime). Keys: smear_count, t0_count, meson2pt_count, mres_count, zv_count
+    """
+    results: Dict[str, object] = {}
+
+    # Smearing: sum across cnfg_* directories, count files that look like outputs
+    smear_total = 0
+    smear_mtime = 0.0
+    smear_types: Dict[str, Tuple[int, float]] = {}
+    for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
+        if d.is_dir() and d.name.startswith('cnfg_'):
+            # Count files with a trailing number in the name (common for smeared cfgs)
+            def smear_pred(p: Path) -> bool:
+                return any(ch.isdigit() for ch in p.name) and not p.name.endswith('.in')
+            c, m = _dir_latest_mtime_and_count(d, smear_pred)
+            smear_total += c
+            smear_mtime = max(smear_mtime, m)
+            smear_type = d.name[len('cnfg_'):]
+            prev_c, prev_m = smear_types.get(smear_type, (0, 0.0))
+            smear_types[smear_type] = (prev_c + c, max(prev_m, m))
+    results['smear'] = (smear_total, smear_mtime)
+    results['smear_types'] = smear_types
+
+    # t0 (wflow): files in t0/ matching t0.*.out by default
+    t0_dir = ensemble_dir / 't0'
+    def t0_pred(p: Path) -> bool:
+        return p.name.startswith('t0.') and p.name.endswith('.out')
+    results['t0'] = _dir_latest_mtime_and_count(t0_dir, t0_pred)
+
+    # meson2pt: prefer meson2pt/DATA directories
+    meson_total = 0
+    meson_mtime = 0.0
+    primary_m2 = ensemble_dir / 'meson2pt' / 'DATA'
+    if primary_m2.exists():
+        c, m = _dir_latest_mtime_and_count(primary_m2, lambda p: p.name.startswith('Meson_2pt_') and p.name.endswith('.bin'))
+        meson_total += c
+        meson_mtime = max(meson_mtime, m)
+    # Also scan any meson2pt* work directories that contain DATA
+    for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
+        if d.is_dir() and d.name.lower().startswith('meson2pt') and (d / 'DATA').exists():
+            c, m = _dir_latest_mtime_and_count(d / 'DATA', lambda p: p.name.startswith('Meson_2pt_') and p.name.endswith('.bin'))
+            meson_total += c
+            meson_mtime = max(meson_mtime, m)
+    results['meson2pt'] = (meson_total, meson_mtime)
+
+    # mres: look under mres/ and mres_* directories; count non-input files
+    mres_total = 0
+    mres_mtime = 0.0
+    for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
+        if d.is_dir() and (d.name == 'mres' or d.name.startswith('mres_')):
+            c, m = _dir_latest_mtime_and_count(d, lambda p: not p.name.endswith('.in') and p.name != 'jlog')
+            mres_total += c
+            mres_mtime = max(mres_mtime, m)
+    results['mres'] = (mres_total, mres_mtime)
+
+    # Zv: look under Zv/ or Zv_* directories; prefer DATA/*.bin
+    zv_total = 0
+    zv_mtime = 0.0
+    for d in ensemble_dir.iterdir() if ensemble_dir.exists() else []:
+        if d.is_dir() and (d.name == 'Zv' or d.name.startswith('Zv')):
+            if (d / 'DATA').exists():
+                c, m = _dir_latest_mtime_and_count(d / 'DATA', lambda p: p.suffix == '.bin')
+            else:
+                c, m = _dir_latest_mtime_and_count(d, lambda p: p.suffix == '.bin')
+            zv_total += c
+            zv_mtime = max(zv_mtime, m)
+    results['zv'] = (zv_total, zv_mtime)
+
+    return results
+
+
 def register(subparsers):
     p = subparsers.add_parser(
         'scan',
@@ -147,9 +244,28 @@ def do_scan_configs(args):
             # Persist change-detection markers
             set_ensemble_parameter(args.db_file, ens['id'], 'cnfg_count', str(file_count))
             set_ensemble_parameter(args.db_file, ens['id'], 'cnfg_mtime', str(latest_mtime))
+
+            # Scan measurement outputs and persist summary stats
+            meas = _scan_measurements(ens_dir)
+            set_ensemble_parameter(args.db_file, ens['id'], 'smear_count', str(meas.get('smear', (0,0.0))[0]))
+            set_ensemble_parameter(args.db_file, ens['id'], 'smear_mtime', str(meas.get('smear', (0,0.0))[1]))
+            # Persist per-smear-type counts and mtimes under keys like smear_STOUT8_count
+            for stype, (scount, smt) in (meas.get('smear_types') or {}).items():
+                key_base = f"smear_{stype}"
+                set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_count", str(scount))
+                set_ensemble_parameter(args.db_file, ens['id'], f"{key_base}_mtime", str(smt))
+            set_ensemble_parameter(args.db_file, ens['id'], 't0_count', str(meas.get('t0', (0,0.0))[0]))
+            set_ensemble_parameter(args.db_file, ens['id'], 't0_mtime', str(meas.get('t0', (0,0.0))[1]))
+            set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_count', str(meas.get('meson2pt', (0,0.0))[0]))
+            set_ensemble_parameter(args.db_file, ens['id'], 'meson2pt_mtime', str(meas.get('meson2pt', (0,0.0))[1]))
+            set_ensemble_parameter(args.db_file, ens['id'], 'mres_count', str(meas.get('mres', (0,0.0))[0]))
+            set_ensemble_parameter(args.db_file, ens['id'], 'mres_mtime', str(meas.get('mres', (0,0.0))[1]))
+            set_ensemble_parameter(args.db_file, ens['id'], 'zv_count', str(meas.get('zv', (0,0.0))[0]))
+            set_ensemble_parameter(args.db_file, ens['id'], 'zv_mtime', str(meas.get('zv', (0,0.0))[1]))
+
             updated += 1
         except Exception as e:
-            print(f"WARNING: Failed to set config range for ensemble {ens['id']}: {e}", file=sys.stderr)
+            print(f"WARNING: Failed to set config/meas ranges for ensemble {ens['id']}: {e}", file=sys.stderr)
 
     # Optionally scan filesystem for ensembles not in DB
     fs_reported = 0

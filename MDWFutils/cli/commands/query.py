@@ -544,6 +544,39 @@ def do_query(args):
                 print("Parameters:")
                 for k, v in sorted(ens['parameters'].items()):
                     print(f"    {k} = {v}")
+            # Data summary (measurements)
+            try:
+                params = ens.get('parameters', {}) or {}
+                smear_total = int(params.get('smear_count', 0) or 0)
+                t0_total = int(params.get('t0_count', 0) or 0)
+                m2_total = int(params.get('meson2pt_count', 0) or 0)
+                mres_total = int(params.get('mres_count', 0) or 0)
+                zv_total = int(params.get('zv_count', 0) or 0)
+                # Per-smear-type breakdown
+                smear_types = []
+                for k, v in params.items():
+                    if not isinstance(k, str):
+                        continue
+                    if not k.startswith('smear_') or not k.endswith('_count'):
+                        continue
+                    if k == 'smear_count':
+                        continue
+                    stype = k[len('smear_'):-len('_count')]
+                    try:
+                        smear_types.append((stype, int(v)))
+                    except Exception:
+                        pass
+                print("\nData:")
+                print(f"  Smear: {smear_total}")
+                if smear_types:
+                    for st, cnt in sorted(smear_types):
+                        print(f"    - {st}: {cnt}")
+                print(f"  t0: {t0_total}")
+                print(f"  meson2pt: {m2_total}")
+                print(f"  mres: {mres_total}")
+                print(f"  Zv: {zv_total}")
+            except Exception:
+                pass
             print("\n=== Operation history ===")
             print_history(args.db_file, ensemble_id)
         else:
@@ -556,6 +589,38 @@ def do_query(args):
             print(f"  hmc_exec_path   = {exec_path if exec_path else 'NOT SET'}")
             print(f"  hmc_bind_script_gpu = {bind_script_gpu if bind_script_gpu else 'NOT SET'}")
             print(f"  hmc_bind_script_cpu = {bind_script_cpu if bind_script_cpu else 'NOT SET'}")
+
+            # Data summary (measurements) in compact view
+            try:
+                smear_total = int(params.get('smear_count', 0) or 0)
+                t0_total = int(params.get('t0_count', 0) or 0)
+                m2_total = int(params.get('meson2pt_count', 0) or 0)
+                mres_total = int(params.get('mres_count', 0) or 0)
+                zv_total = int(params.get('zv_count', 0) or 0)
+                smear_types = []
+                for k, v in params.items():
+                    if not isinstance(k, str):
+                        continue
+                    if not k.startswith('smear_') or not k.endswith('_count'):
+                        continue
+                    if k == 'smear_count':
+                        continue
+                    stype = k[len('smear_'):-len('_count')]
+                    try:
+                        smear_types.append((stype, int(v)))
+                    except Exception:
+                        pass
+                print("\nData:")
+                print(f"  Smear: {smear_total}")
+                if smear_types:
+                    for st, cnt in sorted(smear_types):
+                        print(f"    - {st}: {cnt}")
+                print(f"  t0: {t0_total}")
+                print(f"  meson2pt: {m2_total}")
+                print(f"  mres: {mres_total}")
+                print(f"  Zv: {zv_total}")
+            except Exception:
+                pass
 
             # Compact operations table
             rows = _fetch_operations_summary(args.db_file, ensemble_id)
