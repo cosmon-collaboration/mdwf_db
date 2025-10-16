@@ -71,10 +71,10 @@ mdwf_setup_update_trap() {
       echo "$S"
     }
 
-    # Wait briefly for Slurm to record a terminal state
+    # Wait for Slurm to record a terminal state (accounting can lag)
     mdwf_get_final_state() {
       local JID="$1"
-      local MAX_TRIES=20
+      local MAX_TRIES=${MDWF_DB_SLURM_POLL_TRIES:-20}
       local S=""
       for ((i=0;i<MAX_TRIES;i++)); do
         S="$(mdwf_query_state_once "$JID")"
@@ -118,6 +118,13 @@ mdwf_setup_update_trap() {
       REASON="job_completed"
     fi
 
+    # If Slurm status string is non-terminal or empty, log the normalized status instead
+    local LOG_SLURM_STATUS="$SLURM_STATUS"
+    local LOG_U="$(echo "$LOG_SLURM_STATUS" | tr '[:lower:]' '[:upper:]')"
+    if [[ -z "$LOG_SLURM_STATUS" || "$LOG_U" == "RUNNING" || "$LOG_U" == "PENDING" || "$LOG_U" == "UNKNOWN" ]]; then
+      LOG_SLURM_STATUS="$ST"
+    fi
+
     local PARAMS_STR=""
     if [[ -n "$SC" && -n "$EC" ]]; then
       PARAMS_STR="config_start=$SC config_end=$EC"
@@ -128,11 +135,40 @@ mdwf_setup_update_trap() {
       PARAMS_STR="$PARAMS"
     fi
     if [[ -n "$RUN_DIR" ]]; then
-      PARAMS_STR="$PARAMS_STR run_dir=$RUN_DIR"
+      PARAMS_STR="$PARAMS_STR run_dir=$RUN_DIR"Right now the slurm_status parameter isn't getting changed properly on job finishing. For example,
+
+Op 39: GLU_WFLOW [COMPLETED]
+  Created: 2025-10-07T09:00:30.006691 (by walkloud)
+  Updated: 2025-10-07T09:00:30.254623
+    config_end = 596
+    config_increment = 4
+    config_start = 576
+    exit_code = 0
+    host = nid004300
+    reason = job_completed
+    run_dir = /global/cfs/cdirs/m2986/cosmon/mdwf/ENSEMBLES/b4.008/b1.75Ls10/mc0.8555/ms0.0725/ml0.0195/L24/T48
+    runtime = 144
+    slurm_job = 43680978
+    slurm_status = RUNNING
+Op 40: WIT_MESON2PT [COMPLETED]
+  Created: 2025-10-07T09:00:30.498519 (by walkloud)
+  Updated: 2025-10-07T10:00:20.973805
+    config_end = 596
+    config_increment = 4
+    config_start = 576
+    exit_code = 0
+    host = nid002328
+    reason = job_completed
+    run_dir = /global/cfs/cdirs/m2986/cosmon/mdwf/ENSEMBLES/b4.008/b1.75Ls10/mc0.8555/ms0.0725/ml0.0195/L24/T48
+    runtime = 1418
+    slurm_job = 43682452
+    slurm_status = RUNNING
+
+Is appearing. So the [COMPLETED] updated but the slurm_status didn't. This is common for all the slurm scripts, and may be related to the exit trap
     fi
 
-    echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON slurm_status=$SLURM_STATUS $PARAMS_STR\"" >> "$LOGFILE"
-    echo \"$OP job $ST ($EXIT_CODE) - $REASON (SLURM: $SLURM_STATUS)\"
+    echo "mdwf_db update --db-file=$DB --ensemble-id=$EID --operation-type=$OP --status=$ST --user=$USER --params=\"exit_code=$EXIT_CODE runtime=$SECONDS slurm_job=$SLURM_JOB_ID host=$(hostname) reason=$REASON slurm_status=$LOG_SLURM_STATUS $PARAMS_STR\"" >> "$LOGFILE"
+    echo \"$OP job $ST ($EXIT_CODE) - $REASON (SLURM: $LOG_SLURM_STATUS)\"
   }
   # Trap only EXIT to avoid duplicate invocations on both signal and exit
   trap update_status EXIT
