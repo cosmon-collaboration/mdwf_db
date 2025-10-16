@@ -477,12 +477,14 @@ def generate_wit_sbatch(
 
     workdir = Path(ensemble_dir) / "meson2pt"
     workdir.mkdir(parents=True, exist_ok=True)
+    (workdir / "jlog").mkdir(parents=True, exist_ok=True)
+    (workdir / "slurm").mkdir(parents=True, exist_ok=True)
 
     if not output_file:
-        output_file = str(workdir / f"meson2pt_{config_start}_{config_end}_{config_inc}.sh")
+        output_file = str(workdir / "slurm" / f"meson2pt_{config_start}_{config_end}_{config_inc}.sh")
 
     # Generate WIT input file with kappa values
-    wit_input_file = Path(ensemble_dir) / "meson2pt" / "DWF.in"
+    wit_input_file = workdir / "DWF.in"
     wit_params = {
         'Propagator 0': {'kappa': str(kappaL)},
         'Propagator 1': {'kappa': str(kappaS)},
@@ -507,17 +509,21 @@ def generate_wit_sbatch(
 #SBATCH -o {workdir}/jlog/%J.log
 
 cd {workdir}
+mkdir -p DATA
 
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 PARAMS="{params_str}"
 
-# Prepare DB update variables and queue RUNNING update off-node
 DB="{db_file}"
 EID={ensemble_id}
 OP="WIT_MESON2PT"
+SC={config_start}
+EC={config_end}
+IC={config_inc}
 USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+
 # Source logging helper via process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)
 

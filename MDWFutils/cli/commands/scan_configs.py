@@ -8,10 +8,140 @@ Stores results in ensemble_parameters via set_configuration_range.
 
 import sys
 import re
+import stat
+import grp
+import pwd
+import os
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Set
 
 from MDWFutils.db import list_ensembles, set_configuration_range, get_ensemble_id_by_directory, set_ensemble_parameter
+
+
+def _check_file_permissions(file_path: Path, is_config_file: bool = False) -> Tuple[List[str], Optional[str]]:
+    """
+    Check file permissions and ownership.
+    
+    Args:
+        file_path: Path to the file to check
+        is_config_file: True if this is a configuration file (lat.* files)
+    
+    Returns:
+        Tuple of (list of permission issues, username of file owner or None)
+    """
+    issues = []
+    username = None
+    
+    try:
+        st = file_path.stat()
+        
+        # Get username of file owner
+        try:
+            username = pwd.getpwuid(st.st_uid).pw_name
+        except KeyError:
+            username = f"uid:{st.st_uid}"
+        
+        # Check group ownership (should be m2986)
+        try:
+            group_name = grp.getgrgid(st.st_gid).gr_name
+            if group_name != 'm2986':
+                issues.append(f"wrong group '{group_name}' (should be m2986)")
+        except KeyError:
+            issues.append(f"unknown group ID {st.st_gid} (should be m2986)")
+        
+        # Check permissions
+        mode = st.st_mode
+        
+        if is_config_file:
+            # Configuration files should be read-only (444 or 644)
+            if mode & stat.S_IWUSR or mode & stat.S_IWGRP or mode & stat.S_IWOTH:
+                issues.append("config file should be read-only")
+        else:
+            # Other files should have group read/write/execute permissions
+            if not (mode & stat.S_IRGRP):
+                issues.append("missing group read permission")
+            if not (mode & stat.S_IWGRP):
+                issues.append("missing group write permission")
+            # Only check execute if it's a directory or already executable by owner
+            if file_path.is_dir() or (mode & stat.S_IXUSR):
+                if not (mode & stat.S_IXGRP):
+                    issues.append("missing group execute permission")
+                    
+    except OSError as e:
+        issues.append(f"cannot check permissions: {e}")
+    
+    return issues, username
+
+
+def _scan_permissions(ensemble_dir: Path, check_permissions: bool = False) -> Tuple[Dict[str, List[str]], Set[str]]:
+    """
+    Scan directory tree for permission issues.
+    
+    Args:
+        ensemble_dir: Root ensemble directory to scan
+        check_permissions: Whether to actually check permissions
+    
+    Returns:
+        Tuple of (dict mapping file paths to permission issues, set of usernames with issues)
+    """
+    if not check_permissions:
+        return {}, set()
+    
+    permission_issues = {}
+    users_with_issues = set()
+    
+    # Check cnfg directory and configuration files
+    cnfg_dir = ensemble_dir / 'cnfg'
+    if cnfg_dir.exists():
+        # Check cnfg directory itself
+        issues, username = _check_file_permissions(cnfg_dir, is_config_file=False)
+        if issues:
+            permission_issues[str(cnfg_dir)] = issues
+            if username:
+                users_with_issues.add(username)
+            
+        # Check configuration files (lat.* files should be read-only)
+        for file_path in cnfg_dir.iterdir():
+            if file_path.is_file():
+                is_config = 'lat' in file_path.name
+                issues, username = _check_file_permissions(file_path, is_config_file=is_config)
+                if issues:
+                    permission_issues[str(file_path)] = issues
+                    if username:
+                        users_with_issues.add(username)
+    
+    # Check measurement directories and their contents
+    for item in ensemble_dir.iterdir():
+        if item.is_dir() and item.name != 'cnfg':
+            # Check measurement directory
+            issues, username = _check_file_permissions(item, is_config_file=False)
+            if issues:
+                permission_issues[str(item)] = issues
+                if username:
+                    users_with_issues.add(username)
+            
+            # Recursively check files in measurement directories
+            for root, dirs, files in os.walk(str(item)):
+                root_path = Path(root)
+                # Check subdirectories
+                for dir_name in dirs:
+                    dir_path = root_path / dir_name
+                    issues, username = _check_file_permissions(dir_path, is_config_file=False)
+                    if issues:
+                        permission_issues[str(dir_path)] = issues
+                        if username:
+                            users_with_issues.add(username)
+                
+                # Check files
+                for file_name in files:
+                    file_path = root_path / file_name
+                    issues, username = _check_file_permissions(file_path, is_config_file=False)
+                    if issues:
+                        permission_issues[str(file_path)] = issues
+                        if username:
+                            users_with_issues.add(username)
+    
+    return permission_issues, users_with_issues
 
 
 def _extract_numbers_from_cnfg(cnfg_dir: Path) -> List[int]:
@@ -334,6 +464,11 @@ def register(subparsers):
         help='Force rescan and refresh stats even if nothing appears to have changed'
     )
     p.add_argument(
+        '--check-permissions',
+        action='store_true',
+        help='Check file permissions and group ownership (config files should be read-only, others should have group rwX, all should be owned by m2986 group)'
+    )
+    p.add_argument(
         '--base-dir',
         default=None,
         help='Base directory containing TUNING/ and ENSEMBLES/. Defaults to the directory of the DB file.'
@@ -344,6 +479,8 @@ def register(subparsers):
 def do_scan_configs(args):
     ens_list = list_ensembles(args.db_file, detailed=True)
     updated = 0
+    total_permission_issues = 0
+    
     for ens in ens_list:
         ens_dir = Path(ens['directory'])
         cnfg_dir = ens_dir / 'cnfg'
@@ -453,6 +590,22 @@ def do_scan_configs(args):
             updated += 1
         except Exception as e:
             print(f"WARNING: Failed to set config/meas ranges for ensemble {ens['id']}: {e}", file=sys.stderr)
+        
+        # Check permissions if requested
+        if getattr(args, 'check_permissions', False):
+            permission_issues, users_with_issues = _scan_permissions(ens_dir, check_permissions=True)
+            if permission_issues:
+                # Include nickname if available
+                nickname = ens.get('nickname')
+                ens_display = f"ensemble {ens['id']}"
+                if nickname:
+                    ens_display += f" ({nickname})"
+                
+                # Format user list
+                users_str = ", ".join(sorted(users_with_issues)) if users_with_issues else "unknown"
+                
+                print(f"Permission issues in {ens_display} at {ens_dir}: {len(permission_issues)} file(s) with wrong permissions (users: {users_str})")
+                total_permission_issues += len(permission_issues)
 
     # Optionally scan filesystem for ensembles not in DB
     fs_reported = 0
@@ -494,6 +647,11 @@ def do_scan_configs(args):
     msg = f"Updated configuration ranges for {updated} ensemble(s)"
     if getattr(args, 'scan_fs', False):
         msg += f"; reported {fs_reported} filesystem ensemble(s) not in DB"
+    if getattr(args, 'check_permissions', False):
+        if total_permission_issues > 0:
+            msg += f"; found {total_permission_issues} permission issue(s)"
+        else:
+            msg += "; all permissions OK"
     print(msg)
     return 0
 

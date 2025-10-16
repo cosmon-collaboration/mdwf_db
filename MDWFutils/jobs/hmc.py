@@ -278,6 +278,8 @@ def generate_hmc_slurm_gpu(
 #SBATCH --mail-type=BEGIN,END
 {f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
 #SBATCH --signal=B:TERM@60
+#SBATCH --output={str(work_root)}/cnfg/jlog/%j.out
+#SBATCH --error={str(work_root)}/cnfg/jlog/%j.err
 
 batch="$0"
 DB="{db_file_abs}"
@@ -304,16 +306,9 @@ echo "EXEC = $EXEC"
 echo "BIND = $BIND"
 echo "n_trajec = $n_trajec"
 
-
-mkdir -p cnfg
-mkdir -p log_hmc
-mkdir -p out
+mkdir -p cnfg/log_hmc cnfg/jlog
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
-
-  # Ensure SQLite uses a network-FS friendly journal mode to avoid 'disk I/O error'
-  export MDWF_DB_JOURNAL=${{MDWF_DB_JOURNAL:-DELETE}}
-
 
 start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
 if [[ -z $start ]]; then
@@ -352,7 +347,7 @@ export OMP_NUM_THREADS={omp_threads}
 echo "Nthreads $OMP_NUM_THREADS"
 
 echo "START `date`"
-srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > ../log_hmc/log_{ens_name}.$start
+srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > log_hmc/log_{ens_name}.$start
 echo "STOP `date`"
 
 echo "All done in $SECONDS seconds"
@@ -438,6 +433,8 @@ def generate_hmc_slurm_cpu(
 #SBATCH --mail-type=BEGIN,END
 {f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
 #SBATCH --signal=B:TERM@60
+#SBATCH --output={str(work_root)}/cnfg/jlog/%j.out
+#SBATCH --error={str(work_root)}/cnfg/jlog/%j.err
 
 batch="$0"
 DB="{db_file_abs}"
@@ -465,14 +462,10 @@ echo "EXEC = $EXEC"
 echo "BIND = $BIND"
 echo "n_trajec = $n_trajec"
 
-mkdir -p cnfg
-mkdir -p log_hmc
-mkdir -p out
+mkdir -p cnfg/log_hmc cnfg/jlog
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-  # Ensure SQLite uses a network-FS friendly journal mode to avoid 'disk I/O error'
-  export MDWF_DB_JOURNAL=${{MDWF_DB_JOURNAL:-DELETE}}
 
 start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
 if [[ -z $start ]]; then
@@ -504,7 +497,7 @@ export OMP_NUM_THREADS={omp_threads}
 echo "Nthreads $OMP_NUM_THREADS"
 
 echo "START `date`"
-srun $BIND $EXEC --mpi $mpi --grid $VOL --dslash-unroll --cacheblocking $cacheblocking > ../log_hmc/log_{ens_name}.$start
+srun $BIND $EXEC --mpi $mpi --grid $VOL --dslash-unroll --cacheblocking $cacheblocking > log_hmc/log_{ens_name}.$start
 echo "STOP `date`"
 
 echo "All done in $SECONDS seconds"

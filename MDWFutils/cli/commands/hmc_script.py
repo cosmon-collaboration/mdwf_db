@@ -261,7 +261,7 @@ def do_hmc_script_gpu(args):
     
     # Ensure slurm folder & output path (prefer run_dir when provided)
     work_root = Path(getattr(args, 'run_dir', '')).resolve() if getattr(args, 'run_dir', None) else ens_dir
-    slurm_dir = work_root / 'slurm'
+    slurm_dir = work_root / 'cnfg' / 'slurm'
     slurm_dir.mkdir(parents=True, exist_ok=True)
     out_file = args.output_file or slurm_dir / f"hmc_gpu_{ensemble_id}_{args.mode}.sbatch"
     
@@ -516,7 +516,7 @@ def do_hmc_script_cpu(args):
 
     # Ensure slurm folder & output path (prefer run_dir when provided)
     work_root = Path(getattr(args, 'run_dir', '')).resolve() if getattr(args, 'run_dir', None) else ens_dir
-    slurm_dir = work_root / 'slurm'
+    slurm_dir = work_root / 'cnfg' / 'slurm'
     slurm_dir.mkdir(parents=True, exist_ok=True)
     out_file = args.output_file or slurm_dir / f"hmc_cpu_{ensemble_id}_{args.mode}.sbatch"
 

@@ -60,6 +60,7 @@ def generate_wflow_sbatch(
     # build GLU input
     t0_dir = base_work / f"t0"
     t0_dir.mkdir(parents=True, exist_ok=True)
+    (t0_dir / "jlog").mkdir(parents=True, exist_ok=True)
     inp = t0_dir / "glu_smear.in"
 
     glu_overrides = {
@@ -85,8 +86,8 @@ def generate_wflow_sbatch(
 
     generate_glu_input(str(inp), glu_overrides)
 
-    # build SBATCH
-    sbatch_dir = (base_work / "slurm") if run_dir else (ensemble_dir / "slurm")
+    # build SBATCH - save in the t0 directory's slurm subfolder
+    sbatch_dir = t0_dir / "slurm"
     sbatch_dir.mkdir(parents=True, exist_ok=True)
 
     if not output_file:
@@ -101,8 +102,8 @@ def generate_wflow_sbatch(
 #SBATCH -q {queue}
 #SBATCH -t {time_limit}
 #SBATCH -J {job_name}
-#SBATCH --output={base_work}/jlog/%j.out
-#SBATCH --error={base_work}/jlog/%j.err
+#SBATCH --output={t0_dir}/jlog/%j.out
+#SBATCH --error={t0_dir}/jlog/%j.err
 #SBATCH -N {nodes}
 #SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH --signal=B:TERM@60
@@ -128,7 +129,7 @@ USER=$(whoami)
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 RUN_DIR="{str(base_work)}"
 
-mkdir -p "{base_work}/jlog" "{t0_dir}"
+mkdir -p "{t0_dir}/jlog"
 
 # Source logging helper via process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)

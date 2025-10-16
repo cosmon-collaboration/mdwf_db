@@ -160,9 +160,9 @@ def generate_mres_sbatch(
     workdir = base_work / folder_name
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "jlog").mkdir(parents=True, exist_ok=True)
-    # Build SBATCH output path under slurm/
-    sbatch_dir = Path(ensemble_dir) / "slurm"
-    sbatch_dir.mkdir(parents=True, exist_ok=True)
+    (workdir / "slurm").mkdir(parents=True, exist_ok=True)
+    # Build SBATCH output path under measurement workdir slurm/
+    sbatch_dir = workdir / "slurm"
 
     wit_input_file = workdir / "DWF_mres.in"
     wit_params = {
@@ -208,12 +208,11 @@ def generate_mres_sbatch(
 #SBATCH -o {workdir}/jlog/%J.log
 
 cd {workdir}
+mkdir -p DATA
 
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-RUN_DIR="{str(base_work)}"
-# Prepare DB update variables and queue RUNNING update off-node
 DB="{db_file}"
 EID={ensemble_id}
 OP="WIT_MRES"
@@ -221,6 +220,7 @@ SC={config_start}
 EC={config_end}
 IC={config_inc}
 USER=$(whoami)
+RUN_DIR="{str(base_work)}"
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
 # Source logging helper via process substitution

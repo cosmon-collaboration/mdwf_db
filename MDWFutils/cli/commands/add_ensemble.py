@@ -145,8 +145,12 @@ def do_add(args):
 
     #create folders
     ens_dir.mkdir(parents=True, exist_ok=True)
-    for sub in ("log_hmc","jlog","cnfg","slurm"):
-        (ens_dir / sub).mkdir(exist_ok=True)
+    # Create cnfg directory with log_hmc, slurm, and jlog subfolders
+    cnfg_dir = ens_dir / "cnfg"
+    cnfg_dir.mkdir(exist_ok=True)
+    (cnfg_dir / "log_hmc").mkdir(exist_ok=True)
+    (cnfg_dir / "slurm").mkdir(exist_ok=True)
+    (cnfg_dir / "jlog").mkdir(exist_ok=True)
 
     eid, created = add_ensemble(
         args.db_file, str(ens_dir), pdict, description=args.description

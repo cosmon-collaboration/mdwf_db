@@ -160,9 +160,9 @@ def generate_meson2pt_sbatch(
     workdir = base_work / folder_name
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "jlog").mkdir(parents=True, exist_ok=True)
-    # Build SBATCH output path under slurm/
-    sbatch_dir = Path(ensemble_dir) / "slurm"
-    sbatch_dir.mkdir(parents=True, exist_ok=True)
+    (workdir / "slurm").mkdir(parents=True, exist_ok=True)
+    # Build SBATCH output path under measurement workdir slurm/
+    sbatch_dir = workdir / "slurm"
 
     wit_input_file = workdir / "DWF_meson2pt.in"
     wit_params = {
