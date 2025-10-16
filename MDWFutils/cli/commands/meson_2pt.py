@@ -33,21 +33,21 @@ WHAT THIS DOES:
 • Configures job parameters for HPC submission
 
 WIT PROGRAM:
-WIT (Wilson Improved Twisted mass) is used for computing meson correlators
+WIT (Witnesser) is used for computing meson correlators
 from Domain Wall Fermion propagators on smeared gauge configurations.
 
 JOB PARAMETERS (via -j/--job-params):
 Required parameters:
-          queue:         SLURM queue (e.g., regular)
-          time_limit:    Job time limit (e.g., 06:00:00)
-          nodes:         Number of nodes (e.g., 1)
-          mail_user:     Email for job notifications
+  time_limit:    Job time limit (e.g., 06:00:00)
+  nodes:         Number of nodes (e.g., 1)
 
 Optional parameters (with defaults):
   account: m2986_g          # SLURM account
-  constraint: gpu           # Node constraint
+  constraint: gpu           # Node constraint  
+  queue: regular            # SLURM partition
   gpus: 4                   # GPUs per node
   gpu_bind: none            # GPU binding
+  mail_user: (none)         # Email for job notifications
 
 WIT PARAMETERS (via -w/--wit-params):
 WIT parameters use dot notation (SECTION.KEY=value) and can be overridden:
@@ -91,40 +91,40 @@ This allows using different masses than those stored in the ensemble
 parameters, even if they don't match the file path naming convention.
 
 EXAMPLES:
-  # Basic meson correlator measurement
-          mdwf_db meson-2pt -e 1 \\
-            -j "queue=regular time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
+  # Basic meson correlator measurement (only time_limit and nodes required)
+  mdwf_db meson2pt-script -e 1 \\
+    -j "time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
     -w "Configurations.first=100 Configurations.last=200"
 
   # Custom solver settings
-          mdwf_db meson-2pt -e 1 \\
-            -j "queue=regular time_limit=12:00:00 nodes=2 mail_user=user@example.com" \\
-    -w "Configurations.first=0 Configurations.last=50 Solver 0.nmx=10000 Configurations.step=2"
+  mdwf_db meson2pt-script -e 1 \\
+    -j "time_limit=12:00:00 nodes=2 mail_user=user@example.com" \\
+    -w "Configurations.first=0 Configurations.last=50 Solver_0.nmx=10000 Configurations.step=2"
 
   # Point source measurement
-          mdwf_db meson-2pt -e 1 \\
-            -j "queue=regular time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
-    -w "Configurations.first=100 Configurations.last=150 Propagator 0.Source=Point"
+  mdwf_db meson2pt-script -e 1 \\
+    -j "time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
+    -w "Configurations.first=100 Configurations.last=150 Propagator_0.Source=Point"
 
   # Override quark masses (useful for parameter studies)
-          mdwf_db meson-2pt -e 1 --ml 0.005 --ms 0.04 --mc 0.2 \\
-            -j "queue=regular time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
+  mdwf_db meson2pt-script -e 1 --ml 0.005 --ms 0.04 --mc 0.2 \\
+    -j "time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
     -w "Configurations.first=100 Configurations.last=200"
 
   # Use stored default parameters
-  mdwf_db meson-2pt -e 1 --use-default-params
+  mdwf_db meson2pt-script -e 1 --use-default-params
 
   # Use default params with CLI overrides
-          mdwf_db meson-2pt -e 1 --use-default-params -w "Configurations.first=150" -j "nodes=2"
+  mdwf_db meson2pt-script -e 1 --use-default-params -w "Configurations.first=150" -j "nodes=2"
 
   # Save current parameters for later reuse
-          mdwf_db meson-2pt -e 1 -j "queue=regular time_limit=6:00:00 nodes=1" -w "Configurations.first=100" --save-default-params
+  mdwf_db meson2pt-script -e 1 -j "time_limit=6:00:00 nodes=1" -w "Configurations.first=100" --save-default-params
 
   # Save under custom variant name
-  mdwf_db meson-2pt -e 1 -w "Propagator 0.Source=Wall" -j "nodes=2" --save-params-as "wall"
+  mdwf_db meson2pt-script -e 1 -w "Propagator_0.Source=Wall" -j "nodes=2" --save-params-as "wall"
 
   # Use specific parameter variant
-  mdwf_db meson-2pt -e 1 --use-default-params --params-variant wall
+  mdwf_db meson2pt-script -e 1 --use-default-params --params-variant wall
 
 DEFAULT PARAMETER FILES:
 Use 'mdwf_db default_params generate -e <ensemble>' to create a default parameter template.

@@ -30,7 +30,80 @@ def register(subparsers):
         'wflow-script',
         help='Generate gradient flow SLURM script',
         description="""
-Generate a complete SLURM script for gradient flow using GLU.
+Generate a complete SLURM script for gradient flow measurements using GLU.
+
+WHAT THIS DOES:
+• Creates GLU input file with gradient flow parameters
+• Generates SLURM batch script for GPU execution
+• Sets up proper directory structure for gradient flow output
+• Configures job parameters for HPC submission
+
+JOB PARAMETERS (via -j/--job-params):
+Required parameters:
+  mail_user:     Email address for job notifications
+  config_start:  First configuration number to process
+  config_end:    Last configuration number to process
+  config_inc:    Step/increment between configurations
+
+Optional parameters (with defaults):
+  account: m2986            # SLURM account
+  constraint: cpu           # Node constraint
+  queue: regular            # SLURM partition
+  time_limit: 01:00:00      # Job time limit
+  nodes: 1                  # Number of nodes
+  cpus_per_task: 256        # CPUs per task
+  gpus: 4                   # GPUs per node
+  gpu_bind: none            # GPU binding
+  ranks: 4                  # MPI ranks
+  bind_sh: bind.sh          # CPU binding script
+
+GLU PARAMETERS (via -g/--glu-params):
+GLU parameters for gradient flow measurements:
+
+Common gradient flow parameters (with defaults):
+  CONFNO: 24                # Configuration number (overridden by range)
+  DIM_0, DIM_1, DIM_2: 16   # Spatial dimensions (auto-set from ensemble)
+  DIM_3: 48                 # Temporal dimension (auto-set from ensemble)
+  FLOWTYPE: RK4             # Flow algorithm (RK4, RK3, etc.)
+  FLOWTIMES: 100            # Number of flow time steps
+  FLOWSTEP: 0.01            # Flow step size
+  ACCURACY: 14              # Flow accuracy
+  MAX_ITERS: 1000           # Maximum flow iterations
+
+EXAMPLES:
+  # Basic gradient flow job
+  mdwf_db wflow-script -e 1 \\
+    -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4"
+
+  # Custom flow parameters
+  mdwf_db wflow-script -e 1 \\
+    -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4 time_limit=12:00:00" \\
+    -g "FLOWTIMES=200 FLOWSTEP=0.005 FLOWTYPE=RK3"
+
+  # Specify output file
+  mdwf_db wflow-script -e 1 -o custom_wflow.sh \\
+    -j "mail_user=user@example.com config_start=100 config_end=200 config_inc=4"
+
+  # Use stored default parameters
+  mdwf_db wflow-script -e 1 --use-default-params
+
+  # Use default params with CLI overrides
+  mdwf_db wflow-script -e 1 --use-default-params -g "FLOWTIMES=150" -j "config_inc=4 time_limit=08:00:00"
+
+  # Save current parameters for later reuse
+  mdwf_db wflow-script -e 1 -j "mail_user=user@nersc.gov config_start=100 config_end=200 config_inc=4" --save-default-params
+
+  # Save under custom variant name
+  mdwf_db wflow-script -e 1 -g "FLOWTIMES=50" -j "config_start=100 config_end=200" --save-params-as "quick"
+
+  # Use specific parameter variant
+  mdwf_db wflow-script -e 1 --use-default-params --params-variant quick
+
+DEFAULT PARAMETER FILES:
+Use 'mdwf_db default_params generate -e <ensemble>' to create a default parameter template.
+The --use-default-params flag loads parameters from mdwf_default_params.yaml in the ensemble directory.
+The --save-default-params flag saves current parameters to the default params file for later reuse.
+CLI parameters override default parameter file parameters.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -43,21 +116,21 @@ Generate a complete SLURM script for gradient flow using GLU.
     p.add_argument('-j','--job-params', default='',
                    help=f'Space-separated key=val for SLURM job parameters. Required: {REQUIRED_JOB_PARAMS}')
     p.add_argument('-g','--glu-params', default='',
-                   help='Space-separated key=val for GLU smearing parameters. Example: "SMITERS=10 ALPHA1=0.8"')
+                   help='Space-separated key=val for GLU gradient flow parameters. Example: "FLOWTIMES=100 FLOWSTEP=0.01"')
     p.add_argument('-o', '--output-file', help='Output SBATCH script path (auto-generated if not specified)')
     p.add_argument('--use-default-params', action='store_true',
                    help='Load parameters from ensemble default parameter file (mdwf_default_params.yaml)')
     p.add_argument('--params-variant',
-                   help='Specify which parameter variant to use (e.g., stout8, stout4, ape)')
+                   help='Specify which parameter variant to use (e.g., default, quick, detailed)')
     p.add_argument('--save-default-params', action='store_true',
                    help='Save current command parameters to default parameter file for later reuse')
     p.add_argument('--save-params-as',
-                   help='Save current parameters under specific variant name (default: stout8)')
+                   help='Save current parameters under specific variant name (default: default)')
     p.add_argument('--run-dir',
                    help='Directory to run the job from (must contain a full copy of the ensemble directory)')
-    p.set_defaults(func=do_smear_script)
+    p.set_defaults(func=do_wflow_script)
 
-def do_smear_script(args):
+def do_wflow_script(args):
     # Resolve ensemble from flexible identifier first, then legacy --ensemble-id
     ensemble_id = None
     ens = None

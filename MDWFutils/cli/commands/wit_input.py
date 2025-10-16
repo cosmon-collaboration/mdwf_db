@@ -23,7 +23,7 @@ WHAT THIS DOES:
 • Allows customization of any parameter
 
 WIT PROGRAM:
-WIT (Wilson Improved Twisted mass) computes meson 2-point correlators
+WIT (Witnesser) computes meson 2-point correlators
 from Domain Wall Fermion propagators on gauge configurations.
 
 PARAMETER CUSTOMIZATION:

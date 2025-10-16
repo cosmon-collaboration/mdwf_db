@@ -28,16 +28,16 @@ Generate SLURM script for Zv correlator measurements using WIT.
 
 JOB PARAMETERS (via -j/--job-params):
 Required parameters:
-          queue:         SLURM queue (e.g., regular)
-          time_limit:    Job time limit (e.g., 06:00:00)
-          nodes:         Number of nodes (e.g., 1)
-          mail_user:     Email for job notifications
+  time_limit:    Job time limit (e.g., 06:00:00)
+  nodes:         Number of nodes (e.g., 1)
 
 Optional parameters (with defaults):
   account: m2986_g          # SLURM account
   constraint: gpu           # Node constraint
+  queue: regular            # SLURM partition
   gpus: 4                   # GPUs per node
   gpu_bind: none            # GPU binding
+  mail_user: (none)         # Email for job notifications
 
 WIT PARAMETERS (via -w/--wit-params):
 WIT parameters use dot notation (SECTION.KEY=value) and can be overridden:
@@ -67,6 +67,26 @@ Propagator parameters:
 
 Note: Kappa value is automatically calculated from the light quark mass
 stored in the ensemble parameters. Do not set this manually.
+
+EXAMPLES:
+  # Basic Zv measurement (only time_limit and nodes required)
+  mdwf_db zv-script -e 1 \\
+    -j "time_limit=06:00:00 nodes=1 mail_user=user@example.com" \\
+    -w "Configurations.first=100 Configurations.last=200"
+
+  # Custom solver settings
+  mdwf_db zv-script -e 1 \\
+    -j "time_limit=12:00:00 nodes=2 mail_user=user@example.com" \\
+    -w "Configurations.first=0 Configurations.last=50 Solver_0.nmx=10000 Configurations.step=2"
+
+  # Use stored default parameters
+  mdwf_db zv-script -e 1 --use-default-params
+
+  # Use default params with CLI overrides
+  mdwf_db zv-script -e 1 --use-default-params -w "Configurations.first=150" -j "nodes=2"
+
+  # Save current parameters for later reuse
+  mdwf_db zv-script -e 1 -j "time_limit=6:00:00 nodes=1" -w "Configurations.first=100" --save-default-params
 
 DEFAULT PARAMETER FILES:
 Use 'mdwf_db default_params generate -e <ensemble>' to create a default parameter template.

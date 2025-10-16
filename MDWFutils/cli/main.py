@@ -40,19 +40,25 @@ DATABASE MANAGEMENT:
   promote-ensemble    Move ensemble from TUNING to PRODUCTION status
   query              List ensembles or show detailed info for one ensemble
   clear-history      Clear operation history while preserving ensemble record
+  nickname           Set or clear a human-friendly nickname for an ensemble
 
 JOB SCRIPT GENERATION:
   hmc-script         Generate HMC XML and SLURM script for gauge generation
   hmc-xml            Generate standalone HMC XML parameter file
   smear-script       Generate GLU smearing SLURM script
   wflow-script       Generate gradient flow SLURM script
-  meson-2pt          Generate WIT meson correlator measurement script
+  meson2pt-script    Generate WIT meson correlator measurement script
   mres-script        Generate WIT mres measurement script
+  zv-script          Generate Zv correlator measurement script
   glu-input          Generate GLU input file for gauge field utilities
   wit-input          Generate WIT input file for correlator measurements
 
 OPERATION TRACKING:
   update             Record or update operation status and parameters
+
+CONFIGURATION MANAGEMENT:
+  default_params     Manage ensemble default parameter files for operation parameters
+  scan               Scan cnfg/ folders to store config ranges and optionally scan filesystem
 
 FLEXIBLE IDENTIFIERS:
 Most commands accept either ensemble IDs (integers) or directory paths:
