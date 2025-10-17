@@ -206,7 +206,8 @@ def generate_hmc_slurm_gpu(
     omp_num_threads: str = None,
     queue: str = 'regular',
     trajL: str = None,           # required - trajectory length
-    lvl_sizes: str = None        # required - level sizes as comma-separated string
+    lvl_sizes: str = None,       # required - level sizes as comma-separated string
+    cfg_max: str = None          # optional - max config for self-resubmission
 ):
     """
     Write a GPU SBATCH script that:
@@ -246,6 +247,9 @@ def generate_hmc_slurm_gpu(
         raise RuntimeError("trajL parameter is required")
     if lvl_sizes is None:
         raise RuntimeError("lvl_sizes parameter is required")
+    
+    # Convert cfg_max to int if provided, for self-resubmission logic
+    cfg_max_int = int(cfg_max) if cfg_max is not None else None
 
     # prepare output file
     script_file = Path(out_path)
@@ -295,6 +299,7 @@ mpi="{mpi}"
 trajL="{trajL}"
 lvl_sizes="{lvl_sizes}"
 work_root="{str(work_root)}"
+{f"cfg_max={cfg_max_int}" if cfg_max_int is not None else "# cfg_max not set"}
 
 cd "$work_root"
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
@@ -305,27 +310,60 @@ echo "work_root = $work_root"
 echo "EXEC = $EXEC"
 echo "BIND = $BIND"
 echo "n_trajec = $n_trajec"
+{f'echo "cfg_max = $cfg_max"' if cfg_max_int is not None else ""}
 
 mkdir -p cnfg/log_hmc cnfg/jlog
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
-if [[ -z $start ]]; then
-    echo "no configs - start is empty - doing TepidStart"
+# Source HMC helper functions for robust config detection
+source <(python -m MDWFutils.jobs.hmc_helpers)
+
+echo ""
+echo "Configuration Detection:"
+echo "------------------------"
+# Find latest valid configuration with both checkpoint and RNG files
+start=$(hmc_find_latest_config "cnfg")
+if [[ -z $start || $start -eq 0 ]]; then
+    echo "Status: No valid configs found"
+    echo "Action: Starting from scratch (TepidStart)"
     start=0
+else
+    echo "Status: Found latest valid configuration: $start"
+    echo "Validating checkpoint and RNG files..."
+    # Validate the configuration before proceeding
+    if ! hmc_validate_config "$start" "cnfg"; then
+        echo "ERROR: Configuration $start validation failed!"
+        exit 1
+    fi
+    echo "Validation: PASSED"
 fi
+echo "Starting trajectory: $start"
+echo "Expected ending trajectory: $((start + n_trajec))"
+echo "------------------------"
+echo ""
 
-
-
-echo "cfg_current = $start"
-
+# Self-resubmission logic (submit to queue early for better priority)
+{f'''echo "Self-Resubmission Check:"
+echo "------------------------"
+# Source HMC resubmission helper via process substitution
+if [[ -n "$cfg_max" ]]; then
+    source <(python -m MDWFutils.jobs.hmc_resubmit)
+    hmc_auto_resubmit
+else
+    echo "cfg_max not set - no automatic resubmission"
+fi
+echo "------------------------"
+echo ""''' if cfg_max_int is not None else '''echo "No automatic resubmission (cfg_max not set)"
+echo ""'''}
+ 
 # Prepare DB update variables and queue RUNNING update off-node
 USER=$(whoami)
 OP="HMC_$mode"
 SC=$start
 EC=$(( start + n_trajec ))
-# No increment tracking for HMC; EC reflects StartTrajectory + Trajectories
+# Build params string with HMC-specific info
+{f'''PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec cfg_max=$cfg_max mode=$mode"''' if cfg_max_int is not None else 'PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec mode=$mode"'}
 RUN_DIR="$work_root"
 # Source logging helper via process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)
@@ -350,7 +388,8 @@ echo "START `date`"
 srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > log_hmc/log_{ens_name}.$start
 echo "STOP `date`"
 
-echo "All done in $SECONDS seconds"
+echo "Job completed in $SECONDS seconds"
+echo "Log file: cnfg/log_hmc/log_{ens_name}.$start"
 """
     script_file.write_text(txt, encoding='utf-8')
     return True
@@ -381,7 +420,8 @@ def generate_hmc_slurm_cpu(
     cacheblocking: str = None,
     omp_num_threads: str = None,
     trajL: str = None,
-    lvl_sizes: str = None
+    lvl_sizes: str = None,
+    cfg_max: str = None          # optional - max config for self-resubmission
 ):
     """
     CPU variant of HMC SLURM script: omits GPU directives, reuses logging and XML logic.
@@ -409,6 +449,9 @@ def generate_hmc_slurm_cpu(
         raise RuntimeError("trajL parameter is required")
     if lvl_sizes is None:
         raise RuntimeError("lvl_sizes parameter is required")
+    
+    # Convert cfg_max to int if provided, for self-resubmission logic
+    cfg_max_int = int(cfg_max) if cfg_max is not None else None
 
     script_file = Path(out_path)
     script_file.parent.mkdir(parents=True, exist_ok=True)
@@ -451,39 +494,79 @@ cacheblocking="{cb_val}"
 trajL="{trajL}"
 lvl_sizes="{lvl_sizes}"
 work_root="{str(work_root)}"
+{f"cfg_max={cfg_max_int}" if cfg_max_int is not None else "# cfg_max not set"}
 
 cd "$work_root"
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
-echo "ens = $ens"
-echo "ens_dir = {ensemble_dir}"
-echo "work_root = $work_root"
-echo "EXEC = $EXEC"
-echo "BIND = $BIND"
-echo "n_trajec = $n_trajec"
+echo "========================================"
+echo "HMC Job Configuration"
+echo "========================================"
+echo "Ensemble: $ens"
+echo "Ensemble dir: {ensemble_dir}"
+echo "Work root: $work_root"
+echo "Mode: $mode"
+echo "Trajectories per job: $n_trajec"
+{f'echo "Target config (cfg_max): $cfg_max"' if cfg_max_int is not None else 'echo "No cfg_max set (single job)"'}
+echo "Executable: $EXEC"
+echo "Binding: $BIND"
+echo "MPI grid: $mpi"
+echo "========================================"
 
 mkdir -p cnfg/log_hmc cnfg/jlog
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
+# Source HMC helper functions for robust config detection
+source <(python -m MDWFutils.jobs.hmc_helpers)
 
-start=`ls -v cnfg/| grep lat | tail -1 | sed 's/[^0-9]*//g'`
-if [[ -z $start ]]; then
-    echo "no configs - start is empty - doing TepidStart"
+echo ""
+echo "Configuration Detection:"
+echo "------------------------"
+# Find latest valid configuration with both checkpoint and RNG files
+start=$(hmc_find_latest_config "cnfg")
+if [[ -z $start || $start -eq 0 ]]; then
+    echo "Status: No valid configs found"
+    echo "Action: Starting from scratch (TepidStart)"
     start=0
+else
+    echo "Status: Found latest valid configuration: $start"
+    echo "Validating checkpoint and RNG files..."
+    # Validate the configuration before proceeding
+    if ! hmc_validate_config "$start" "cnfg"; then
+        echo "ERROR: Configuration $start validation failed!"
+        exit 1
+    fi
+    echo "Validation: PASSED"
 fi
+echo "Starting trajectory: $start"
+echo "Expected ending trajectory: $((start + n_trajec))"
+echo "------------------------"
+echo ""
 
-# No cfg_max threshold; controlled by Trajectories in XML
-
-echo "cfg_current = $start"
+# Self-resubmission logic (submit to queue early for better priority)
+{f'''echo "Self-Resubmission Check:"
+echo "------------------------"
+# Source HMC resubmission helper via process substitution
+if [[ -n "$cfg_max" ]]; then
+    source <(python -m MDWFutils.jobs.hmc_resubmit)
+    hmc_auto_resubmit
+else
+    echo "cfg_max not set - no automatic resubmission"
+fi
+echo "------------------------"
+echo ""''' if cfg_max_int is not None else '''echo "No automatic resubmission (cfg_max not set)"
+echo ""'''}
 
 # Prepare DB update variables and queue RUNNING update off-node
 USER=$(whoami)
 OP="HMC_$mode"
 SC=$start
 EC=$(( start + n_trajec ))
-# No increment tracking for HMC; EC reflects StartTrajectory + Trajectories
+# Build params string with HMC-specific info
+{f'''PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec cfg_max=$cfg_max mode=$mode"''' if cfg_max_int is not None else 'PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec mode=$mode"'}
 RUN_DIR="$work_root"
+# Source logging helper via process substitution
 source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0

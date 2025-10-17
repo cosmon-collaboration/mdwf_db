@@ -43,32 +43,44 @@ Optional parameters (with defaults):
   queue: regular            # SLURM partition
   exec_path: (auto)         # Path to HMC executable
   bind_script: (auto)       # CPU binding script
+  cfg_max: (optional)       # Max config for automatic job resubmission
 
 XML PARAMETERS (via -x/--xml-params):
-Available HMC parameters:
-  StartTrajectory:      Starting trajectory number (default: 0)
-  Trajectories:         Number of trajectories to generate (default: 50)
+Required parameters:
+  Trajectories:         Number of trajectories to generate per job (REQUIRED)
+  trajL:                Trajectory length (REQUIRED)
+  lvl_sizes:            Level sizes as comma-separated string (REQUIRED, e.g., "4,1,1")
+
+Optional parameters:
+  StartTrajectory:      Starting trajectory number (AUTO-DETECTED from configs, override not recommended)
   MetropolisTest:       Perform Metropolis test (true/false, default: true)
   NoMetropolisUntil:    Trajectory to start Metropolis (default: 0)
   PerformRandomShift:   Perform random shift (true/false, default: true)
-  StartingType:         Start type (TepidStart/CheckpointStart/CheckpointStartReseed)
-  Seed:                 Random seed (for reseed mode)
-  MDsteps:              Number of MD steps (default: 2)
-  trajL:                Trajectory length (default: 1.0)
+  StartingType:         Start type (AUTO-SET based on mode)
+  Seed:                 Random seed (for reseed mode only, default: random)
+  MDsteps:              Number of MD steps (default: 1)
+  md_name:              MD integrator names (default: "OMF2_5StepV,OMF2_5StepV,OMF4_11StepV")
 
 EXAMPLES:
-  # Basic HMC script for new ensemble
-  mdwf_db hmc-script -e 1 -a m2986 -m tepid -j "cfg_max=100"
+  # Basic HMC script for new ensemble with self-resubmission to config 1000
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m tepid \\
+    -x "Trajectories=50 trajL=1.0 lvl_sizes=4,1,1" \\
+    -j "cfg_max=1000"
 
-  # Continue existing run
-  mdwf_db hmc-script -e 1 -a m2986 -m continue \\
-    -j "cfg_max=200 time_limit=24:00:00" \\
-    -x "StartTrajectory=100 Trajectories=100"
+  # Continue existing run with automatic resubmission to config 2000
+  # StartTrajectory is automatically detected from existing configs
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m continue \\
+    -x "Trajectories=100 trajL=1.0 lvl_sizes=4,1,1" \\
+    -j "cfg_max=2000 time_limit=24:00:00"
 
-  # Custom parameters and output file
-  mdwf_db hmc-script -e 1 -a m2986 -m tepid -o custom_hmc.sh \\
-    -j "cfg_max=50 nodes=2 time_limit=12:00:00" \\
-    -x "MDsteps=4 trajL=0.75 Seed=12345"
+  # Single job run (no automatic resubmission)
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m continue \\
+    -x "Trajectories=50 trajL=0.75 lvl_sizes=9,1,1 MDsteps=2"
+
+  # CPU variant with custom parameters
+  mdwf_db hmc-script cpu -e 1 -a m2986 -m tepid -o custom_hmc.sh \\
+    -x "Trajectories=20 trajL=0.75 lvl_sizes=4,1,1" \\
+    -j "nodes=2 time_limit=12:00:00"
 
   # Use stored default parameters
   mdwf_db hmc-script -e 1 -a m2986 -m tepid --use-default-params
@@ -110,9 +122,9 @@ CLI parameters override default parameter file parameters.
         pp.add_argument('--base-dir', default='.',
                         help='Root directory containing TUNING/ and ENSEMBLES/ (default: current directory)')
         pp.add_argument('-x', '--xml-params', required=True,
-                        help='Space-separated key=val pairs for HMC XML parameters. Required: trajL, lvl_sizes')
+                        help='Space-separated key=val pairs for HMC XML parameters. Required: Trajectories, trajL, lvl_sizes')
         pp.add_argument('-j', '--job-params', default='',
-                        help='Space-separated key=val pairs for SLURM job parameters. Required: cfg_max')
+                        help='Space-separated key=val pairs for SLURM job parameters. Optional: cfg_max (for self-resubmission)')
         pp.add_argument('-o', '--output-file',
                         help='Output SBATCH script path (auto-generated if not specified)')
         pp.add_argument('--exec-path',
@@ -207,9 +219,8 @@ def do_hmc_script_gpu(args):
         if 'OMP_NUM_THREADS' in job_dict:
             job_dict['omp_num_threads'] = job_dict.pop('OMP_NUM_THREADS')
     
-    # Remove deprecated cfg_max if provided (no longer used; controlled by XML Trajectories)
-    if 'cfg_max' in job_dict:
-        job_dict.pop('cfg_max', None)
+    # Extract cfg_max for self-resubmission (no longer deprecated)
+    cfg_max = job_dict.pop('cfg_max', None)
     
     # Parse merged XML parameters
     xml_dict = {}
@@ -230,9 +241,12 @@ def do_hmc_script_gpu(args):
     
     if missing_params:
         if args.use_default_params:
-            print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}. Add them to your default parameter file or use -x '{' '.join(missing_params)}'", file=sys.stderr)
+            print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}", file=sys.stderr)
+            print(f"Add them to your default parameter file or use -x with the missing parameters", file=sys.stderr)
+            print(f"Example: -x \"Trajectories=50 trajL=1.0 lvl_sizes=4,1,1\"", file=sys.stderr)
         else:
             print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}", file=sys.stderr)
+            print(f"Usage: -x \"Trajectories=50 trajL=1.0 lvl_sizes=4,1,1\"", file=sys.stderr)
         return 1
     
     # Get base directory and compute relative paths
@@ -271,22 +285,31 @@ def do_hmc_script_gpu(args):
         cnfg_dir = work_root / 'cnfg'
         cnfg_dir.mkdir(parents=True, exist_ok=True)
 
-        # Compute current start by scanning existing 'lat*' files in cnfg
+        # Compute current start by finding latest valid config with both checkpoint and RNG files
         start = 0
         numbers = []
-        for f in cnfg_dir.iterdir():
-            if not f.is_file():
-                continue
-            if 'lat' not in f.name:
-                continue
-            m = re.findall(r"(\d+)", f.name)
-            if m:
-                try:
-                    numbers.append(int(m[-1]))
-                except ValueError:
-                    pass
+        
+        # Look for checkpoint files (ckpoint_EODWF_lat.*)
+        for f in cnfg_dir.glob('ckpoint_EODWF_lat.*'):
+            if f.is_file() and f.stat().st_size > 0:
+                m = re.findall(r"(\d+)", f.name)
+                if m:
+                    try:
+                        cfg_num = int(m[-1])
+                        # Check if corresponding RNG file exists and is readable
+                        rng_file = cnfg_dir / f"ckpoint_EODWF_rng.{cfg_num}"
+                        if rng_file.is_file() and rng_file.stat().st_size > 0:
+                            numbers.append(cfg_num)
+                        else:
+                            print(f"Warning: Config {cfg_num} has checkpoint but missing/invalid RNG file", file=sys.stderr)
+                    except (ValueError, OSError):
+                        pass
+        
         if numbers:
             start = max(numbers)
+            print(f"Found latest valid configuration: {start} (checkpoint and RNG files present)")
+        else:
+            print("No valid configurations found - will start from 0 (TepidStart)")
 
         # Force StartTrajectory to detected start
         xml_dict['StartTrajectory'] = str(start)
@@ -373,6 +396,7 @@ def do_hmc_script_gpu(args):
             run_dir=getattr(args, 'run_dir', None),
             n_trajec=xml_dict['Trajectories'],
             omp_num_threads=_omp_threads,
+            cfg_max=cfg_max,
             **job_params
         )
         print(f"Generated HMC GPU script: {out_file}")
@@ -463,9 +487,8 @@ def do_hmc_script_cpu(args):
         if 'OMP_NUM_THREADS' in job_dict:
             job_dict['omp_num_threads'] = job_dict.pop('OMP_NUM_THREADS')
 
-    # Remove deprecated cfg_max if provided (no longer used; controlled by XML Trajectories)
-    if 'cfg_max' in job_dict:
-        job_dict.pop('cfg_max', None)
+    # Extract cfg_max for self-resubmission (no longer deprecated)
+    cfg_max = job_dict.pop('cfg_max', None)
 
     # Parse merged XML parameters
     xml_dict = {}
@@ -486,9 +509,12 @@ def do_hmc_script_cpu(args):
 
     if missing_params:
         if args.use_default_params:
-            print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}. Add them to your default parameter file or use -x '{' '.join(missing_params)}'", file=sys.stderr)
+            print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}", file=sys.stderr)
+            print(f"Add them to your default parameter file or use -x with the missing parameters", file=sys.stderr)
+            print(f"Example: -x \"Trajectories=50 trajL=1.0 lvl_sizes=4,1,1\"", file=sys.stderr)
         else:
             print(f"ERROR: Required XML parameters missing: {', '.join(missing_params)}", file=sys.stderr)
+            print(f"Usage: -x \"Trajectories=50 trajL=1.0 lvl_sizes=4,1,1\"", file=sys.stderr)
         return 1
 
     # Get base directory and compute relative paths
@@ -526,22 +552,31 @@ def do_hmc_script_cpu(args):
         cnfg_dir = work_root / 'cnfg'
         cnfg_dir.mkdir(parents=True, exist_ok=True)
 
-        # Compute current start by scanning existing 'lat*' files in cnfg
+        # Compute current start by finding latest valid config with both checkpoint and RNG files
         start = 0
         numbers = []
-        for f in cnfg_dir.iterdir():
-            if not f.is_file():
-                continue
-            if 'lat' not in f.name:
-                continue
-            m = re.findall(r"(\d+)", f.name)
-            if m:
-                try:
-                    numbers.append(int(m[-1]))
-                except ValueError:
-                    pass
+        
+        # Look for checkpoint files (ckpoint_EODWF_lat.*)
+        for f in cnfg_dir.glob('ckpoint_EODWF_lat.*'):
+            if f.is_file() and f.stat().st_size > 0:
+                m = re.findall(r"(\d+)", f.name)
+                if m:
+                    try:
+                        cfg_num = int(m[-1])
+                        # Check if corresponding RNG file exists and is readable
+                        rng_file = cnfg_dir / f"ckpoint_EODWF_rng.{cfg_num}"
+                        if rng_file.is_file() and rng_file.stat().st_size > 0:
+                            numbers.append(cfg_num)
+                        else:
+                            print(f"Warning: Config {cfg_num} has checkpoint but missing/invalid RNG file", file=sys.stderr)
+                    except (ValueError, OSError):
+                        pass
+        
         if numbers:
             start = max(numbers)
+            print(f"Found latest valid configuration: {start} (checkpoint and RNG files present)")
+        else:
+            print("No valid configurations found - will start from 0 (TepidStart)")
 
         # Force StartTrajectory to detected start
         xml_dict['StartTrajectory'] = str(start)
@@ -622,6 +657,7 @@ def do_hmc_script_cpu(args):
             run_dir=getattr(args, 'run_dir', None),
             n_trajec=xml_dict['Trajectories'],
             omp_num_threads=_omp_threads,
+            cfg_max=cfg_max,
             **job_params
         )
         print(f"Generated HMC CPU script: {out_file}")
