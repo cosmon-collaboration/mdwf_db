@@ -319,29 +319,17 @@ conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 # Source HMC helper functions for robust config detection
 source <(python -m MDWFutils.jobs.hmc_helpers)
 
-echo ""
-echo "Configuration Detection:"
-echo "------------------------"
-# Find latest valid configuration with both checkpoint and RNG files
+# Determine starting configuration quietly
 start=$(hmc_find_latest_config "cnfg")
-if [[ -z $start || $start -eq 0 ]]; then
-    echo "Status: No valid configs found"
-    echo "Action: Starting from scratch (TepidStart)"
-    start=0
+[[ -z "$start" || "$start" -eq 0 ]] && start=0
+
+# Ensure StartTrajectory in XML matches detected start
+XML_PATH="$work_root/cnfg/HMCparameters.xml"
+if [[ -f "$XML_PATH" ]]; then
+    sed -i -E "s#(<StartTrajectory>)[0-9]+(</StartTrajectory>)#\\1${{start}}\\2#" "$XML_PATH"
 else
-    echo "Status: Found latest valid configuration: $start"
-    echo "Validating checkpoint and RNG files..."
-    # Validate the configuration before proceeding
-    if ! hmc_validate_config "$start" "cnfg"; then
-        echo "ERROR: Configuration $start validation failed!"
-        exit 1
-    fi
-    echo "Validation: PASSED"
+    echo "WARNING: HMCparameters.xml not found at $XML_PATH" >&2
 fi
-echo "Starting trajectory: $start"
-echo "Expected ending trajectory: $((start + n_trajec))"
-echo "------------------------"
-echo ""
 
 # Self-resubmission logic (submit to queue early for better priority)
 {f'''echo "Self-Resubmission Check:"
@@ -517,32 +505,20 @@ mkdir -p cnfg/log_hmc cnfg/jlog
 module load conda
 conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
 
-# Source HMC helper functions for robust config detection
+# Source HMC helper functions
 source <(python -m MDWFutils.jobs.hmc_helpers)
 
-echo ""
-echo "Configuration Detection:"
-echo "------------------------"
-# Find latest valid configuration with both checkpoint and RNG files
+# Determine starting configuration
 start=$(hmc_find_latest_config "cnfg")
-if [[ -z $start || $start -eq 0 ]]; then
-    echo "Status: No valid configs found"
-    echo "Action: Starting from scratch (TepidStart)"
-    start=0
+[[ -z "$start" || "$start" -eq 0 ]] && start=0
+
+# Ensure StartTrajectory in XML matches detected start
+XML_PATH="$work_root/cnfg/HMCparameters.xml"
+if [[ -f "$XML_PATH" ]]; then
+    sed -i -E "s#(<StartTrajectory>)[0-9]+(</StartTrajectory>)#\\1${{start}}\\2#" "$XML_PATH"
 else
-    echo "Status: Found latest valid configuration: $start"
-    echo "Validating checkpoint and RNG files..."
-    # Validate the configuration before proceeding
-    if ! hmc_validate_config "$start" "cnfg"; then
-        echo "ERROR: Configuration $start validation failed!"
-        exit 1
-    fi
-    echo "Validation: PASSED"
+    echo "WARNING: HMCparameters.xml not found at $XML_PATH" >&2
 fi
-echo "Starting trajectory: $start"
-echo "Expected ending trajectory: $((start + n_trajec))"
-echo "------------------------"
-echo ""
 
 # Self-resubmission logic (submit to queue early for better priority)
 {f'''echo "Self-Resubmission Check:"
