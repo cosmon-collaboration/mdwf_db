@@ -267,7 +267,7 @@ echo "All done in $SECONDS seconds"
 
 
 __all__ = [
-    'generate_meson2pt_sbatch',cd
+    'generate_meson2pt_sbatch'
 ]
 
 
