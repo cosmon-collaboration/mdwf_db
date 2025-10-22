@@ -261,13 +261,13 @@ echo "All done in $SECONDS seconds"
 """
 
     Path(output_file).write_text(script)
-    os.chmod(output_file, 0o755)
+    os.chmod(output_file, 0o775)
     print(f"Generated WIT SBATCH script: {output_file}")
     return str(output_file)
 
 
 __all__ = [
-    'generate_meson2pt_sbatch',
+    'generate_meson2pt_sbatch',cd
 ]
 
 

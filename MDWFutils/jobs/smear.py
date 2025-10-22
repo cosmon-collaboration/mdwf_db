@@ -176,5 +176,5 @@ done
 echo "Done in $SECONDS s"
 """
     with open(output_file,'w') as f: f.write(txt)
-    os.chmod(output_file,0o755)
+    os.chmod(output_file,0o775)
     return output_file
