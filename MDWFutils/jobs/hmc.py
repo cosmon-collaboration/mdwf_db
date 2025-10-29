@@ -196,6 +196,8 @@ def generate_hmc_slurm_gpu(
     ntasks_per_node: str,
     gpus_per_task: str,
     gpu_bind: str,
+    job_name: str = None,   # user suplied job_name
+    nickname: str = None,
     mail_user: str = None,
     exec_path: str = None,       # optional - will check DB first
     bind_script: str = None,     # optional - will check DB first
@@ -264,12 +266,17 @@ def generate_hmc_slurm_gpu(
     ens_name = f"b{ens['parameters']['beta']}_b{ens['parameters']['b']}Ls{ens['parameters']['Ls']}_mc{ens['parameters']['mc']}_ms{ens['parameters']['ms']}_ml{ens['parameters']['ml']}_L{ens['parameters']['L']}_T{ens['parameters']['T']}"
 
     # Build optional SBATCH resource lines
-    gres_line = f"#SBATCH --gres={gres}" if gres else f"#SBATCH --gres=gpu:{gpus_per_task}"
+    if not job_name:
+        if nickname:
+            job_name = f"HMC_{nickname}"
+        else:
+            job_name = f"HMC_e{ensemble_id}"
     # OMP threads default
     omp_threads = str(omp_num_threads) if omp_num_threads else "16"
 
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
+#SBATCH -J {job_name}
 #SBATCH -C {constraint}
 #SBATCH -q {queue}
 #SBATCH -t {time_limit}
@@ -278,7 +285,7 @@ def generate_hmc_slurm_gpu(
 #SBATCH --ntasks-per-node={ntasks_per_node}
 #SBATCH --gpus-per-task={gpus_per_task}
 #SBATCH --gpu-bind={gpu_bind}
-#SBATCH --gres={gres if gres else f"gpu:{gpus_per_task}"}
+#SBATCH --gres={gres if gres else f"gpu:{ntasks_per_node}"}
 #SBATCH --mail-type=BEGIN,END
 {f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
 #SBATCH --signal=B:TERM@60
@@ -398,6 +405,8 @@ def generate_hmc_slurm_cpu(
     cpus_per_task: str,
     nodes: str,
     ntasks_per_node: str,
+    job_name: str = None,   # user suplied job_name
+    nickname: str = None,
     mail_user: str = None,
     exec_path: str = None,
     bind_script: str = None,
@@ -453,8 +462,16 @@ def generate_hmc_slurm_cpu(
     cb_val = cacheblocking if cacheblocking else "2.2.2.2"
     omp_threads = str(omp_num_threads) if omp_num_threads else "4"
 
+    # Build optional SBATCH resource lines
+    if not job_name:
+        if nickname:
+            job_name = f"HMC_{nickname}"
+        else:
+            job_name = f"HMC_e{ensemble_id}"
+
     txt = f"""#!/bin/bash
 #SBATCH -A {account}
+#SBATCH -J {job_name}
 #SBATCH -C {constraint}
 #SBATCH -q {queue}
 #SBATCH -t {time_limit}
