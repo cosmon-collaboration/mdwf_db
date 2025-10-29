@@ -26,7 +26,12 @@ WHAT THIS DOES:
 • Sets up proper directory structure and file paths
 • Configures job parameters for HPC submission
 
-HMC MODES:
+EXECUTABLE and BIND
+  --exec-path=<EXEC_PATH>: (auto)         # Path to HMC executable
+  --bind-script=<BIND_PATH>: (auto)       # CPU/GPU binding script
+
+
+HMC MODES (via -m):
   tepid:    Initial thermalization run (TepidStart)
   continue: Continue from existing checkpoint (CheckpointStart)
   reseed:   Start new run with different seed (CheckpointStartReseed)
@@ -41,8 +46,6 @@ Optional parameters (with defaults):
   gpu_bind: none            # GPU binding
   mail_user: (from env)     # Email notifications
   queue: regular            # SLURM partition
-  exec_path: (auto)         # Path to HMC executable
-  bind_script: (auto)       # CPU binding script
   cfg_max: (optional)       # Max config for automatic job resubmission
 
 XML PARAMETERS (via -x/--xml-params):
@@ -55,7 +58,7 @@ Optional parameters:
   StartTrajectory:      Starting trajectory number (AUTO-DETECTED from configs, override not recommended)
   MetropolisTest:       Perform Metropolis test (true/false, default: true)
   NoMetropolisUntil:    Trajectory to start Metropolis (default: 0)
-  PerformRandomShift:   Perform random shift (true/false, default: true)
+  PerformRandomShift:   Perform random shift (true/false, default: false)
   StartingType:         Start type (AUTO-SET based on mode)
   Seed:                 Random seed (for reseed mode only, default: random)
   MDsteps:              Number of MD steps (default: 1)
