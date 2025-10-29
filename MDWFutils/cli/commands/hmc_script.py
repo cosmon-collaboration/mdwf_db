@@ -338,7 +338,7 @@ def do_hmc_script_gpu(args):
     
     # Set ntasks_per_node if not provided
     if 'ntasks_per_node' not in job_params:
-        job_params['ntasks_per_node'] = job_params['cpus_per_task']
+        job_params['ntasks_per_node'] = '4' # on perlmutter, there are 4 GPUs/node - fix me if we add new machines
     
     # No automatic resubmission logic; user can resubmit manually if desired
     
