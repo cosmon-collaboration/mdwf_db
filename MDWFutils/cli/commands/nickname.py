@@ -2,12 +2,13 @@
 """
 commands/nickname.py
 
-Set or clear a human-friendly nickname for an ensemble.
+Get, set or clear a human-friendly nickname for an ensemble.
 
 Examples:
-  mdwf_db nickname -e 1 --set "test32a"
+  mdwf_db nickname -e 1                       # Print current nickname
+  mdwf_db nickname -e 1 --set "test32a"      # Set nickname
   mdwf_db nickname -e ./TUNING/b6.0/... --set mynick
-  mdwf_db nickname -e 1 --clear
+  mdwf_db nickname -e 1 --clear               # Clear nickname
 """
 
 import sys
@@ -17,19 +18,20 @@ from MDWFutils.db import (
     set_ensemble_parameter,
     delete_ensemble_parameter,
     get_ensemble_id_by_nickname,
+    get_ensemble_details,
 )
 
 
 def register(subparsers: argparse._SubParsersAction):
     p = subparsers.add_parser(
         'nickname',
-        help='Set or clear a human-friendly nickname for an ensemble',
+        help='Get, set or clear a human-friendly nickname for an ensemble',
         description='Attach a nickname to an ensemble so it can be referenced with -e <nickname>.',
     )
 
     add_ensemble_argument(p, help_text='Ensemble identifier: ID, directory path, or "." for current directory')
 
-    g = p.add_mutually_exclusive_group(required=True)
+    g = p.add_mutually_exclusive_group(required=False)
     g.add_argument('--set', dest='nickname', help='Set nickname for the ensemble')
     g.add_argument('--clear', action='store_true', help='Clear existing nickname')
 
@@ -43,6 +45,24 @@ def do_nickname(args):
     if ensemble_id is None:
         return 1
 
+    # If neither --set nor --clear is specified, just print the current nickname
+    if not getattr(args, 'clear', False) and not getattr(args, 'nickname', None):
+        try:
+            details = get_ensemble_details(args.db_file, ensemble_id)
+            if details is None:
+                print(f"ERROR: Ensemble {ensemble_id} not found", file=sys.stderr)
+                return 1
+            
+            nickname = details['parameters'].get('nickname')
+            if nickname:
+                print(f"{nickname}")
+            else:
+                print("None")
+            return 0
+        except Exception as e:
+            print(f"ERROR: Failed to get nickname: {e}", file=sys.stderr)
+            return 1
+    
     if getattr(args, 'clear', False):
         try:
             delete_ensemble_parameter(args.db_file, ensemble_id, 'nickname')

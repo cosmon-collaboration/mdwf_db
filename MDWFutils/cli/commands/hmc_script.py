@@ -37,19 +37,33 @@ HMC MODES (via -m):
   reseed:   Start new run with different seed (CheckpointStartReseed)
 
 JOB PARAMETERS (via -j/--job-params):
-Optional parameters (with defaults):
+Optional parameters (with defaults, GPU variant):
   constraint: gpu           # Node constraint
   time_limit: 17:00:00      # Job time limit
   cpus_per_task: 32         # CPUs per task
   nodes: 1                  # Number of nodes
   gpus_per_task: 1          # GPUs per task
   gpu_bind: none            # GPU binding
-  mail_user: (from env)     # Email notifications
+  mpi: 2.1.1.2              # MPI version
+  omp_num_threads: 16       # OpenMP threads
+  ntasks_per_node: 4        # Tasks per node (auto-set to 4 for GPU if not provided)
+  mail_user: (none)         # Email notifications (no default)
+  queue: (derived)          # SLURM partition (auto-derived from constraint)
+  cfg_max: (optional)       # Max config for automatic job resubmission
+
+Optional parameters (with defaults, CPU variant):
+  constraint: cpu           # Node constraint  
+  time_limit: 17:00:00      # Job time limit
+  cpus_per_task: 32         # CPUs per task
+  nodes: 1                  # Number of nodes
   queue: regular            # SLURM partition
+  omp_num_threads: 4        # OpenMP threads
+  ntasks_per_node: (auto)   # Tasks per node (auto-set to cpus_per_task if not provided)
+  mail_user: (none)         # Email notifications (no default)
   cfg_max: (optional)       # Max config for automatic job resubmission
 
 XML PARAMETERS (via -x/--xml-params):
-Required parameters:
+Required parameters (always required, even with --use-default-params; values from default params are merged with CLI):
   Trajectories:         Number of trajectories to generate per job (REQUIRED)
   trajL:                Trajectory length (REQUIRED)
   lvl_sizes:            Level sizes as comma-separated string (REQUIRED, e.g., "4,1,1")
@@ -85,20 +99,20 @@ EXAMPLES:
     -x "Trajectories=20 trajL=0.75 lvl_sizes=4,1,1" \\
     -j "nodes=2 time_limit=12:00:00"
 
-  # Use stored default parameters
-  mdwf_db hmc-script -e 1 -a m2986 -m tepid --use-default-params
+  # Use stored default parameters (still need -x for required params)
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m tepid -x "Trajectories=50 trajL=1.0 lvl_sizes=4,1,1" --use-default-params
 
-  # Use default params with CLI overrides
-  mdwf_db hmc-script -e 1 -a m2986 -m continue --use-default-params -j "nodes=2"
+  # Use default params with CLI overrides  
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m continue -x "Trajectories=100 trajL=1.0 lvl_sizes=4,1,1" --use-default-params -j "nodes=2"
 
   # Save current parameters for later reuse
-  mdwf_db hmc-script -e 1 -a m2986 -m tepid -j "cfg_max=100" -x "MDsteps=4" --save-default-params
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m tepid -j "cfg_max=100" -x "Trajectories=50 trajL=1.0 lvl_sizes=4,1,1 MDsteps=4" --save-default-params
 
   # Save parameters under custom variant name
-  mdwf_db hmc-script -e 1 -a m2986 -m tepid -j "cfg_max=50" --save-params-as "short_run"
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m tepid -j "cfg_max=50" -x "Trajectories=50 trajL=1.0 lvl_sizes=4,1,1" --save-params-as "short_run"
 
   # Use specific parameter variant (not just current mode)
-  mdwf_db hmc-script -e 1 -a m2986 -m continue --use-default-params --params-variant tepid
+  mdwf_db hmc-script gpu -e 1 -a m2986 -m continue -x "Trajectories=100 trajL=1.0 lvl_sizes=4,1,1" --use-default-params --params-variant tepid
 
 DEFAULT PARAMETER FILES:
 Use 'mdwf_db default_params generate -e <ensemble>' to create a default parameter template.

@@ -39,7 +39,7 @@ WHAT THIS DOES:
 • Configures job parameters for HPC submission
 
 JOB PARAMETERS (via -j/--job-params):
-Required parameters:
+Required parameters (checked at runtime, not in argparse):
   mail_user:     Email address for job notifications
   config_start:  First configuration number to process
   config_end:    Last configuration number to process

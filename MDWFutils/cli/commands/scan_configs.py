@@ -2,8 +2,8 @@
 """
 commands/scan_configs.py
 
-Scan all ensembles and infer configuration ranges from each cnfg/ directory.
-Stores results in ensemble_parameters via set_configuration_range.
+Scan ensemble directories to detect configuration ranges and measurement files.
+Stores results in ensemble_parameters for tracking and monitoring.
 """
 
 import sys
@@ -450,8 +450,47 @@ def _scan_measurements(ensemble_dir: Path) -> Dict[str, object]:
 def register(subparsers):
     p = subparsers.add_parser(
         'scan',
-        help='Scan cnfg/ folders to store config ranges and optionally scan filesystem',
-        description='Infers first, last, increment, and total configuration counts per ensemble.'
+        help='Scan ensemble directories for configurations and measurements',
+        description="""
+Scan ensemble directories to detect gauge configurations and measurement files.
+
+WHAT THIS DOES:
+• Scans cnfg/ directories to detect configuration ranges (first, last, increment, total)
+• Scans measurement directories (smearing, t0, meson2pt, mres, Zv) to count completed files
+• Stores all detected ranges and counts in ensemble parameters for tracking
+• Optionally checks file permissions and ownership
+• Optionally scans filesystem for ensembles not yet in the database
+
+INCREMENTAL SCANNING:
+By default, only rescans ensembles where the cnfg/ directory has changed
+(different file count or modification time). Use --force to rescan all ensembles.
+
+PERMISSION CHECKING:
+With --check-permissions, verifies that:
+• Configuration files (lat.*) are read-only
+• All other files have group read/write/execute permissions
+• All files are owned by the m2986 group
+
+FILESYSTEM SCANNING:
+With --scan-fs, also searches the filesystem under TUNING/ and ENSEMBLES/
+for ensemble directories not yet registered in the database.
+
+EXAMPLES:
+  # Scan all ensembles (only changed ones)
+  mdwf_db scan
+
+  # Force rescan of all ensembles
+  mdwf_db scan --force
+
+  # Scan with permission checking
+  mdwf_db scan --check-permissions
+
+  # Scan and report unregistered ensembles
+  mdwf_db scan --scan-fs
+
+  # Full scan with all options
+  mdwf_db scan --force --check-permissions --scan-fs --base-dir /path/to/data
+        """
     )
     p.add_argument(
         '--scan-fs',

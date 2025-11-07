@@ -170,7 +170,7 @@ def do_edit_config(ensemble_dir: Path, args):
     
     if not config_path.exists():
         print(f"No configuration file found: {config_path}")
-        print("Use 'mdwf_db config generate' to create one first")
+        print("Use 'mdwf_db default_params generate' to create one first")
         return 1
     
     editor = os.environ.get('EDITOR', 'vi')
