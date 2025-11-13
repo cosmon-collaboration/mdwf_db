@@ -156,6 +156,7 @@ def generate_mres_mq_sbatch(
 
     wit_input_file = workdir / "DWF_mres_mq.in"
     wit_params = {
+        'Witness': {'no_prop': '1', 'no_solver': '1'},  # Only 1 propagator and 1 solver for mres-mq
         'Propagator_0': {'kappa': str(kappaC)}
     }
     if custom_changes:
@@ -165,7 +166,8 @@ def generate_mres_mq_sbatch(
     modified_ensemble_params = p.copy()
     modified_ensemble_params['mc'] = mc_final
     
-    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=modified_ensemble_params, cli_format=True)
+    # Generate WIT input with only 1 propagator and 1 solver (charm quark only)
+    generate_wit_input(str(wit_input_file), custom_params=wit_params, ensemble_params=modified_ensemble_params, cli_format=True, prune_prop_solvers=(1, 1))
 
     # Extract required config range from WIT parameters
     cfg_section = (custom_changes or {}).get('Configurations', {})

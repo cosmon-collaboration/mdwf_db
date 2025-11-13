@@ -22,9 +22,13 @@ def register(subparsers):
     p = subparsers.add_parser(
         'mres-mq-script',
         aliases=['mres-mq'], 
-        help='Generate WIT mres measurement script for single quark mass',
+        help='Generate WIT mres script for single quark mass (charm only, 1 propagator/1 solver)',
         description="""
-Generate WIT mres measurement script for single quark mass. See mres script for more information.
+Generate WIT mres measurement script for single quark mass (charm only).
+This command produces a WIT script with ONLY ONE propagator and ONE solver, 
+unlike the full mres-script which uses 3 propagators and 2 solvers.
+
+Similar to mres-script but simplified for single quark mass measurements.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -181,7 +185,7 @@ def do_mres_mq(args):
         'Propagator_0.Dilution', 'Propagator_0.pos', 'Propagator_0.mom', 'Propagator_0.twist', 
         'Propagator_0.kappa', 'Propagator_0.mu', 'Propagator_0.Seed', 'Propagator_0.idx_solver', 
         'Propagator_0.res', 'Propagator_0.sloppy_res', 'AMA.NEXACT', 'AMA.SLOPPY_PREC', 'AMA.NHITS', 'AMA.NT',
-        'Propagator.Seed'  # Special parameter that applies to all propagators
+        'Propagator.Seed'  # Special parameter that applies to propagator 0
     }
 
     # Helper to recursively check for unused WIT parameters
