@@ -157,6 +157,7 @@ def generate_mres_mq_sbatch(
     wit_input_file = workdir / "DWF_mres_mq.in"
     wit_params = {
         'Witness': {'no_prop': '1', 'no_solver': '1'},  # Only 1 propagator and 1 solver for mres-mq
+        'Solver_0': {'exact_deflation': 'false'},  # Turn off exact deflation by default for mres-mq
         'Propagator_0': {'kappa': str(kappaC)}
     }
     if custom_changes:
