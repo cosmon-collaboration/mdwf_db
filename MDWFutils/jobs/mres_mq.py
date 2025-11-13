@@ -158,7 +158,7 @@ def generate_mres_mq_sbatch(
     wit_params = {
         'Witness': {'no_prop': '1', 'no_solver': '1'},  # Only 1 propagator and 1 solver for mres-mq
         'Solver_0': {'exact_deflation': 'false'},  # Turn off exact deflation by default for mres-mq
-        'Propagator_0': {'kappa': str(kappaC)}
+        'Propagator_0': {'kappa': str(kappaC),'res': '5E-15','sloppy_res': '5E-15'}
     }
     if custom_changes:
         update_nested_dict(wit_params, custom_changes)
