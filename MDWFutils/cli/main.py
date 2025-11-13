@@ -49,6 +49,7 @@ JOB SCRIPT GENERATION:
   wflow-script       Generate gradient flow SLURM script
   meson2pt-script    Generate WIT meson correlator measurement script
   mres-script        Generate WIT mres measurement script
+  mres-mq-script     Generate WIT mres measurement script with changed heavy quark mass
   zv-script          Generate Zv correlator measurement script
   glu-input          Generate GLU input file for gauge field utilities
   wit-input          Generate WIT input file for correlator measurements
