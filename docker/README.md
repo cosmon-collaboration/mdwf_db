@@ -9,9 +9,13 @@ You may build it with either docker or podman/podman-hpc. Here's an example:
 ```
 podman build -t mdwf_db:v0 .
 ```
-Here ```mdwf_db``` is the image name and ```v0``` is the tag. ```.``` indicates the folder with Dockerfile.
+Here ```mdwf_db``` is the image name and ```v0``` is the tag. The ```.``` after the image name indicates the folder with Dockerfile as the working directory.
 
-You may wish to push the built image to a registry.
+After the build, you may list the image you have by typing:
+```
+podman images
+```
+And you may wish to push the built image to a registry for later uses.
 
 ### How to run
 
@@ -21,10 +25,15 @@ export DB_PATH=/path/to/your_database
 cd ${DB_PATH}
 podman run --rm -it -v$(pwd):/home/mdwf_db mdwf_db:v0 
 ```
-which mounts the current working directory (the folder which you should have database file) in the image's working
-directory (here it's /home/mdwf_db in the image to match the default setting in the Dockerfile). ***WARNING*** Mounting this volume will change the original files, please proceed with care or create a copy to do testings.
+Here are some detailed explanations: 
+- ```--rm``` will remove the running cache after exiting.
+- ```-it``` will start an interactive session.
+- ```-v$(pwd):/home/mdwf_db``` mounts the current working directory (the folder which you should have database file) in the image's working
+directory (here it's /home/mdwf_db in the image to match the default setting in the Dockerfile). 
+- ``mdwf_db:v0``` is the image name and its tag. You can also use an address from a registry.
 
-Alternatively, you can use a non-persistent version by running in the container only (an isolated environment).
+***WARNING*** Mounting a host volume will change the original files, please proceed with care or create a copy to do testings.
+Alternatively, you can use a non-persistent version in a container-bounded/isolated environment by running
 ```
 podman run --rm -it -v$(pwd):/mdwf_db mdwf_db:v0
 ```
