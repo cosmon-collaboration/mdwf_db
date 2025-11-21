@@ -1,38 +1,69 @@
-MODE = SMEARING
-HEADER = NERSC
-    DIM_0 = 24
-    DIM_1 = 24
-    DIM_2 = 24
-    DIM_3 = 48
-CONFNO = 24
-RANDOM_TRANSFORM = NO
-SEED = 0
-GFTYPE = COULOMB
-    GF_TUNE = 0.09
-    ACCURACY = 14
-    MAX_ITERS = 650
-CUTTYPE = GLUON_PROPS
-FIELD_DEFINITION = LINEAR
-    MOM_CUT = CYLINDER_CUT
-    MAX_T = 7
-    MAXMOM = 4
-    CYL_WIDTH = 2.0
-    ANGLE = 60
-    OUTPUT = ./
-SMEARTYPE = STOUT
-    DIRECTION = ALL
-    SMITERS = 8
-    ALPHA1 = 0.75
-    ALPHA2 = 0.4
-    ALPHA3 = 0.2
-U1_MEAS = U1_RECTANGLE
-    U1_ALPHA = 0.07957753876221914
-    U1_CHARGE = -1.0
-CONFIG_INFO = 2+1DWF_b2.25_TEST
-    STORAGE = CERN
-BETA = 6.0
-    ITERS = 1500
-    MEASURE = 1
-    OVER_ITERS = 4
-    SAVE = 25
-    THERM = 100
+#!/bin/bash
+#SBATCH -A m0000
+#SBATCH -J smear_1
+#SBATCH -C gpu
+#SBATCH -q regular
+#SBATCH -t 01:00:00
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=4
+#SBATCH --cpus-per-task=32
+#SBATCH --mail-type=ALL
+#SBATCH --signal=B:TERM@60
+#SBATCH -o /global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_STOUT8/jlog/%j.log
+#SBATCH -e /global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_STOUT8/jlog/%j.err
+
+set -euo pipefail
+
+cd "/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_STOUT8"
+mkdir -p jlog
+
+module load cpu
+module load intel-mixed/2023.2.0
+module load cray-fftw/3.3.10.8
+module load conda
+conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
+
+DB="mongodb://mdwf_ensembles_admin:a%20place%20for%20everything%20and%20everything%20in%20its%20place@mongodb05.nersc.gov:27017/mdwf_ensembles?authSource=mdwf_ensembles"
+EID=1
+OP="GLU_SMEAR"
+SC=0
+EC=100
+IC=4
+USER=$(whoami)
+RUN_DIR="/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48"
+PARAMS="smear_type=STOUT smiters=8"
+LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+
+# Source logging helper via process substitution
+source <(python -m MDWFutils.jobs.slurm_update_trap)
+SECONDS=0
+
+GLU="/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU"
+STEP=4
+NSIM=8
+let 'Nth=32 / NSIM'
+export OMP_NUM_THREADS=$Nth
+
+let 'mxcnf=STEP*NSIM'
+for((cnf=$SC; cnf<$EC; cnf+=$mxcnf)); do
+    for((i=0;i<NSIM;i++)); do
+        let 'c=cnf+STEP*i'
+        (( c>EC )) && break
+
+        # Calculate CPU binding for physical and logical cores
+        let 'lo=i*Nth/2'
+        let 'hi=lo+Nth/2-1'
+        let 'loh=128+i*Nth/2'
+        let 'hih=loh+Nth/2-1'
+
+        echo "Config $c: CPUs $lo-$hi $loh-$hih"
+        export GOMP_CPU_AFFINITY="${lo}-${hi} ${loh}-${hih}"
+
+        in_cfg="/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg/ckpoint_EODWF_lat.${c}"
+        out_cfg="/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_STOUT8/ckn${c}"
+        "$GLU" -i "/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_STOUT8/glu_smear.in" -c "$in_cfg" -o "$out_cfg" &
+    done
+    wait
+done
+
+echo "Done in $SECONDS s"

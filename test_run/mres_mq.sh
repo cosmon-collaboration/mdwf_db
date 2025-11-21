@@ -8,9 +8,9 @@
 #SBATCH --gpus=4
 #SBATCH --gpu-bind=none
 #SBATCH --mail-type=ALL
-#SBATCH -o /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq/jlog/%j.log
+#SBATCH -o /global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq/jlog/%j.log
 
-cd "/global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq"
+cd "/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq"
 mkdir -p DATA
 
 module load conda
@@ -23,7 +23,7 @@ SC=0
 EC=100
 IC=1
 USER=$(whoami)
-RUN_DIR="/global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48"
+RUN_DIR="/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48"
 PARAMS="kappaC=0.108696"
 LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 
@@ -55,7 +55,7 @@ echo "MPICH_OFI_NIC_MAPPING=${MPICH_OFI_NIC_MAPPING}"
 
 EXEC="/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Mres"
 BIND="/global/cfs/cdirs/m2986/cosmon/mdwf/ANALYSIS/WIT/bind.sh"
-WIT_INPUT="/global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq/DWF_mres_mq.in"
+WIT_INPUT="/global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq/DWF_mres_mq.in"
 
 echo "Running mres-mq range 0-100 step 1"
 srun -n 4 "$BIND" "$EXEC" -i "$WIT_INPUT" \
