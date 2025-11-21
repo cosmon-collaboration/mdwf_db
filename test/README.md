@@ -1,78 +1,65 @@
 # MongoDB CLI Test Suite
 
-Comprehensive testing framework for the MDWF database management tool CLI commands.
+Comprehensive testing framework for the MDWF database management tool CLI commands on NERSC Perlmutter.
 
 ## Prerequisites
 
-### 1. MongoDB
+### MongoDB on NERSC
 
-The test suite requires a running MongoDB instance:
+The test suite requires access to NERSC's MongoDB service:
+- Must run on **perlmutter-p1.nersc.gov** (Phase 1 login nodes)
+- Database: `mdwf_ensembles` on `mongodb05.nersc.gov`
+- Admin credentials configured in `config/admin.env`
+
+### Python Dependencies
 
 ```bash
-# Using Docker (recommended for testing)
-docker run -d -p 27017:27017 --name mongodb-test mongo:latest
-
-# Or install locally
-# macOS:
-brew install mongodb-community
-brew services start mongodb-community
-
-# Linux:
-sudo systemctl start mongod
+# On Perlmutter
+module load python mongodb
+pip install --user pymongo jinja2 pyyaml pydantic
 ```
 
-### 2. Python Dependencies
+## Running Tests on Perlmutter
 
-Ensure all required packages are installed:
+### Setup (one-time)
 
 ```bash
-pip install pymongo jinja2 pyyaml pydantic
+# SSH to Phase 1 login nodes
+ssh perlmutter-p1.nersc.gov
+
+# Clone/pull the code
+cd ~
+git clone <your-repo> mdwf_db
+cd mdwf_db
+
+# Install dependencies
+module load python mongodb
+pip install --user pymongo jinja2 pyyaml pydantic
+pip install --user -e .
+
+# Configure credentials
+source config/admin.env
 ```
 
-Or install the package in development mode:
+### Run Tests
 
 ```bash
-cd ~/mdwf_db  # or wherever you cloned it
-pip install -e .
-```
-
-## Running Tests
-
-### Basic Test Run
-
-```bash
-# From the project root
-./test/test_mongodb_cli.sh
-```
-
-### Custom MongoDB URL
-
-```bash
-# Specify a custom MongoDB connection string
-export MDWF_DB_URL=mongodb://localhost:27017/mdwf_test
-./test/test_mongodb_cli.sh
-```
-
-### Using Remote MongoDB
-
-```bash
-# For remote MongoDB (e.g., Atlas)
-export MDWF_DB_URL="mongodb+srv://user:pass@cluster.mongodb.net/mdwf_test"
+cd ~/mdwf_db
+source config/admin.env
 ./test/test_mongodb_cli.sh
 ```
 
 ## Test Coverage
 
-The test suite exercises all 20 CLI commands across 7 phases:
+The test suite runs 26 tests across 6 phases:
 
-### Phase 1: Database Initialization (1 test)
-- `init-db` - Create directory structure and verify MongoDB connection
+### Phase 1: SKIPPED
+- Database already exists on NERSC (init-db not needed)
 
-### Phase 2: Ensemble Management (10 tests)
-- `add-ensemble` - Create test ensemble with physics parameters
-- `query` - List all ensembles
+### Phase 2: Ensemble Management (8 tests)
+- `add-ensemble` - Create test ensemble
+- `query` - List all ensembles  
 - `query -e <id>` - Show detailed ensemble info
-- `query -e <path>` - Resolve ensemble by directory path
 - `nickname` - Set ensemble nickname
 - `query -e <nickname>` - Resolve ensemble by nickname
 - `promote-ensemble` - Promote from TUNING to PRODUCTION
@@ -93,23 +80,23 @@ The test suite exercises all 20 CLI commands across 7 phases:
 - `meson2pt-script` - Generate meson correlator script
 - `zv-script` - Generate Zv measurement script
 
-### Phase 5: Operation Tracking (4 tests)
+### Phase 5: Operation Tracking (3 tests)
 - `update` (RUNNING) - Record operation start
 - `query` (verify operation) - Check operation in history
 - `update` (COMPLETED) - Update operation status
 - `clear-history` - Clear operation history
 
-### Phase 6: Default Parameters (4 tests)
-- `default_params save` - Store default parameters
+### Phase 6: Default Parameters (3 tests)
+- `default_params set` - Store default parameters
 - `default_params show` - Display default parameters
-- `smear-script` (with defaults) - Use stored defaults
+- `smear-script` (with params) - Generate with explicit params
 - `default_params delete` - Remove default parameters
 
-### Phase 7: Cleanup (2 tests)
+### Phase 7: Cleanup (1 test)
 - `remove-ensemble` - Delete test ensemble
-- Directory cleanup - Remove test files
+- Flush all collections
 
-**Total: 30+ test assertions**
+**Total: 26 tests**
 
 ## Test Validation
 

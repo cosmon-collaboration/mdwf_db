@@ -142,8 +142,8 @@ For detailed help: mdwf_db <command> --help
     # Allow init-db to create a new database
     if args.cmd != 'init-db':
         db_conn = getattr(args, 'db_file', get_default_db_connection())
-        # For MongoDB URLs (including mongomock), skip file existence check
-        if not db_conn.startswith(("mongodb://", "mongodb+srv://", "mongomock://")):
+        # For MongoDB URLs, skip file existence check
+        if not db_conn.startswith(("mongodb://", "mongodb+srv://")):
             db_path = Path(db_conn)
             if not db_path.exists():
                 print("ERROR: No database file found.")

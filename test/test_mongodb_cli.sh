@@ -3,12 +3,10 @@ set -uo pipefail  # Removed -e so individual test failures don't exit the script
 
 # MongoDB CLI Test Suite
 # ======================
-# Systematically tests all 20 CLI commands using MongoDB backend exclusively
-# Can use either real MongoDB or mongomock (in-memory mock)
+# Systematically tests all CLI commands using MongoDB backend on NERSC
 
 # Test configuration
-USE_MONGOMOCK="${USE_MONGOMOCK:-auto}"  # auto, true, or false
-MONGO_URL="${MDWF_DB_URL:-mongodb://localhost:27017/mdwf_test}"
+MONGO_URL="${MDWF_DB_URL}"
 TEST_DIR="test_run"
 ENSEMBLE_ID=""
 ENSEMBLE_DIR=""
@@ -89,31 +87,19 @@ trap cleanup_test EXIT
 
 # Check MongoDB availability
 check_mongodb() {
-    if [[ "$USE_MONGOMOCK" == "true" ]]; then
-        echo -e "${YELLOW}Using mongomock (in-memory MongoDB mock)${NC}"
-        export MDWF_DB_URL="mongomock://localhost/mdwf_test"
-        return 0
-    fi
-    
-    if [[ "$USE_MONGOMOCK" == "auto" ]]; then
-        # Try real MongoDB first
-        if python3 -c "from pymongo import MongoClient; MongoClient('$MONGO_URL', serverSelectionTimeoutMS=2000).admin.command('ping')" 2>/dev/null; then
-            echo -e "${GREEN}Using real MongoDB at $MONGO_URL${NC}"
-            return 0
-        else
-            echo -e "${YELLOW}MongoDB not available, falling back to mongomock${NC}"
-            export MDWF_DB_URL="mongomock://localhost/mdwf_test"
-            return 0
-        fi
-    fi
-    
-    # USE_MONGOMOCK == "false", require real MongoDB
-    if ! python3 -c "from pymongo import MongoClient; MongoClient('$MONGO_URL', serverSelectionTimeoutMS=5000).admin.command('ping')" 2>/dev/null; then
-        echo -e "${RED}ERROR: Cannot connect to MongoDB at $MONGO_URL${NC}"
-        echo "Please ensure MongoDB is running or set USE_MONGOMOCK=true"
+    if [[ -z "$MDWF_DB_URL" ]]; then
+        echo -e "${RED}ERROR: MDWF_DB_URL not set${NC}"
+        echo "Please run: source config/admin.env"
         exit 1
     fi
-    echo -e "${GREEN}Using real MongoDB at $MONGO_URL${NC}"
+    
+    echo "Testing MongoDB connection..."
+    if ! python3 -c "from pymongo import MongoClient; MongoClient('$MONGO_URL', serverSelectionTimeoutMS=5000).admin.command('ping')" 2>/dev/null; then
+        echo -e "${RED}ERROR: Cannot connect to MongoDB at $MONGO_URL${NC}"
+        echo "Make sure you're on perlmutter-p1.nersc.gov and credentials are correct"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ Connected to MongoDB${NC}"
 }
 
 # Phase 1: Database Initialization
@@ -504,12 +490,10 @@ main() {
     # Check MongoDB connection
     check_mongodb
     
-    # Clean test database (if using real MongoDB)
-    if [[ "$MDWF_DB_URL" != "mongomock://"* ]]; then
-        echo "Flushing test data from database..."
-        python3 -c "from pymongo import MongoClient; db = MongoClient('$MDWF_DB_URL').get_database(); db.ensembles.delete_many({}); db.operations.delete_many({}); db.default_params.delete_many({})" 2>/dev/null || true
-        echo -e "${GREEN}✓${NC} Test data flushed"
-    fi
+    # Clean test database - flush all collections
+    echo "Flushing test data from database..."
+    python3 -c "from pymongo import MongoClient; db = MongoClient('$MDWF_DB_URL').get_database(); db.ensembles.delete_many({}); db.operations.delete_many({}); db.default_params.delete_many({})" 2>/dev/null || true
+    echo -e "${GREEN}✓${NC} Test data flushed"
     
     # Clean test directory
     echo "Cleaning test directory..."

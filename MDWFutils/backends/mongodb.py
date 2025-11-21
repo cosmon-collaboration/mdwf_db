@@ -48,32 +48,19 @@ class MongoDBBackend(DatabaseBackend):
     def __init__(self, connection_string: str):
         super().__init__(connection_string)
 
-        # Handle mongomock connections
-        if connection_string.startswith("mongomock://"):
-            try:
-                import mongomock
-                # Extract database name from mongomock://host/dbname
-                db_name = connection_string.split("/")[-1] or "mdwf_test"
-                self.client = mongomock.MongoClient()
-                self.db = self.client[db_name]
-            except ImportError:
-                raise ImportError(
-                    "mongomock is required for testing. Install with: pip install mongomock"
-                )
-        else:
-            # Real MongoDB connection
-            try:
-                self.client = MongoClient(
-                    connection_string,
-                    maxPoolSize=50,
-                    serverSelectionTimeoutMS=5000,
-                    retryWrites=True,
-                )
-                self.client.server_info()
-            except ConnectionFailure as exc:
-                raise ConnectionError(f"Cannot connect to MongoDB: {exc}") from exc
+        # Connect to MongoDB
+        try:
+            self.client = MongoClient(
+                connection_string,
+                maxPoolSize=50,
+                serverSelectionTimeoutMS=5000,
+                retryWrites=True,
+            )
+            self.client.server_info()
+        except ConnectionFailure as exc:
+            raise ConnectionError(f"Cannot connect to MongoDB: {exc}") from exc
 
-            self.db = self.client.get_database()
+        self.db = self.client.get_database()
         
         self.ensembles = self.db.ensembles
         self.operations = self.db.operations
