@@ -7,6 +7,6 @@ config/*.env
 !config/*.env.template
 
 # Test artifacts
-test_run/
-test/*.log
-test/test_ensembles.db
+#test_run/
+#test/*.log
+#test/test_ensembles.db

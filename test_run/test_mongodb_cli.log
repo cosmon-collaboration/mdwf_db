@@ -1,0 +1,404 @@
+[0;32m✓[0m Test directory cleaned
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 1: add-ensemble: Create test ensemble[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db add-ensemble --params beta=6.0 b=2.5 Ls=12 mc=0.6 ms=0.04 ml=0.005 L=24 T=48 --status=TUNING --base-dir=test_run ━━━
+Ensemble added: ID=1
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 2: query: List all ensembles[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db query --detailed ━━━
+ID  Status  Nickname  Directory                                                                                 beta  b    Ls  cfg_first  cfg_last
+--  ------  --------  ----------------------------------------------------------------------------------------  ----  ---  --  ---------  --------
+1   TUNING  None      /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48  6.0   2.5  12  None       None    
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 3: query -e <id>: Show detailed ensemble info[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db query -e 1 ━━━
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+  (none)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 4: nickname: Set nickname 'test_ens'[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db nickname -e 1 --set test_ens ━━━
+Set nickname: test_ens
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 5: query -e test_ens: Resolve by nickname[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db query -e test_ens ━━━
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+Nickname: test_ens
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+  (none)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 6: promote-ensemble: Move to PRODUCTION[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db promote-ensemble -e test_ens --force ━━━
+ERROR: Could not auto-discover TUNING/ and ENSEMBLES/ roots
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 7: query by path: Resolve ensemble directory[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db query -e test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48 ━━━
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+Nickname: test_ens
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+  (none)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 8: query by relative path: Resolve from ensemble directory[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 9: query: Invalid ensemble ID shows error[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db query -e 999999 ━━━
+ERROR: Ensemble not found with ID: 999999
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 10: scan: Create dummy configs and scan[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db scan ━━━
+Updated ensemble 1: first=0 last=12 inc=4 total=4
+Scan complete: 1 ensemble(s) updated
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 11: hmc-xml: Generate HMC XML parameter file[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db hmc-xml -e test_ens -o test_run/HMCparameters.xml -i Trajectories=100 trajL=0.75 ━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 12: glu-input: Generate GLU input file[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db glu-input -e test_ens -o test_run/glu_smear.in -i SMEARTYPE=STOUT SMITERS=8 ALPHA1=0.75 CONFNO=0 ━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 13: wit-input: Generate WIT input file[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db wit-input -e test_ens -o test_run/DWF_mres.in -i Configurations.first=0 Configurations.last=100 Configurations.step=4 ━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 14: hmc-xml: Missing required parameters fails[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db hmc-xml -e test_ens -o test_run/HMC_missing.xml ━━━
+ERROR: Missing required parameter: Trajectories
+Missing required parameter: trajL
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 15: hmc-script gpu: Generate HMC GPU script[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db hmc-script gpu -e test_ens -j nodes=1 time_limit=06:00:00 account=m2986_g             exec_path=/bin/true bind_script=/bin/true             n_trajec=50 trajL=0.75 lvl_sizes=9,1,1             config_start=0 config_end=100 -i Trajectories=50 trajL=0.75 -o test_run/hmc_gpu.sh ━━━
+ERROR: exec_path is required (set via CLI or ensemble paths.hmc_exec_path)
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 16: hmc-script cpu: Generate HMC CPU script[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db hmc-script cpu -e test_ens -j nodes=2 time_limit=04:00:00 account=m2986             exec_path=/bin/true bind_script=/bin/true             n_trajec=50 trajL=0.75 lvl_sizes=9,1,1             config_start=0 config_end=100 -i Trajectories=50 trajL=0.75 -o test_run/hmc_cpu.sh ━━━
+ERROR: exec_path is required (set via CLI or ensemble paths.hmc_exec_path)
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 17: smear-script: Generate smearing script[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db smear-script -e test_ens -j config_start=0 config_end=100 config_inc=4 nodes=1 -i SMEARTYPE=STOUT SMITERS=8 -o test_run/smear.sh ━━━
+Traceback (most recent call last):
+  File "/global/homes/s/smithwya/.local/perlmutter/python-3.11/bin/mdwf_db", line 33, in <module>
+    sys.exit(load_entry_point('MDWFutils', 'console_scripts', 'mdwf_db')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/main.py", line 129, in main
+    return args.func(args)
+           ^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/command.py", line 120, in execute
+    script_content = generator.generate_slurm(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/components.py", line 87, in generate_slurm
+    builder = get_job_builder(job_type)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/registry.py", line 31, in get_job_builder
+    return _load_builder(target)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/registry.py", line 18, in _load_builder
+    module = import_module(module_path, package=__package__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/smear.py", line 10, in <module>
+    from .glu import generate_glu_input
+ImportError: cannot import name 'generate_glu_input' from 'MDWFutils.jobs.glu' (/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/glu.py)
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 18: wflow-script: Generate Wilson flow script[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db wflow-script -e test_ens -j config_start=0 config_end=100 nodes=1 -o test_run/wflow.sh ━━━
+Traceback (most recent call last):
+  File "/global/homes/s/smithwya/.local/perlmutter/python-3.11/bin/mdwf_db", line 33, in <module>
+    sys.exit(load_entry_point('MDWFutils', 'console_scripts', 'mdwf_db')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/main.py", line 129, in main
+    return args.func(args)
+           ^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/command.py", line 120, in execute
+    script_content = generator.generate_slurm(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/components.py", line 87, in generate_slurm
+    builder = get_job_builder(job_type)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/registry.py", line 31, in get_job_builder
+    return _load_builder(target)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/registry.py", line 18, in _load_builder
+    module = import_module(module_path, package=__package__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/wflow.py", line 10, in <module>
+    from .glu import generate_glu_input
+ImportError: cannot import name 'generate_glu_input' from 'MDWFutils.jobs.glu' (/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/glu.py)
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 19: mres-script: Generate mres measurement script[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db mres-script -e test_ens -j nodes=1 config_start=0 config_end=100 -i Configurations.first=0 Configurations.last=100 Configurations.step=4 -o test_run/mres.sh ━━━
+Wrote SLURM script to test_run/mres.sh
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 20: mres-mq-script: Generate mres with varied quark mass[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db mres-mq-script -e test_ens -j nodes=1 config_start=0 config_end=100 -i Configurations.first=0 Configurations.last=100 mc=0.8 -o test_run/mres_mq.sh ━━━
+Wrote SLURM script to test_run/mres_mq.sh
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 21: meson2pt-script: Generate meson correlator script[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db meson2pt-script -e test_ens -j nodes=1 config_start=0 config_end=100 -i Configurations.first=0 Configurations.last=100 -o test_run/meson2pt.sh ━━━
+Wrote SLURM script to test_run/meson2pt.sh
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 22: zv-script: Generate Zv measurement script[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db zv-script -e test_ens -j nodes=1 config_start=0 config_end=50 -i Configurations.first=0 Configurations.last=50 -o test_run/zv.sh ━━━
+Wrote SLURM script to test_run/zv.sh
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 23: update: Record RUNNING operation[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db update -e test_ens --operation-type TEST_OP --status RUNNING -p test_param=value slurm_job=12345 ━━━
+Created operation entry
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 24: query -e test_ens: Verify operation in history[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db query -e test_ens ━━━
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+Nickname: test_ens
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Configurations:
+  first = 0
+  last = 12
+  increment = 4
+  total = 4
+
+Operations:
+ID  Type     Status   Updated                     SLURM
+--  -------  -------  --------------------------  -----
+1   TEST_OP  RUNNING  2025-11-21 22:03:26.469000  12345
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 25: update: Update to COMPLETED status[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db update -e test_ens --operation-type TEST_OP --status COMPLETED -p exit_code=0 runtime=120 ━━━
+Created operation entry
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 26: clear-history: Clear operations but preserve ensemble[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ensemble 1: /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Found 2 operation(s) to clear
+
+WARNING: This will permanently delete all operation history.
+The ensemble record itself will be preserved.
+Continue? (y/N): 
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 27: MongoDB: Verify ensemble document structure[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 28: default_params set: Store default parameters[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db default_params set -e test_ens --job-type=smear --variant=default --input SMEARTYPE=STOUT SMITERS=8 --job nodes=1 time_limit=01:00:00 ━━━
+Stored defaults for smear.default
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 29: default_params show: Display default parameters[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db default_params show -e test_ens --job-type=smear --variant=default ━━━
+Input params: SMEARTYPE=STOUT SMITERS=8
+Job params: nodes=1 time_limit=01:00:00
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 30: smear-script: Use default parameters[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db smear-script -e test_ens -i SMEARTYPE=STOUT SMITERS=8 -j config_start=0 config_end=100 -o test_run/smear_with_defaults.sh ━━━
+Traceback (most recent call last):
+  File "/global/homes/s/smithwya/.local/perlmutter/python-3.11/bin/mdwf_db", line 33, in <module>
+    sys.exit(load_entry_point('MDWFutils', 'console_scripts', 'mdwf_db')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/main.py", line 129, in main
+    return args.func(args)
+           ^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/command.py", line 120, in execute
+    script_content = generator.generate_slurm(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/cli/components.py", line 87, in generate_slurm
+    builder = get_job_builder(job_type)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/registry.py", line 31, in get_job_builder
+    return _load_builder(target)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/registry.py", line 18, in _load_builder
+    module = import_module(module_path, package=__package__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/smear.py", line 10, in <module>
+    from .glu import generate_glu_input
+ImportError: cannot import name 'generate_glu_input' from 'MDWFutils.jobs.glu' (/global/u2/s/smithwya/mdwf_db/MDWFutils/jobs/glu.py)
+[0;31m━━━ Command failed with exit code 1 ━━━[0m
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 31: default_params delete: Remove default parameters[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db default_params delete -e test_ens --job-type=smear --variant=default ━━━
+Deleted default parameters
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;34mTest 32: remove-ensemble: Delete test ensemble[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ Running: mdwf_db remove-ensemble -e test_ens ━━━
+Removing ensemble 1 @ /global/u2/s/smithwya/mdwf_db/test_run/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Proceed? (y/N) 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Test Summary
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Tests run:    32
+Tests passed: [0;32m53[0m
+Tests failed: [0;31m15[0m
+
+Logs available in: /global/u2/s/smithwya/mdwf_db/test_run/test_mongodb_cli.log
+Rerun with --verbose or --debug for more detail, and --skip-cleanup to keep files.
+[0;31mSome tests failed[0m
