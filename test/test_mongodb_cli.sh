@@ -8,6 +8,7 @@ set -uo pipefail  # Removed -e so individual test failures don't exit the script
 # Test configuration
 MONGO_URL="${MDWF_DB_URL}"
 TEST_DIR="test_run"
+LOG_FILE="$TEST_DIR/test_mongodb_cli.log"
 ENSEMBLE_ID=""
 ENSEMBLE_DIR=""
 
@@ -52,34 +53,23 @@ fail() {
 
 run_test() { 
     ((TESTS_RUN++))
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "${BLUE}Test $TESTS_RUN: $1${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
-    # Create test-specific log directory
-    TEST_LOG_DIR="$TEST_DIR/logs/test_${TESTS_RUN}"
-    mkdir -p "$TEST_LOG_DIR"
+    echo "" | tee -a "$LOG_FILE"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a "$LOG_FILE"
+    echo -e "${BLUE}Test $TESTS_RUN: $1${NC}" | tee -a "$LOG_FILE"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a "$LOG_FILE"
 }
 
 run_cmd() {
-    local log_file="$TEST_LOG_DIR/cmd_${TESTS_RUN}.log"
-    
-    echo "━━━ Running: $* ━━━"
-    # Capture both stdout and stderr, show in real-time
-    local cmd_output
-    cmd_output=$("$@" 2>&1 | tee /dev/stderr)
-    local exit_code=$?
-    
-    # Save to log
-    echo "$cmd_output" > "$log_file"
-    
+    echo "━━━ Running: $* ━━━" | tee -a "$LOG_FILE"
+
+    local exit_code
+    "$@" 2>&1 | tee -a "$LOG_FILE"
+    exit_code=${PIPESTATUS[0]}
+
     if [[ $exit_code -ne 0 ]]; then
-        echo -e "${RED}━━━ Command failed with exit code $exit_code ━━━${NC}"
-        echo "Log saved to: $log_file"
+        echo -e "${RED}━━━ Command failed with exit code $exit_code ━━━${NC}" | tee -a "$LOG_FILE"
     fi
-    echo ""  # blank line for readability
-    
+    echo "" | tee -a "$LOG_FILE"
     return $exit_code
 }
 
@@ -113,22 +103,22 @@ inspect_file() {
     local lines="${2:-50}"
     
     if [[ ! -f "$file" ]]; then
-        echo "File not found: $file"
+        echo "File not found: $file" | tee -a "$LOG_FILE"
         return 1
     fi
     
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "File: $file"
-    echo "Size: $(wc -c < "$file") bytes"
-    echo "Lines: $(wc -l < "$file")"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "First $lines lines:"
-    head -$lines "$file"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a "$LOG_FILE"
+    echo "File: $file" | tee -a "$LOG_FILE"
+    echo "Size: $(wc -c < "$file") bytes" | tee -a "$LOG_FILE"
+    echo "Lines: $(wc -l < "$file")" | tee -a "$LOG_FILE"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a "$LOG_FILE"
+    echo "First $lines lines:" | tee -a "$LOG_FILE"
+    head -$lines "$file" | tee -a "$LOG_FILE"
     if [[ $(wc -l < "$file") -gt $lines ]]; then
-        echo "..."
-        echo "(file continues for $(($(wc -l < "$file") - $lines)) more lines)"
+        echo "..." | tee -a "$LOG_FILE"
+        echo "(file continues for $(($(wc -l < "$file") - $lines)) more lines)" | tee -a "$LOG_FILE"
     fi
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a "$LOG_FILE"
 }
 
 check_no_template_vars() {
@@ -142,28 +132,28 @@ check_no_template_vars() {
 }
 
 cleanup_test() {
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Test Summary"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Tests run:    $TESTS_RUN"
-    echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}"
-    echo -e "Tests failed: ${RED}$TESTS_FAILED${NC}"
+    echo "" | tee -a "$LOG_FILE"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a "$LOG_FILE"
+    echo "Test Summary" | tee -a "$LOG_FILE"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a "$LOG_FILE"
+    echo "Tests run:    $TESTS_RUN" | tee -a "$LOG_FILE"
+    echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}" | tee -a "$LOG_FILE"
+    echo -e "Tests failed: ${RED}$TESTS_FAILED${NC}" | tee -a "$LOG_FILE"
     
     if [[ $TESTS_FAILED -gt 0 ]]; then
-        echo ""
-        echo "Logs available in: $(realpath "$TEST_DIR/logs" 2>/dev/null || echo 'test_run/logs')"
+        echo "" | tee -a "$LOG_FILE"
+        echo "Logs available in: $(realpath "$LOG_FILE" 2>/dev/null || echo "$LOG_FILE")" | tee -a "$LOG_FILE"
         if [[ $DEBUG -eq 1 || $SKIP_CLEANUP -eq 1 ]]; then
-            echo "Generated files preserved in: $(realpath "$TEST_DIR" 2>/dev/null || echo "$TEST_DIR")"
+            echo "Generated files preserved in: $(realpath "$TEST_DIR" 2>/dev/null || echo "$TEST_DIR")" | tee -a "$LOG_FILE"
         fi
-        echo "Rerun with --verbose or --debug for more detail, and --skip-cleanup to keep files."
+        echo "Rerun with --verbose or --debug for more detail, and --skip-cleanup to keep files." | tee -a "$LOG_FILE"
     fi
     
     if [[ $TESTS_FAILED -eq 0 ]]; then
-        echo -e "${GREEN}All tests passed!${NC}"
+        echo -e "${GREEN}All tests passed!${NC}" | tee -a "$LOG_FILE"
         exit 0
     else
-        echo -e "${RED}Some tests failed${NC}"
+        echo -e "${RED}Some tests failed${NC}" | tee -a "$LOG_FILE"
         exit 1
     fi
 }
@@ -178,8 +168,8 @@ check_mongodb() {
         exit 1
     fi
     
-    echo "Testing MongoDB connection..."
-    echo "Using: $MDWF_DB_URL"
+    echo "Testing MongoDB connection..." | tee -a "$LOG_FILE"
+    echo "Using: $MDWF_DB_URL" | tee -a "$LOG_FILE"
     
     # Test connection using pymongo
     if ! python3 << 'EOF'
@@ -205,7 +195,7 @@ EOF
         echo "Current MDWF_DB_URL: $MDWF_DB_URL"
         exit 1
     fi
-    echo -e "${GREEN}✓ Connected to MongoDB${NC}"
+    echo -e "${GREEN}✓ Connected to MongoDB${NC}" | tee -a "$LOG_FILE"
 }
 
 # Phase 1: Database Initialization
@@ -632,7 +622,7 @@ phase_5_operations() {
     clear_output=$(timeout 10s mdwf_db clear-history -e test_ens 2>&1 || true)
     local exit_code=$?
     
-    echo "$clear_output"
+    echo "$clear_output" | tee -a "$LOG_FILE"
     
     if [[ $exit_code -eq 124 ]]; then
         fail "clear-history timed out (hung for >10s)"
@@ -746,31 +736,37 @@ phase_7_cleanup() {
 
 # Main execution
 main() {
-    echo "══════════════════════════════════════════════════════════"
-    echo "MongoDB CLI Test Suite"
-    echo "══════════════════════════════════════════════════════════"
-    echo "Working directory: $(pwd)"
-    echo "Test directory: $TEST_DIR ($(realpath "$TEST_DIR" 2>/dev/null || echo 'will be created'))"
-    echo "Log directory: $TEST_DIR/logs"
-    echo "Debug mode: ${DEBUG}"
-    echo "Verbose mode: ${VERBOSE}"
-    echo "Skip cleanup: ${SKIP_CLEANUP}"
-    echo "══════════════════════════════════════════════════════════"
+    # Initialize log file
+    mkdir -p "$TEST_DIR"
+    : > "$LOG_FILE"   # truncate existing log
+    
+    echo "══════════════════════════════════════════════════════════" | tee -a "$LOG_FILE"
+    echo "MongoDB CLI Test Suite" | tee -a "$LOG_FILE"
+    echo "══════════════════════════════════════════════════════════" | tee -a "$LOG_FILE"
+    echo "Working directory: $(pwd)" | tee -a "$LOG_FILE"
+    echo "Test directory: $TEST_DIR ($(realpath "$TEST_DIR" 2>/dev/null || echo 'will be created'))" | tee -a "$LOG_FILE"
+    echo "Log file: $LOG_FILE" | tee -a "$LOG_FILE"
+    echo "Debug mode: ${DEBUG}" | tee -a "$LOG_FILE"
+    echo "Verbose mode: ${VERBOSE}" | tee -a "$LOG_FILE"
+    echo "Skip cleanup: ${SKIP_CLEANUP}" | tee -a "$LOG_FILE"
+    echo "══════════════════════════════════════════════════════════" | tee -a "$LOG_FILE"
     
     # Check MongoDB connection
     check_mongodb
     
     # Clean test database - flush all collections
-    echo "Flushing test data from database..."
+    echo "Flushing test data from database..." | tee -a "$LOG_FILE"
     python3 -c "from pymongo import MongoClient; db = MongoClient('$MDWF_DB_URL').get_database(); db.ensembles.delete_many({}); db.operations.delete_many({}); db.default_params.delete_many({})" 2>/dev/null || true
-    echo -e "${GREEN}✓${NC} Test data flushed"
+    echo -e "${GREEN}✓${NC} Test data flushed" | tee -a "$LOG_FILE"
     
     # Clean test directory
-    echo "Cleaning test directory..."
+    echo "Cleaning test directory..." | tee -a "$LOG_FILE"
     rm -rf "$TEST_DIR"
-    echo -e "${GREEN}✓${NC} Test directory cleaned"
+    mkdir -p "$TEST_DIR"
+    : > "$LOG_FILE"   # recreate log file after cleaning
+    echo -e "${GREEN}✓${NC} Test directory cleaned" | tee -a "$LOG_FILE"
     
-    echo ""
+    echo "" | tee -a "$LOG_FILE"
     
     # Run test phases
     # phase_1_init  # Skip - database already exists on NERSC
@@ -780,7 +776,7 @@ main() {
     phase_5_operations
     phase_6_defaults
     if [[ $SKIP_CLEANUP -eq 1 ]]; then
-        echo "Skipping cleanup (SKIP_CLEANUP=1)"
+        echo "Skipping cleanup (SKIP_CLEANUP=1)" | tee -a "$LOG_FILE"
     else
         phase_7_cleanup
     fi
