@@ -1,0 +1,43 @@
+{% include 'common/sbatch_header.j2' %}
+
+cd "{{ workdir }}"
+mkdir -p DATA
+
+module load conda
+conda activate {{ conda_env }}
+
+{% include 'common/db_tracking.j2' %}
+
+SECONDS=0
+
+{{ env_setup }}
+export LD_LIBRARY_PATH=/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/quda/lib:$LD_LIBRARY_PATH
+
+export MPICH_RDMA_ENABLED_CUDA=1
+export MPICH_GPU_SUPPORT_ENABLED=1
+export MPICH_NEMESIS_ASYNC_PROGRESS=1
+
+export SLURM_CPU_BIND=cores
+export CRAY_ACCEL_TARGET=nvidia80
+
+export QUDA_RESOURCE_PATH="$(pwd)/../quda_resource"
+[[ -d $QUDA_RESOURCE_PATH ]] || mkdir -p $QUDA_RESOURCE_PATH
+export QUDA_ENABLE_GDR=1
+
+export MPICH_VERSION_DISPLAY=1
+export MPICH_OFI_NIC_VERBOSE=2
+export MPICH_OFI_NIC_POLICY="USER"
+export MPICH_OFI_NIC_MAPPING="0:3;1:2;2:1;3:0"
+echo "MPICH_OFI_NIC_POLICY=${MPICH_OFI_NIC_POLICY}"
+echo "MPICH_OFI_NIC_MAPPING=${MPICH_OFI_NIC_MAPPING}"
+
+EXEC="{{ wit_exec_path }}"
+BIND="{{ bind_script }}"
+WIT_INPUT="{{ wit_input_path }}"
+
+echo "Running mres range {{ config_start }}-{{ config_end }} step {{ config_inc }}"
+srun -n {{ ranks }} $BIND $EXEC -i "$WIT_INPUT" \
+    -ogeom {{ ogeom }} \
+    -lgeom {{ lgeom }}
+
+echo "All done in $SECONDS seconds"

@@ -5,9 +5,8 @@ commands/clear_history.py
 Clear all operation history for a specific ensemble while preserving the ensemble record.
 """
 import sys
-from MDWFutils.db import clear_ensemble_history
-from ..ensemble_utils import resolve_ensemble_from_args
 import argparse
+from ..ensemble_utils import resolve_ensemble_from_args, get_backend_for_args
 
 def register(subparsers):
     p = subparsers.add_parser(
@@ -60,13 +59,12 @@ EXAMPLES:
     p.set_defaults(func=do_clear_history)
 
 def do_clear_history(args):
-    # Resolve ensemble identifier
+    backend = get_backend_for_args(args)
     ensemble_id, ens = resolve_ensemble_from_args(args)
     if not ens:
         return 1
     
-    # Check if there's any history to clear
-    operation_count = ens.get('operation_count', 0)
+    operation_count = len(backend.list_operations(ensemble_id))
     if operation_count == 0:
         print(f"Ensemble {ensemble_id} has no operation history to clear")
         return 0
@@ -85,11 +83,10 @@ def do_clear_history(args):
             return 0
     
     # Clear the history
-    deleted_count, success = clear_ensemble_history(args.db_file, ensemble_id)
-    
-    if success:
+    try:
+        deleted_count = backend.clear_ensemble_history(ensemble_id)
         print(f"Successfully cleared {deleted_count} operation(s) from ensemble {ensemble_id}")
         return 0
-    else:
-        print(f"ERROR: Failed to clear history for ensemble {ensemble_id}", file=sys.stderr)
-        return 1 
+    except Exception as exc:
+        print(f"ERROR: Failed to clear history: {exc}", file=sys.stderr)
+        return 1

@@ -1,0 +1,4 @@
+# Ignore actual credential files, not templates
+*.env
+!*.env.template
+

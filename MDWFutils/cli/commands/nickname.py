@@ -13,12 +13,10 @@ Examples:
 
 import sys
 import argparse
-from MDWFutils.cli.ensemble_utils import add_ensemble_argument, resolve_ensemble_from_args
-from MDWFutils.db import (
-    set_ensemble_parameter,
-    delete_ensemble_parameter,
-    get_ensemble_id_by_nickname,
-    get_ensemble_details,
+from MDWFutils.cli.ensemble_utils import (
+    add_ensemble_argument,
+    resolve_ensemble_from_args,
+    get_backend_for_args,
 )
 
 
@@ -41,31 +39,20 @@ def register(subparsers: argparse._SubParsersAction):
 
 
 def do_nickname(args):
-    ensemble_id, _ = resolve_ensemble_from_args(args)
+    backend = get_backend_for_args(args)
+    ensemble_id, ensemble = resolve_ensemble_from_args(args)
     if ensemble_id is None:
         return 1
 
     # If neither --set nor --clear is specified, just print the current nickname
     if not getattr(args, 'clear', False) and not getattr(args, 'nickname', None):
-        try:
-            details = get_ensemble_details(args.db_file, ensemble_id)
-            if details is None:
-                print(f"ERROR: Ensemble {ensemble_id} not found", file=sys.stderr)
-                return 1
-            
-            nickname = details['parameters'].get('nickname')
-            if nickname:
-                print(f"{nickname}")
-            else:
-                print("None")
-            return 0
-        except Exception as e:
-            print(f"ERROR: Failed to get nickname: {e}", file=sys.stderr)
-            return 1
+        nickname = ensemble.get('nickname')
+        print(nickname or "None")
+        return 0
     
     if getattr(args, 'clear', False):
         try:
-            delete_ensemble_parameter(args.db_file, ensemble_id, 'nickname')
+            backend.update_ensemble(ensemble_id, nickname=None)
             print('Cleared nickname')
             return 0
         except Exception as e:
@@ -78,14 +65,14 @@ def do_nickname(args):
         print('ERROR: Nickname must be a non-empty string', file=sys.stderr)
         return 1
 
-    # Check uniqueness unless forced
-    try:
-        other_id = get_ensemble_id_by_nickname(args.db_file, nickname)
-        if other_id is not None and other_id != ensemble_id and not getattr(args, 'force', False):
-            print(f"ERROR: Nickname already in use by ensemble {other_id}. Use --force to override.", file=sys.stderr)
-            return 1
+    if not getattr(args, 'force', False):
+        for ens in backend.list_ensembles(detailed=False):
+            if ens.get('nickname') == nickname and ens.get('ensemble_id') != ensemble_id:
+                print(f"ERROR: Nickname already in use by ensemble {ens.get('ensemble_id')}. Use --force to override.", file=sys.stderr)
+                return 1
 
-        set_ensemble_parameter(args.db_file, ensemble_id, 'nickname', nickname)
+    try:
+        backend.update_ensemble(ensemble_id, nickname=nickname)
         print(f"Set nickname: {nickname}")
         return 0
     except Exception as e:

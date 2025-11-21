@@ -1,180 +1,140 @@
-import os
+"""Smear job context builder."""
+
+from __future__ import annotations
+
 from pathlib import Path
-from MDWFutils.db            import get_ensemble_details
-from MDWFutils.jobs.glu      import generate_glu_input
-from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
+from typing import Dict
 
-def generate_smear_sbatch(
-    *,
-    # output SBATCH script path; if None we auto-name
-    output_file: str      = None,
-    db_file: str,
-    ensemble_id: int,
-    ensemble_dir: str,
-    run_dir: str = None,
-    glu_path: str         = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU',
-    # SBATCH arguments
-    account: str       = 'm2986',
-    constraint: str    = 'cpu',
-    queue: str         = 'regular',
-    time_limit: str    = '01:00:00',
-    job_name: str      = 'glu_smear',
-    nodes: int         = 1,
-    cpus_per_task: int = 256,
-    gpus: int          = 4,
-    gpu_bind: str      = 'none',
-    ranks: int         = 4,
-    bind_sh: str       = 'bind.sh',
-    mail_user: str     = None,
-    cfg_max: int       = None,
-    # smearing‐run arguments (must supply config_start/end)
-    config_start: int,
-    config_end:   int,
-    config_prefix: str = 'ckpoint_EODWF_lat.',
-    output_prefix: str = 'u_',
-    SMEARTYPE:     str = 'STOUT',
-    SMITERS:       int = 8,
-    alpha_values:  list = None,
-    config_inc:    int = 4,
-    nsim:          int = 8,
+from MDWFutils.exceptions import ValidationError
 
-    # any extra overrides for generate_glu_input
-    custom_changes: dict = None
-) -> str:
+from .glu import generate_glu_input
+from .utils import get_ensemble_doc, get_physics_params
+
+DEFAULT_GLU_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU"
+DEFAULT_CONDA_ENV = "/global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf"
+DEFAULT_CONFIG_PREFIX = "ckpoint_EODWF_lat."
+DEFAULT_OUTPUT_PREFIX = "u_"
+DEFAULT_NSIM = 8
+
+
+def build_smear_context(
+    backend, ensemble_id: int, job_params: Dict, input_params: Dict
+) -> Dict:
     """
-    read L,T from DB
-    write glu_smear.in under CFGS_<SMEARTYPE><SMITERS>/
-    write SBATCH script under slurm/
+    Build the context dictionary required to render the smear SLURM template.
     """
-    ensemble_dir = Path(ensemble_dir).expanduser().resolve()
-    base_work    = Path(run_dir).expanduser().resolve() if run_dir else ensemble_dir
-    db_file      = str(Path(db_file).expanduser().resolve())
 
-    # fetch L,T
-    ens = get_ensemble_details(db_file, ensemble_id)
-    if not ens:
-        raise RuntimeError(f"Ensemble {ensemble_id} not found")
-    p = ens['parameters']
-    L = int(p['L']); T = int(p['T'])
+    ensemble = get_ensemble_doc(backend, ensemble_id)
+    physics = get_physics_params(ensemble)
 
-    # build GLU input
-    smear_dir = base_work / f"cnfg_{SMEARTYPE}{SMITERS}"
-    smear_dir.mkdir(parents=True, exist_ok=True)
-    (smear_dir / "jlog").mkdir(parents=True, exist_ok=True)
-    inp = smear_dir / "glu_smear.in"
-
-    glu_overrides = {
-        'CONFNO': str(config_start),
-        'DIM_0': str(L),
-        'DIM_1': str(L), 
-        'DIM_2': str(L),
-        'DIM_3': str(T),
-        'SMEARTYPE': SMEARTYPE,
-        'SMITERS': str(SMITERS),
-    }
-    
-    # Add alpha values if provided
-    if alpha_values:
-        if len(alpha_values) >= 1:
-            glu_overrides['ALPHA1'] = str(alpha_values[0])
-        if len(alpha_values) >= 2:
-            glu_overrides['ALPHA2'] = str(alpha_values[1])
-        if len(alpha_values) >= 3:
-            glu_overrides['ALPHA3'] = str(alpha_values[2])
-    if custom_changes:
-        glu_overrides.update(custom_changes)
-
-    generate_glu_input(str(inp), glu_overrides)
-
-    # build SBATCH - save in the smear directory's slurm subfolder
-    sbatch_dir = smear_dir / "slurm"
-    sbatch_dir.mkdir(parents=True, exist_ok=True)
-
-    if not output_file:
-        fname = f"glu_smear_{SMEARTYPE}{SMITERS}_{config_start}_{config_end}.sh"
-        output_file = str(sbatch_dir / fname)
-
-    alpha_str = "[" + ",".join(map(str, alpha_values or [])) + "]"
-
-    # Determine output file prefix. Default is u_<SMEARTYPE><SMITERS>,
-    # but for stout8 specifically, use 'ck'. Allow an explicit output_prefix
-    # override by passing a custom value (will be ignored for stout8 case).
-    prefix_for_files = f"u_{SMEARTYPE}{SMITERS}"
     try:
-        if str(SMEARTYPE).lower() == 'stout' and int(SMITERS) == 8:
-            prefix_for_files = 'ck'
-        elif output_prefix and output_prefix != 'u_':
-            # If user provided a non-default prefix, use it as a base
-            prefix_for_files = f"{output_prefix}{SMEARTYPE}{SMITERS}"
+        L = int(physics["L"])
+        T = int(physics["T"])
+    except KeyError as exc:
+        raise ValidationError("Ensemble is missing L/T lattice dimensions") from exc
+
+    ensemble_dir = Path(ensemble["directory"]).resolve()
+    work_root = Path(job_params.get("run_dir") or ensemble_dir).resolve()
+
+    smear_type = str(input_params.get("SMEARTYPE", "STOUT"))
+    smiters = int(input_params.get("SMITERS", 8))
+    alpha_values = [
+        input_params.get("ALPHA1"),
+        input_params.get("ALPHA2"),
+        input_params.get("ALPHA3"),
+    ]
+
+    smear_dir = work_root / f"cnfg_{smear_type}{smiters}"
+    log_dir = smear_dir / "jlog"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (smear_dir / "slurm").mkdir(parents=True, exist_ok=True)
+
+    glu_input_path = smear_dir / "glu_smear.in"
+    _write_glu_input(glu_input_path, L, T, job_params, smear_type, smiters, alpha_values)
+
+    prefix_for_files = _determine_output_prefix(smear_type, smiters, job_params)
+
+    config_start = int(job_params["config_start"])
+    config_end = int(job_params["config_end"])
+    config_inc = int(job_params.get("config_inc", 4))
+    cpus_per_task = int(job_params.get("cpus_per_task", 256))
+    nsim = int(job_params.get("nsim", DEFAULT_NSIM))
+
+    context = {
+        # SBATCH header
+        "account": job_params.get("account", "m2986"),
+        "constraint": job_params.get("constraint", "cpu"),
+        "queue": job_params.get("queue", "regular"),
+        "time_limit": job_params.get("time_limit", "01:00:00"),
+        "nodes": int(job_params.get("nodes", 1)),
+        "ntasks_per_node": int(job_params.get("ranks", 1)),
+        "cpus_per_task": cpus_per_task,
+        "job_name": job_params.get("job_name") or f"smear_{ensemble_id}",
+        "mail_user": job_params.get("mail_user") or "",
+        "log_dir": str(log_dir),
+        "separate_error_log": True,
+        "signal": "B:TERM@60",
+        "mail_type": job_params.get("mail_type", "ALL"),
+        # DB tracking
+        "ensemble_id": ensemble_id,
+        "db_file": getattr(backend, "connection_string", ""),
+        "operation": "GLU_SMEAR",
+        "config_start": config_start,
+        "config_end": config_end,
+        "config_inc": config_inc,
+        "run_dir": str(work_root),
+        "params": f"smear_type={smear_type} smiters={smiters}",
+        # Job-specific context
+        "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
+        "smear_dir": str(smear_dir),
+        "config_dir": str(work_root / "cnfg"),
+        "config_prefix": job_params.get("config_prefix", DEFAULT_CONFIG_PREFIX),
+        "prefix_for_files": prefix_for_files,
+        "glu_exec_path": job_params.get("glu_path", DEFAULT_GLU_EXEC),
+        "glu_input_path": str(glu_input_path),
+        "nsim": nsim,
+    }
+
+    return context
+
+
+def _write_glu_input(
+    target_path: Path,
+    L: int,
+    T: int,
+    job_params: Dict,
+    smear_type: str,
+    smiters: int,
+    alpha_values,
+) -> None:
+    """Generate the GLU input file with the appropriate overrides."""
+    overrides = {
+        "CONFNO": str(job_params["config_start"]),
+        "DIM_0": str(L),
+        "DIM_1": str(L),
+        "DIM_2": str(L),
+        "DIM_3": str(T),
+        "SMEARTYPE": smear_type,
+        "SMITERS": str(smiters),
+    }
+
+    alphas = ["ALPHA1", "ALPHA2", "ALPHA3"]
+    for key, value in zip(alphas, alpha_values):
+        if value is not None:
+            overrides[key] = str(value)
+
+    generate_glu_input(str(target_path), overrides)
+
+
+def _determine_output_prefix(smear_type: str, smiters: int, job_params: Dict) -> str:
+    """Replicate historical file prefix logic."""
+    prefix = f"{DEFAULT_OUTPUT_PREFIX}{smear_type}{smiters}"
+    custom = job_params.get("output_prefix")
+    try:
+        if smear_type.lower() == "stout" and int(smiters) == 8:
+            prefix = "ck"
+        elif custom and custom != DEFAULT_OUTPUT_PREFIX:
+            prefix = f"{custom}{smear_type}{smiters}"
     except Exception:
         pass
-    txt = f"""#!/usr/bin/env bash
-#SBATCH -A {account}
-#SBATCH -C {constraint}
-#SBATCH -q {queue}
-#SBATCH -t {time_limit}
-#SBATCH -J {job_name}
-#SBATCH --output={smear_dir}/jlog/%j.out
-#SBATCH --error={smear_dir}/jlog/%j.err
-#SBATCH -N {nodes}
-#SBATCH --cpus-per-task={cpus_per_task}
-#SBATCH --signal=B:TERM@60
-{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
-
-module load cpu
-module load intel-mixed/2023.2.0
-module load cray-fftw/3.3.10.8
-module load conda
-conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
-
-DB="{db_file}"
-EID={ensemble_id}
-OP="GLU_SMEAR"
-SC={config_start}
-EC={config_end}
-IC={config_inc}
-USER=$(whoami)
-LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
-RUN_DIR="{str(base_work)}"
-
-mkdir -p "{smear_dir}/jlog"
-
-# Source logging helper via process substitution
-source <(python -m MDWFutils.jobs.slurm_update_trap)
-SECONDS=0
-
-GLU="{glu_path}"
-step=$IC
-nsim={nsim}
-let 'Nth={cpus_per_task}/nsim'
-export OMP_NUM_THREADS=$Nth
-
-echo "step=$step nsim=$nsim Nth=$Nth"
-
-let 'mxcnf=step*nsim'
-for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
-    for((i=0;i<$nsim;i++));do
-        let 'c=cnf+step*i'
-        (( c>EC )) && break
-        
-        # Calculate CPU binding for physical and logical cores
-        let 'lo=i*Nth/2'
-        let 'hi=lo+Nth/2-1'
-        let 'loh=128+i*Nth/2'
-        let 'hih=loh+Nth/2-1'
-        
-        echo "Config $c: CPUs $lo-$hi $loh-$hih"
-        export GOMP_CPU_AFFINITY="${{lo}}-${{hi}} ${{loh}}-${{hih}}"
-        
-        in_cfg="{base_work}/cnfg/{config_prefix}${{c}}"
-        out_cfg="{smear_dir}/{prefix_for_files}n${{c}}"
-        $GLU -i "{inp}" -c "$in_cfg" -o "$out_cfg" &
-    done
-    wait
-done
-
-echo "Done in $SECONDS s"
-"""
-    with open(output_file,'w') as f: f.write(txt)
-    os.chmod(output_file,0o775)
-    return output_file
+    return prefix

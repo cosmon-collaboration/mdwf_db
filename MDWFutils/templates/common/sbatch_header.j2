@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH -A {{ account }}
+{% if job_name %}
+#SBATCH -J {{ job_name }}
+{% endif %}
+#SBATCH -C {{ constraint }}
+#SBATCH -q {{ queue }}
+#SBATCH -t {{ time_limit }}
+#SBATCH -N {{ nodes }}
+{% if ntasks_per_node %}
+#SBATCH --ntasks-per-node={{ ntasks_per_node }}
+{% endif %}
+{% if cpus_per_task %}
+#SBATCH --cpus-per-task={{ cpus_per_task }}
+{% endif %}
+{% if gpus %}
+#SBATCH --gpus={{ gpus }}
+{% endif %}
+{% if gpus_per_task %}
+#SBATCH --gpus-per-task={{ gpus_per_task }}
+{% endif %}
+{% if gpu_bind %}
+#SBATCH --gpu-bind={{ gpu_bind }}
+{% endif %}
+{% if gres %}
+#SBATCH --gres={{ gres }}
+{% endif %}
+#SBATCH --mail-type={{ mail_type | default("ALL") }}
+{% if mail_user %}
+#SBATCH --mail-user={{ mail_user }}
+{% endif %}
+{% if signal %}
+#SBATCH --signal={{ signal }}
+{% endif %}
+#SBATCH -o {{ log_dir }}/%j.{{ log_suffix | default("log") }}
+{% if separate_error_log %}
+#SBATCH -e {{ log_dir }}/%j.err
+{% endif %}
+

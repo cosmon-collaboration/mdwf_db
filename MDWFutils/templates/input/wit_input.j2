@@ -1,0 +1,7 @@
+{% for section in sections %}
+[{{ section.name }}]
+{% for entry in section.entries %}
+{{ "%-12s"|format(entry.key) }} {{ entry.value }}
+{% endfor %}
+
+{% endfor %}

@@ -7,7 +7,9 @@ Sub‐command "add-ensemble" for mdwf_db:
 import sys
 import re
 from pathlib import Path
-from MDWFutils.db import add_ensemble, update_ensemble, set_ensemble_parameter
+
+from ..ensemble_utils import get_backend_for_args
+from ...exceptions import ValidationError
 
 REQUIRED = ['beta','b','Ls','mc','ms','ml','L','T']
 
@@ -104,6 +106,8 @@ def _parse_params_from_path(path: Path):
 
 
 def do_add(args):
+    backend = get_backend_for_args(args)
+
     # parse params into a dict (if provided)
     pdict = {}
     if args.params:
@@ -152,29 +156,16 @@ def do_add(args):
     (cnfg_dir / "slurm").mkdir(exist_ok=True)
     (cnfg_dir / "jlog").mkdir(exist_ok=True)
 
-    eid, created = add_ensemble(
-        args.db_file, str(ens_dir), pdict, description=args.description
-    )
-    if created:
-        print(f"Ensemble added: ID={eid}")
-    else:
-        print(f"⚠ Ensemble already exists: ID={eid}")
-
-    # if PRODUCTION, patch status & dir
-    if args.status == 'PRODUCTION':
-        ok = update_ensemble(
-            args.db_file, eid,
-            status='PRODUCTION',
-            directory=str(ens_dir)
+    try:
+        eid = backend.add_ensemble(
+            str(ens_dir),
+            pdict,
+            status=args.status,
+            description=args.description,
+            nickname=args.nickname,
         )
-        print(f"Marked PRODUCTION in DB: {'OK' if ok else 'FAIL'}")
-
-    # Set optional nickname
-    if getattr(args, 'nickname', None):
-        try:
-            set_ensemble_parameter(args.db_file, eid, 'nickname', args.nickname)
-            print(f"Set nickname: {args.nickname}")
-        except Exception as e:
-            print(f"WARNING: Failed to set nickname: {e}", file=sys.stderr)
-
+        print(f"Ensemble added: ID={eid}")
+    except ValidationError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     return 0

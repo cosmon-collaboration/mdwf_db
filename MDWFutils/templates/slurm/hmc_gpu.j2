@@ -1,0 +1,106 @@
+{% include 'common/sbatch_header.j2' %}
+
+batch="$0"
+DB="{{ db_file }}"
+EID={{ ensemble_id }}
+mode="{{ mode }}"
+ens="{{ ensemble_name }}"
+ens_rel="{{ ensemble_relpath }}"
+VOL="{{ volume }}"
+EXEC="{{ exec_path }}"
+BIND="{{ bind_script }}"
+n_trajec={{ n_trajec }}
+mpi="{{ mpi }}"
+trajL="{{ trajL }}"
+lvl_sizes="{{ lvl_sizes }}"
+work_root="{{ work_root }}"
+{% if cfg_max %}
+cfg_max={{ cfg_max }}
+{% else %}
+# cfg_max not set
+{% endif %}
+
+cd "$work_root"
+LOGFILE="{{ logfile }}"
+
+echo "ens = $ens"
+echo "ens_dir = {{ ensemble_dir }}"
+echo "work_root = $work_root"
+echo "EXEC = $EXEC"
+echo "BIND = $BIND"
+echo "n_trajec = $n_trajec"
+{% if cfg_max %}
+echo "cfg_max = $cfg_max"
+{% endif %}
+
+mkdir -p cnfg/log_hmc cnfg/jlog
+module load conda
+conda activate {{ conda_env }}
+
+# Source HMC helper functions for robust config detection
+source <(python -m MDWFutils.jobs.hmc_helpers)
+
+# Determine starting configuration quietly
+start=$(hmc_find_latest_config "cnfg")
+[[ -z "$start" || "$start" -eq 0 ]] && start=0
+
+# Ensure StartTrajectory in XML matches detected start
+XML_PATH="$work_root/cnfg/HMCparameters.xml"
+if [[ -f "$XML_PATH" ]]; then
+    sed -i -E "s#(<StartTrajectory>)[0-9]+(</StartTrajectory>)#\\1${start}\\2#" "$XML_PATH"
+else
+    echo "WARNING: HMCparameters.xml not found at $XML_PATH" >&2
+fi
+
+# Self-resubmission logic (submit to queue early for better priority)
+{% if cfg_max %}
+echo "Self-Resubmission Check:"
+echo "------------------------"
+if [[ -n "$cfg_max" ]]; then
+    source <(python -m MDWFutils.jobs.hmc_resubmit)
+    hmc_auto_resubmit
+else
+    echo "cfg_max not set - no automatic resubmission"
+fi
+echo "------------------------"
+echo ""
+{% else %}
+echo "No automatic resubmission (cfg_max not set)"
+echo ""
+{% endif %}
+
+# Prepare DB update variables and queue RUNNING update off-node
+USER=$(whoami)
+OP="HMC_{{ mode }}"
+SC=$start
+EC=$(( start + n_trajec ))
+{% if cfg_max %}
+PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec cfg_max=$cfg_max mode={{ mode }}"
+{% else %}
+PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec mode={{ mode }}"
+{% endif %}
+RUN_DIR="$work_root"
+source <(python -m MDWFutils.jobs.slurm_update_trap)
+
+SECONDS=0
+
+cd cnfg
+
+export CRAY_ACCEL_TARGET=nvidia80
+export MPICH_OFI_NIC_POLICY=GPU
+export SLURM_CPU_BIND="cores"
+export MPICH_GPU_SUPPORT_ENABLED=1
+export MPICH_RDMA_ENABLED_CUDA=1
+export MPICH_GPU_IPC_ENABLED=1
+export MPICH_GPU_EAGER_REGISTER_HOST_MEM=0
+export MPICH_GPU_NO_ASYNC_MEMCPY=0
+export OMP_NUM_THREADS={{ omp_num_threads }}
+
+echo "Nthreads $OMP_NUM_THREADS"
+
+echo "START $(date)"
+srun $BIND $EXEC --mpi {{ mpi }} --grid {{ volume }} --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > log_hmc/log_{{ ensemble_name }}.$start
+echo "STOP $(date)"
+
+echo "Job completed in $SECONDS seconds"
+echo "Log file: cnfg/log_hmc/log_{{ ensemble_name }}.$start"

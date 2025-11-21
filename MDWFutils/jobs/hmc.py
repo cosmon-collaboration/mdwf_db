@@ -1,582 +1,331 @@
-# MDWFutils/jobs/hmc.py
+"""Context builders for HMC scripts and inputs."""
+
+from __future__ import annotations
 
 import random
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Dict, Optional
 from xml.dom import minidom
-from MDWFutils.db import get_ensemble_details, get_connection, update_operation
-from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
-import sys
 
-def _make_default_tree(mode: str, seed_override: int = None):
-    """
-    Build a fresh ElementTree with defaults for tepid/continue/reseed.
-    """
-    # pick the seed
-    if mode == 'reseed':
-        seed = seed_override if seed_override is not None else random.randint(1, 10**6)
-    else:
-        # tepid & continue always share one seed
+from MDWFutils.exceptions import ValidationError
+
+from .utils import (
+    compute_kappa,
+    ensure_keys,
+    get_ensemble_doc,
+    get_physics_params,
+)
+
+DEFAULT_CONDA_ENV = "/global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf"
+DEFAULT_LOGFILE = "/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
+DEFAULT_GPU_MPI = "4.4.4.8"
+DEFAULT_CPU_MPI = "4.4.4.8"
+DEFAULT_CPU_CACHEBLOCKING = "2.2.2.2"
+
+
+# --------------------------------------------------------------------------- #
+# HMC GPU / CPU context builders
+# --------------------------------------------------------------------------- #
+
+def build_hmc_gpu_context(backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
+    """Return context for the GPU SLURM template."""
+    ensemble = get_ensemble_doc(backend, ensemble_id)
+    physics = get_physics_params(ensemble)
+    ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
+
+    paths = ensemble.get("paths", {})
+    exec_path = job_params.get("exec_path") or paths.get("hmc_exec_path")
+    if not exec_path:
+        raise ValidationError("exec_path is required (set via CLI or ensemble paths.hmc_exec_path)")
+
+    bind_script = (
+        job_params.get("bind_script")
+        or paths.get("hmc_bind_script_gpu")
+        or paths.get("hmc_bind_script")
+    )
+    if not bind_script:
+        raise ValidationError(
+            "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_gpu)"
+        )
+
+    n_trajec = _require(job_params, "n_trajec", "HMC GPU requires n_trajec")
+    trajL = _require(job_params, "trajL", "HMC GPU requires trajL")
+    lvl_sizes = _require(job_params, "lvl_sizes", "HMC GPU requires lvl_sizes")
+
+    work_root = Path(job_params.get("run_dir") or ensemble["directory"]).resolve()
+    log_dir = work_root / "cnfg" / "jlog"
+    volume = _format_volume(physics)
+    ens_name = _format_ensemble_name(physics)
+    mpi = job_params.get("mpi", DEFAULT_GPU_MPI)
+    cfg_max = job_params.get("cfg_max")
+    gres = job_params.get("gres")
+    ntasks_per_node = int(job_params.get("ntasks_per_node", 1))
+    if not gres:
+        gres = f"gpu:{ntasks_per_node}"
+
+    context = {
+        # Shared SBATCH header fields
+        "account": job_params.get("account"),
+        "constraint": job_params.get("constraint", "gpu"),
+        "queue": job_params.get("queue", "regular"),
+        "time_limit": job_params.get("time_limit", "06:00:00"),
+        "nodes": int(job_params.get("nodes", 1)),
+        "ntasks_per_node": ntasks_per_node,
+        "cpus_per_task": int(job_params.get("cpus_per_task", 32)),
+        "gpus_per_task": int(job_params.get("gpus_per_task", 1)),
+        "gpu_bind": job_params.get("gpu_bind", "none"),
+        "gres": gres,
+        "mail_user": job_params.get("mail_user") or "",
+        "mail_type": "BEGIN,END",
+        "signal": "B:TERM@60",
+        "log_dir": str(log_dir),
+        "separate_error_log": True,
+        "job_name": _resolve_job_name(job_params, ensemble_id),
+        # Script-specific values
+        "db_file": backend.connection_string,
+        "ensemble_id": ensemble_id,
+        "mode": job_params.get("mode", "tepid"),
+        "ensemble_name": ens_name,
+        "ensemble_relpath": job_params.get("ensemble_relpath", ""),
+        "volume": volume,
+        "exec_path": exec_path,
+        "bind_script": bind_script,
+        "n_trajec": int(n_trajec),
+        "mpi": mpi,
+        "trajL": str(trajL),
+        "lvl_sizes": str(lvl_sizes),
+        "work_root": str(work_root),
+        "ensemble_dir": str(Path(ensemble["directory"]).resolve()),
+        "cfg_max": int(cfg_max) if cfg_max not in (None, "") else None,
+        "logfile": DEFAULT_LOGFILE,
+        "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
+        "omp_num_threads": int(job_params.get("omp_num_threads", 16)),
+    }
+    return context
+
+
+def build_hmc_cpu_context(backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
+    """Return context for the CPU SLURM template."""
+    ensemble = get_ensemble_doc(backend, ensemble_id)
+    physics = get_physics_params(ensemble)
+    ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
+
+    paths = ensemble.get("paths", {})
+    exec_path = job_params.get("exec_path") or paths.get("hmc_exec_path")
+    if not exec_path:
+        raise ValidationError("exec_path is required (set via CLI or ensemble paths.hmc_exec_path)")
+
+    bind_script = job_params.get("bind_script") or paths.get("hmc_bind_script_cpu")
+    if not bind_script:
+        raise ValidationError(
+            "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_cpu)"
+        )
+
+    n_trajec = _require(job_params, "n_trajec", "HMC CPU requires n_trajec")
+    trajL = _require(job_params, "trajL", "HMC CPU requires trajL")
+    lvl_sizes = _require(job_params, "lvl_sizes", "HMC CPU requires lvl_sizes")
+
+    work_root = Path(job_params.get("run_dir") or ensemble["directory"]).resolve()
+    log_dir = work_root / "cnfg" / "jlog"
+    volume = _format_volume(physics)
+    ens_name = _format_ensemble_name(physics)
+    mpi = job_params.get("mpi", DEFAULT_CPU_MPI)
+    cacheblocking = job_params.get("cacheblocking", DEFAULT_CPU_CACHEBLOCKING)
+    cfg_max = job_params.get("cfg_max")
+
+    context = {
+        "account": job_params.get("account"),
+        "constraint": job_params.get("constraint", "cpu"),
+        "queue": job_params.get("queue", "regular"),
+        "time_limit": job_params.get("time_limit", "06:00:00"),
+        "nodes": int(job_params.get("nodes", 1)),
+        "ntasks_per_node": int(job_params.get("ntasks_per_node", 1)),
+        "cpus_per_task": int(job_params.get("cpus_per_task", 32)),
+        "mail_user": job_params.get("mail_user") or "",
+        "mail_type": "BEGIN,END",
+        "signal": "B:TERM@60",
+        "log_dir": str(log_dir),
+        "separate_error_log": True,
+        "job_name": _resolve_job_name(job_params, ensemble_id),
+        "db_file": backend.connection_string,
+        "ensemble_id": ensemble_id,
+        "mode": job_params.get("mode", "tepid"),
+        "ensemble_name": ens_name,
+        "ensemble_relpath": job_params.get("ensemble_relpath", ""),
+        "volume": volume,
+        "exec_path": exec_path,
+        "bind_script": bind_script,
+        "n_trajec": int(n_trajec),
+        "mpi": mpi,
+        "cacheblocking": cacheblocking,
+        "trajL": str(trajL),
+        "lvl_sizes": str(lvl_sizes),
+        "work_root": str(work_root),
+        "ensemble_dir": str(Path(ensemble["directory"]).resolve()),
+        "cfg_max": int(cfg_max) if cfg_max not in (None, "") else None,
+        "logfile": DEFAULT_LOGFILE,
+        "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
+        "omp_num_threads": int(job_params.get("omp_num_threads", 4)),
+    }
+    return context
+
+
+# --------------------------------------------------------------------------- #
+# HMC XML support (will be used by input templates)
+# --------------------------------------------------------------------------- #
+
+def build_hmc_xml_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
+    """Build context for rendering HMCparameters.xml."""
+    mode = input_params.get("mode", "tepid")
+    seed_override = input_params.get("Seed")
+    overrides = {k: v for k, v in input_params.items() if k not in {"mode", "Seed"}}
+
+    tree, root = _make_default_tree(mode, _maybe_int(seed_override))
+    _apply_xml_overrides(root, overrides)
+    xml_string = _tree_to_string(tree)
+    return {"xml": xml_string}
+
+
+# --------------------------------------------------------------------------- #
+# Legacy XML helpers retained for migration scripts
+# --------------------------------------------------------------------------- #
+
+def _make_default_tree(mode: str, seed_override: Optional[int] = None):
+    """Build a fresh ElementTree with defaults for tepid/continue/reseed."""
         seed = seed_override if seed_override is not None else random.randint(1, 10**6)
 
-    # defaults for each mode
-    if mode == 'tepid':
+    if mode == "tepid":
         start, traj = 0, 100
-        stype, metropolis = 'TepidStart', False
-    elif mode == 'continue':
+        stype, metropolis = "TepidStart", False
+    elif mode == "continue":
         start, traj = 12, 20
-        stype, metropolis = 'CheckpointStart', True
-    elif mode == 'reseed':
+        stype, metropolis = "CheckpointStart", True
+    elif mode == "reseed":
         start, traj = 0, 200
-        stype, metropolis = 'CheckpointStartReseed', True
+        stype, metropolis = "CheckpointStartReseed", True
     else:
         raise ValueError(f"Unknown mode '{mode}'")
 
-    # default MD‐block
-    md_name   = ['OMF2_5StepV','OMF2_5StepV','OMF4_11StepV']
-    md_steps  = 1
-    trajL     = 0.75
-    lvl_sizes = [9,1,1]
+    md_name = ["OMF2_5StepV", "OMF2_5StepV", "OMF4_11StepV"]
+    md_steps = 1
+    trajL = 0.75
+    lvl_sizes = [9, 1, 1]
 
-    # build skeleton
-    root = ET.Element('grid')
-    hmc  = ET.SubElement(root, 'HMCparameters')
-    def E(tag,val):
-        ET.SubElement(hmc, tag).text = str(val)
+    root = ET.Element("grid")
+    hmc = ET.SubElement(root, "HMCparameters")
 
-    E('StartTrajectory',   start)
-    E('Trajectories',      traj)
-    E('MetropolisTest',    str(metropolis).lower())
-    E('NoMetropolisUntil', 0)
-    E('PerformRandomShift','false')
-    E('StartingType',      stype)
-    E('Seed',              seed)
+    def elem(tag, value):
+        ET.SubElement(hmc, tag).text = str(value)
 
-    md = ET.SubElement(hmc, 'MD')
-    nm = ET.SubElement(md, 'name')
-    for e in md_name:
-        ET.SubElement(nm, 'elem').text = e
+    elem("StartTrajectory", start)
+    elem("Trajectories", traj)
+    elem("MetropolisTest", str(metropolis).lower())
+    elem("NoMetropolisUntil", 0)
+    elem("PerformRandomShift", "false")
+    elem("StartingType", stype)
+    elem("Seed", seed)
 
-    ET.SubElement(md, 'MDsteps').text = str(md_steps)
-    ET.SubElement(md, 'trajL').text = str(trajL)
+    md = ET.SubElement(hmc, "MD")
+    names = ET.SubElement(md, "name")
+    for entry in md_name:
+        ET.SubElement(names, "elem").text = entry
 
-    lvl = ET.SubElement(md, 'lvl_sizes')
-    for x in lvl_sizes:
-        ET.SubElement(lvl, 'elem').text = str(x)
+    ET.SubElement(md, "MDsteps").text = str(md_steps)
+    ET.SubElement(md, "trajL").text = str(trajL)
+
+    levels = ET.SubElement(md, "lvl_sizes")
+    for value in lvl_sizes:
+        ET.SubElement(levels, "elem").text = str(value)
 
     return ET.ElementTree(root), root
 
 
 def _pretty_write(tree: ET.ElementTree, path: Path):
-    """
-    Pretty-print the XML with indentation and write to `path`,
-    but strip out any empty lines that minidom inserts.
-    """
-    raw = ET.tostring(tree.getroot(), encoding='utf-8')
+    """Pretty-print XML with indentation and write to path."""
+    raw = ET.tostring(tree.getroot(), encoding="utf-8")
     parsed = minidom.parseString(raw)
-    pretty = parsed.toprettyxml(indent='  ')
-    # drop all-blank lines
+    pretty = parsed.toprettyxml(indent="  ")
     lines = [ln for ln in pretty.splitlines() if ln.strip()]
-    # re-join and ensure trailing newline
-    out = '\n'.join(lines) + '\n'
-    path.write_text(out, encoding='utf-8')
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-# -----------------------------------------------------------------------------
-def generate_hmc_parameters(
-    ensemble_dir: str,
-    mode: str,
-    **overrides
-):
-    """
-    Create or update HMCparameters.xml under `ensemble_dir`.
 
-    mode = 'tepid' | 'continue' | 'reseed'
-    overrides = tag=value pairs (e.g. StartTrajectory=100, Trajectories=50,
-    lvl_sizes='10,1,1', md_name='A,B,C', etc.)
-    """
-    base    = Path(ensemble_dir)
-    base.mkdir(parents=True, exist_ok=True)
-    xmlpath = base/'HMCparameters.xml'
+def _tree_to_string(tree: ET.ElementTree) -> str:
+    raw = ET.tostring(tree.getroot(), encoding="utf-8")
+    parsed = minidom.parseString(raw)
+    pretty = parsed.toprettyxml(indent="  ")
+    lines = [ln for ln in pretty.splitlines() if ln.strip()]
+    return "\n".join(lines) + "\n"
 
-    seed_override = None
-    if 'Seed' in overrides:
-        if mode != 'reseed':
-            raise RuntimeError(f"Cannot override Seed in mode='{mode}'")
-        try:
-            seed_override = int(overrides.pop('Seed'))
-        except ValueError:
-            raise RuntimeError("Seed override must be an integer")
 
-    # load existing xml or build fresh
-    if xmlpath.exists():
-        tree = ET.parse(xmlpath)
-    else:
-        tree, _ = _make_default_tree(mode, seed_override)
-    root = tree.getroot().find('HMCparameters')
-    if root is None:
-        raise RuntimeError("Malformed XML: missing <HMCparameters>")
-
-    # if we have a seed_override in reseed mode, update it
-    if mode == 'reseed' and seed_override is not None:
-        root.find('Seed').text = str(seed_override)
-
-    # Update mode-specific parameters (StartingType and MetropolisTest) to match the current mode
-    if mode == 'tepid':
-        stype, metropolis = 'TepidStart', False
-    elif mode == 'continue':
-        stype, metropolis = 'CheckpointStart', True
-    elif mode == 'reseed':
-        stype, metropolis = 'CheckpointStartReseed', True
-    
-    # Update StartingType and MetropolisTest to match the current mode
-    starting_type_elem = root.find('StartingType')
-    metropolis_elem = root.find('MetropolisTest')
-    
-    if starting_type_elem is None:
-        print(f"WARNING: <StartingType> element not found in XML, creating it", file=sys.stderr)
-        ET.SubElement(root, 'StartingType').text = stype
-    else:
-        starting_type_elem.text = stype
-        
-    if metropolis_elem is None:
-        print(f"WARNING: <MetropolisTest> element not found in XML, creating it", file=sys.stderr)
-        ET.SubElement(root, 'MetropolisTest').text = str(metropolis).lower()
-    else:
-        metropolis_elem.text = str(metropolis).lower()
-
-    # apply all other overrides
-    for key, val in overrides.items():
-        txt = str(val)
-        # handle list‐tags specially
-        if key == 'md_name':
-            nm = root.find('MD/name')
-            nm.clear()
-            for e in txt.split(','):
-                ET.SubElement(nm, 'elem').text = e.strip()
+def _apply_xml_overrides(root: ET.Element, overrides: Dict) -> None:
+    """Apply user overrides to the HMC XML tree."""
+    for key, value in overrides.items():
+        text = str(value)
+        if key == "md_name":
+            names = root.find("MD/name")
+            if names is None:
+                continue
+            names.clear()
+            for entry in text.split(","):
+                ET.SubElement(names, "elem").text = entry.strip()
             continue
-        if key == 'lvl_sizes':
-            lvl = root.find('MD/lvl_sizes')
-            lvl.clear()
-            for e in txt.split(','):
-                ET.SubElement(lvl, 'elem').text = e.strip()
+        if key == "lvl_sizes":
+            levels = root.find("MD/lvl_sizes")
+            if levels is None:
+                continue
+            levels.clear()
+            for entry in text.split(","):
+                ET.SubElement(levels, "elem").text = entry.strip()
             continue
-        # try top‐level
-        el = root.find(key)
-        if el is not None:
-            el.text = txt
+
+        node = root.find(key)
+        if node is not None:
+            node.text = text
             continue
-        # try under MD
-        el2 = root.find(f"MD/{key}")
-        if el2 is not None:
-            el2.text = txt
-            continue
-        # unknown override
-        print(f"WARNING: no XML element <{key}> to override", file=sys.stderr)
 
-    # write it out
-    _pretty_write(tree, xmlpath)
-    return True
+        md_node = root.find(f"MD/{key}")
+        if md_node is not None:
+            md_node.text = text
 
 
-# -----------------------------------------------------------------------------
-def generate_hmc_slurm_gpu(
-    out_path: str,
-    db_file: str,
-    ensemble_id: int,
-    base_dir: str,
-    type_: str,             # "TUNING" or "ENSEMBLES"
-    ens_relpath: str,       # e.g. "b6.0/.../T32"
-    ens_name: str,          # e.g. "b6.0_..._T32"
-    account: str,
-    mode: str,              # "tepid"|"continue"|"reseed"
-    constraint: str,
-    time_limit: str,
-    cpus_per_task: str,
-    nodes: str,
-    ntasks_per_node: str,
-    gpus_per_task: str,
-    gpu_bind: str,
-    job_name: str = None,   # user suplied job_name
-    nickname: str = None,
-    mail_user: str = None,
-    exec_path: str = None,       # optional - will check DB first
-    bind_script: str = None,     # optional - will check DB first
-    run_dir: str = None,
-    gres: str = None,
-    n_trajec: str = None,
-    mpi: str = None,
-    omp_num_threads: str = None,
-    queue: str = 'regular',
-    trajL: str = None,           # required - trajectory length
-    lvl_sizes: str = None,       # required - level sizes as comma-separated string
-    cfg_max: str = None          # optional - max config for self-resubmission
-):
-    """
-    Write a GPU SBATCH script that:
-      - handles tepid/continue/reseed modes
-      - sets up proper environment variables
-      - runs HMC with appropriate parameters
-      - tracks job history in database
-    """
-    # fetch ensemble metadata & parameters
-    ens = get_ensemble_details(db_file, ensemble_id)
-    if not ens:
-        raise RuntimeError(f"Ensemble {ensemble_id} not found")
-    p = ens['parameters']
-    L, T = int(p['L']), int(p['T'])
-    VOL = f"{L}.{L}.{L}.{T}"
-
-    # Get HMC executable path: prefer explicit arg, then ensemble param; otherwise error
-    if exec_path is None:
-        if 'hmc_exec_path' in p:
-            exec_path = p['hmc_exec_path']
-        else:
-            raise RuntimeError("HMC executable path (exec_path) is required. Pass via CLI or save in ensemble parameters as hmc_exec_path.")
-
-    if bind_script is None:
-        if 'hmc_bind_script_gpu' in p:
-            bind_script = p['hmc_bind_script_gpu']
-        elif 'hmc_bind_script' in p:  # backward compatibility
-            bind_script = p['hmc_bind_script']
-        else:
-            raise RuntimeError("HMC GPU binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script_gpu.")
-
-    if n_trajec is None:
-        raise RuntimeError("n_trajec (Trajectories) must be provided from XML params.")
-
-    # Validate required HMC parameters
-    if trajL is None:
-        raise RuntimeError("trajL parameter is required")
-    if lvl_sizes is None:
-        raise RuntimeError("lvl_sizes parameter is required")
-    
-    # Convert cfg_max to int if provided, for self-resubmission logic
-    cfg_max_int = int(cfg_max) if cfg_max is not None else None
-
-    # prepare output file
-    script_file = Path(out_path)
-    script_file.parent.mkdir(parents=True, exist_ok=True)
-
-    ensemble_dir = Path(ens['directory']).resolve()
-    work_root = Path(run_dir).resolve() if run_dir else ensemble_dir
-    
-    # Make database path absolute for robustness
-    db_file_abs = Path(db_file).resolve()
-    
-    ens_name = f"b{ens['parameters']['beta']}_b{ens['parameters']['b']}Ls{ens['parameters']['Ls']}_mc{ens['parameters']['mc']}_ms{ens['parameters']['ms']}_ml{ens['parameters']['ml']}_L{ens['parameters']['L']}_T{ens['parameters']['T']}"
-
-    # Build optional SBATCH resource lines
-    if not job_name:
-        if nickname:
-            job_name = f"HMC_{nickname}"
-        else:
-            job_name = f"HMC_e{ensemble_id}"
-    # OMP threads default
-    omp_threads = str(omp_num_threads) if omp_num_threads else "16"
-
-    txt = f"""#!/bin/bash
-#SBATCH -A {account}
-#SBATCH -J {job_name}
-#SBATCH -C {constraint}
-#SBATCH -q {queue}
-#SBATCH -t {time_limit}
-#SBATCH --cpus-per-task={cpus_per_task}
-#SBATCH -N {nodes}
-#SBATCH --ntasks-per-node={ntasks_per_node}
-#SBATCH --gpus-per-task={gpus_per_task}
-#SBATCH --gpu-bind={gpu_bind}
-#SBATCH --gres={gres if gres else f"gpu:{ntasks_per_node}"}
-#SBATCH --mail-type=BEGIN,END
-{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
-#SBATCH --signal=B:TERM@60
-#SBATCH --output={str(work_root)}/cnfg/jlog/%j.out
-#SBATCH --error={str(work_root)}/cnfg/jlog/%j.err
-
-batch="$0"
-DB="{db_file_abs}"
-EID={ensemble_id}
-mode="{mode}"
-ens="{ens_name}"
-ens_rel="{ens_relpath}"
-VOL="{VOL}"
-EXEC="{exec_path}"
-BIND="{bind_script}"
-n_trajec={n_trajec}
-mpi="{mpi}"
-trajL="{trajL}"
-lvl_sizes="{lvl_sizes}"
-work_root="{str(work_root)}"
-{f"cfg_max={cfg_max_int}" if cfg_max_int is not None else "# cfg_max not set"}
-
-cd "$work_root"
-LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
-
-echo "ens = $ens"
-echo "ens_dir = {ensemble_dir}"
-echo "work_root = $work_root"
-echo "EXEC = $EXEC"
-echo "BIND = $BIND"
-echo "n_trajec = $n_trajec"
-{f'echo "cfg_max = $cfg_max"' if cfg_max_int is not None else ""}
-
-mkdir -p cnfg/log_hmc cnfg/jlog
-module load conda
-conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
-
-# Source HMC helper functions for robust config detection
-source <(python -m MDWFutils.jobs.hmc_helpers)
-
-# Determine starting configuration quietly
-start=$(hmc_find_latest_config "cnfg")
-[[ -z "$start" || "$start" -eq 0 ]] && start=0
-
-# Ensure StartTrajectory in XML matches detected start
-XML_PATH="$work_root/cnfg/HMCparameters.xml"
-if [[ -f "$XML_PATH" ]]; then
-    sed -i -E "s#(<StartTrajectory>)[0-9]+(</StartTrajectory>)#\\1${{start}}\\2#" "$XML_PATH"
-else
-    echo "WARNING: HMCparameters.xml not found at $XML_PATH" >&2
-fi
-
-# Self-resubmission logic (submit to queue early for better priority)
-{f'''echo "Self-Resubmission Check:"
-echo "------------------------"
-# Source HMC resubmission helper via process substitution
-if [[ -n "$cfg_max" ]]; then
-    source <(python -m MDWFutils.jobs.hmc_resubmit)
-    hmc_auto_resubmit
-else
-    echo "cfg_max not set - no automatic resubmission"
-fi
-echo "------------------------"
-echo ""''' if cfg_max_int is not None else '''echo "No automatic resubmission (cfg_max not set)"
-echo ""'''}
- 
-# Prepare DB update variables and queue RUNNING update off-node
-USER=$(whoami)
-OP="HMC_$mode"
-SC=$start
-EC=$(( start + n_trajec ))
-# Build params string with HMC-specific info
-{f'''PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec cfg_max=$cfg_max mode=$mode"''' if cfg_max_int is not None else 'PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec mode=$mode"'}
-RUN_DIR="$work_root"
-# Source logging helper via process substitution
-source <(python -m MDWFutils.jobs.slurm_update_trap)
-
-SECONDS=0
-
-cd cnfg
-
-export CRAY_ACCEL_TARGET=nvidia80
-export MPICH_OFI_NIC_POLICY=GPU
-export SLURM_CPU_BIND="cores"
-export MPICH_GPU_SUPPORT_ENABLED=1
-export MPICH_RDMA_ENABLED_CUDA=1
-export MPICH_GPU_IPC_ENABLED=1
-export MPICH_GPU_EAGER_REGISTER_HOST_MEM=0
-export MPICH_GPU_NO_ASYNC_MEMCPY=0
-export OMP_NUM_THREADS={omp_threads}
-
-echo "Nthreads $OMP_NUM_THREADS"
-
-echo "START `date`"
-srun $BIND $EXEC --mpi $mpi --grid $VOL --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > log_hmc/log_{ens_name}.$start
-echo "STOP `date`"
-
-echo "Job completed in $SECONDS seconds"
-echo "Log file: cnfg/log_hmc/log_{ens_name}.$start"
-"""
-    script_file.write_text(txt, encoding='utf-8')
-    return True
+def _maybe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
-def generate_hmc_slurm_cpu(
-    out_path: str,
-    db_file: str,
-    ensemble_id: int,
-    base_dir: str,
-    type_: str,
-    ens_relpath: str,
-    ens_name: str,
-    account: str,
-    mode: str,
-    constraint: str,
-    time_limit: str,
-    cpus_per_task: str,
-    nodes: str,
-    ntasks_per_node: str,
-    job_name: str = None,   # user suplied job_name
-    nickname: str = None,
-    mail_user: str = None,
-    exec_path: str = None,
-    bind_script: str = None,
-    run_dir: str = None,
-    n_trajec: str = None,
-    queue: str = 'regular',
-    mpi: str = None,
-    cacheblocking: str = None,
-    omp_num_threads: str = None,
-    trajL: str = None,
-    lvl_sizes: str = None,
-    cfg_max: str = None          # optional - max config for self-resubmission
-):
-    """
-    CPU variant of HMC SLURM script: omits GPU directives, reuses logging and XML logic.
-    """
-    ens = get_ensemble_details(db_file, ensemble_id)
-    if not ens:
-        raise RuntimeError(f"Ensemble {ensemble_id} not found")
-    p = ens['parameters']
-    L, T = int(p['L']), int(p['T'])
-    VOL = f"{L}.{L}.{L}.{T}"
+# --------------------------------------------------------------------------- #
+# Internal helpers
+# --------------------------------------------------------------------------- #
 
-    if exec_path is None:
-        exec_path = p.get('hmc_exec_path')
-        if exec_path is None:
-            raise RuntimeError("HMC executable path (exec_path) is required. Pass via CLI or save in ensemble parameters as hmc_exec_path.")
-    if bind_script is None:
-        bind_script = p.get('hmc_bind_script_cpu')
-    if bind_script is None:
-        raise RuntimeError("HMC CPU binding script path (bind_script) is required. Pass via CLI or save in ensemble parameters as hmc_bind_script_cpu.")
+def _format_volume(physics: Dict) -> str:
+    L = int(physics["L"])
+    T = int(physics["T"])
+    return f"{L}.{L}.{L}.{T}"
 
-    if n_trajec is None:
-        raise RuntimeError("n_trajec (Trajectories) must be provided from XML params.")
 
-    if trajL is None:
-        raise RuntimeError("trajL parameter is required")
-    if lvl_sizes is None:
-        raise RuntimeError("lvl_sizes parameter is required")
-    
-    # Convert cfg_max to int if provided, for self-resubmission logic
-    cfg_max_int = int(cfg_max) if cfg_max is not None else None
+def _format_ensemble_name(physics: Dict) -> str:
+    ensure_keys(physics, ["beta", "b", "Ls", "mc", "ms", "ml", "L", "T"])
+    return (
+        f"b{physics['beta']}_b{physics['b']}"
+        f"Ls{physics['Ls']}_mc{physics['mc']}_ms{physics['ms']}_ml{physics['ml']}"
+        f"_L{physics['L']}_T{physics['T']}"
+    )
 
-    script_file = Path(out_path)
-    script_file.parent.mkdir(parents=True, exist_ok=True)
 
-    ensemble_dir = Path(ens['directory']).resolve()
-    work_root = Path(run_dir).resolve() if run_dir else ensemble_dir
-    db_file_abs = Path(db_file).resolve()
+def _resolve_job_name(job_params: Dict, ensemble_id: int) -> str:
+    if job_params.get("job_name"):
+        return job_params["job_name"]
+    if job_params.get("nickname"):
+        return f"HMC_{job_params['nickname']}"
+    return f"HMC_e{ensemble_id}"
 
-    # defaults for optional compute params
-    mpi_val = mpi if mpi else "4.4.4.8"
-    cb_val = cacheblocking if cacheblocking else "2.2.2.2"
-    omp_threads = str(omp_num_threads) if omp_num_threads else "4"
 
-    # Build optional SBATCH resource lines
-    if not job_name:
-        if nickname:
-            job_name = f"HMC_{nickname}"
-        else:
-            job_name = f"HMC_e{ensemble_id}"
+def _require(params: Dict, key: str, message: str):
+    value = params.get(key)
+    if value in (None, ""):
+        raise ValidationError(message)
+    return value
 
-    txt = f"""#!/bin/bash
-#SBATCH -A {account}
-#SBATCH -J {job_name}
-#SBATCH -C {constraint}
-#SBATCH -q {queue}
-#SBATCH -t {time_limit}
-#SBATCH --cpus-per-task={cpus_per_task}
-#SBATCH -N {nodes}
-#SBATCH --ntasks-per-node={ntasks_per_node}
-#SBATCH --mail-type=BEGIN,END
-{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
-#SBATCH --signal=B:TERM@60
-#SBATCH --output={str(work_root)}/cnfg/jlog/%j.out
-#SBATCH --error={str(work_root)}/cnfg/jlog/%j.err
-
-batch="$0"
-DB="{db_file_abs}"
-EID={ensemble_id}
-mode="{mode}"
-ens="{ens_name}"
-ens_rel="{ens_relpath}"
-VOL="{VOL}"
-EXEC="{exec_path}"
-BIND="{bind_script}"
-n_trajec={n_trajec}
-mpi="{mpi_val}"
-cacheblocking="{cb_val}"
-trajL="{trajL}"
-lvl_sizes="{lvl_sizes}"
-work_root="{str(work_root)}"
-{f"cfg_max={cfg_max_int}" if cfg_max_int is not None else "# cfg_max not set"}
-
-cd "$work_root"
-LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
-
-echo "========================================"
-echo "HMC Job Configuration"
-echo "========================================"
-echo "Ensemble: $ens"
-echo "Ensemble dir: {ensemble_dir}"
-echo "Work root: $work_root"
-echo "Mode: $mode"
-echo "Trajectories per job: $n_trajec"
-{f'echo "Target config (cfg_max): $cfg_max"' if cfg_max_int is not None else 'echo "No cfg_max set (single job)"'}
-echo "Executable: $EXEC"
-echo "Binding: $BIND"
-echo "MPI grid: $mpi"
-echo "========================================"
-
-mkdir -p cnfg/log_hmc cnfg/jlog
-module load conda
-conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
-
-# Source HMC helper functions
-source <(python -m MDWFutils.jobs.hmc_helpers)
-
-# Determine starting configuration
-start=$(hmc_find_latest_config "cnfg")
-[[ -z "$start" || "$start" -eq 0 ]] && start=0
-
-# Ensure StartTrajectory in XML matches detected start
-XML_PATH="$work_root/cnfg/HMCparameters.xml"
-if [[ -f "$XML_PATH" ]]; then
-    sed -i -E "s#(<StartTrajectory>)[0-9]+(</StartTrajectory>)#\\1${{start}}\\2#" "$XML_PATH"
-else
-    echo "WARNING: HMCparameters.xml not found at $XML_PATH" >&2
-fi
-
-# Self-resubmission logic (submit to queue early for better priority)
-{f'''echo "Self-Resubmission Check:"
-echo "------------------------"
-# Source HMC resubmission helper via process substitution
-if [[ -n "$cfg_max" ]]; then
-    source <(python -m MDWFutils.jobs.hmc_resubmit)
-    hmc_auto_resubmit
-else
-    echo "cfg_max not set - no automatic resubmission"
-fi
-echo "------------------------"
-echo ""''' if cfg_max_int is not None else '''echo "No automatic resubmission (cfg_max not set)"
-echo ""'''}
-
-# Prepare DB update variables and queue RUNNING update off-node
-USER=$(whoami)
-OP="HMC_$mode"
-SC=$start
-EC=$(( start + n_trajec ))
-# Build params string with HMC-specific info
-{f'''PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec cfg_max=$cfg_max mode=$mode"''' if cfg_max_int is not None else 'PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec mode=$mode"'}
-RUN_DIR="$work_root"
-# Source logging helper via process substitution
-source <(python -m MDWFutils.jobs.slurm_update_trap)
-
-SECONDS=0
-
-cd cnfg
-
-export I_MPI_PIN=1
-export SLURM_CPU_BIND="cores"
-export OMP_NUM_THREADS={omp_threads}
-
-echo "Nthreads $OMP_NUM_THREADS"
-
-echo "START `date`"
-srun $BIND $EXEC --mpi $mpi --grid $VOL --dslash-unroll --cacheblocking $cacheblocking > log_hmc/log_{ens_name}.$start
-echo "STOP `date`"
-
-echo "All done in $SECONDS seconds"
-"""
-    script_file.write_text(txt, encoding='utf-8')
-    return True

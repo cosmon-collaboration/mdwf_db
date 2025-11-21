@@ -1,172 +1,111 @@
-import os
+"""Wilson flow job context builder."""
+
+from __future__ import annotations
+
 from pathlib import Path
-from MDWFutils.db            import get_ensemble_details
-from MDWFutils.jobs.glu      import generate_glu_input
-from MDWFutils.jobs.slurm_update_trap import get_slurm_update_trap_inline
+from typing import Dict
 
-def generate_wflow_sbatch(
-    *,
-    # output SBATCH script path; if None we auto-name
-    output_file: str      = None,
-    db_file: str,
-    ensemble_id: int,
-    ensemble_dir: str,
-    run_dir: str = None,
-    glu_path: str         = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU',
-    # SBATCH arguments
-    account: str       = 'm2986',
-    constraint: str    = 'cpu',
-    queue: str         = 'regular',
-    time_limit: str    = '01:00:00',
-    job_name: str      = 'wflow',
-    nodes: int         = 1,
-    cpus_per_task: int = 256,
-    gpus: int          = 4,
-    gpu_bind: str      = 'none',
-    ranks: int         = 4,
-    bind_sh: str       = 'bind.sh',
-    mail_user: str     = None,
-    cfg_max: int       = None,
-    # smearing‐run arguments (must supply config_start/end)
-    config_start: int,
-    config_end:   int,
-    config_prefix: str = 'ckpoint_EODWF_lat.',
-    output_prefix: str = 't0',
-    SMEARTYPE:     str = 'ADAPTWFLOW_STOUT',
-    SMITERS:       int = 250,
-    alpha_values:  list = (0.02, 0.01, 0.005),
-    config_inc:    int = 4,
-    nsim:          int = 4,
+from MDWFutils.exceptions import ValidationError
 
-    # any extra overrides for generate_glu_input
-    custom_changes: dict = None
-) -> str:
-    """
-    read L,T from DB
-    write glu_smear.in under t0/
-    write SBATCH script under slurm/
-    """
-    ensemble_dir = Path(ensemble_dir).expanduser().resolve()
-    base_work    = Path(run_dir).expanduser().resolve() if run_dir else ensemble_dir
-    db_file      = str(Path(db_file).expanduser().resolve())
+from .glu import generate_glu_input
+from .utils import get_ensemble_doc, get_physics_params
 
-    # fetch L,T
-    ens = get_ensemble_details(db_file, ensemble_id)
-    if not ens:
-        raise RuntimeError(f"Ensemble {ensemble_id} not found")
-    p = ens['parameters']
-    L = int(p['L']); T = int(p['T'])
+DEFAULT_GLU_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU"
+DEFAULT_CONDA_ENV = "/global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf"
+DEFAULT_CONFIG_PREFIX = "ckpoint_EODWF_lat."
+DEFAULT_OUTPUT_PREFIX = "t0"
+DEFAULT_SMEAR_TYPE = "ADAPTWFLOW_STOUT"
+DEFAULT_SMITERS = 250
+DEFAULT_NSIM = 4
 
-    # build GLU input
-    t0_dir = base_work / f"t0"
-    t0_dir.mkdir(parents=True, exist_ok=True)
-    (t0_dir / "jlog").mkdir(parents=True, exist_ok=True)
-    inp = t0_dir / "glu_smear.in"
 
-    glu_overrides = {
-        'CONFNO': str(config_start),
-        'DIM_0': str(L),
-        'DIM_1': str(L), 
-        'DIM_2': str(L),
-        'DIM_3': str(T),
-        'SMEARTYPE': "ADAPTWFLOW_STOUT",
-        'SMITERS': str(SMITERS),
+def build_wflow_context(
+    backend, ensemble_id: int, job_params: Dict, input_params: Dict
+) -> Dict:
+    """Create context for the Wilson flow SLURM template."""
+    ensemble = get_ensemble_doc(backend, ensemble_id)
+    physics = get_physics_params(ensemble)
+
+    try:
+        L = int(physics["L"])
+        T = int(physics["T"])
+    except KeyError as exc:
+        raise ValidationError("Ensemble is missing L/T lattice dimensions") from exc
+
+    ensemble_dir = Path(ensemble["directory"]).resolve()
+    work_root = Path(job_params.get("run_dir") or ensemble_dir).resolve()
+    wflow_dir = work_root / "t0"
+    log_dir = wflow_dir / "jlog"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (wflow_dir / "slurm").mkdir(parents=True, exist_ok=True)
+
+    smear_type = str(input_params.get("SMEARTYPE", DEFAULT_SMEAR_TYPE))
+    smiters = int(input_params.get("SMITERS", DEFAULT_SMITERS))
+
+    glu_input_path = wflow_dir / "glu_smear.in"
+    _write_glu_input(glu_input_path, L, T, job_params, smear_type, smiters, input_params)
+
+    config_start = int(job_params["config_start"])
+    config_end = int(job_params["config_end"])
+    config_inc = int(job_params.get("config_inc", 4))
+    cpus_per_task = int(job_params.get("cpus_per_task", 256))
+    nsim = int(job_params.get("nsim", DEFAULT_NSIM))
+
+    return {
+        "account": job_params.get("account", "m2986"),
+        "constraint": job_params.get("constraint", "cpu"),
+        "queue": job_params.get("queue", "regular"),
+        "time_limit": job_params.get("time_limit", "01:00:00"),
+        "nodes": int(job_params.get("nodes", 1)),
+        "ntasks_per_node": int(job_params.get("ranks", 1)),
+        "cpus_per_task": cpus_per_task,
+        "job_name": job_params.get("job_name") or f"wflow_{ensemble_id}",
+        "mail_user": job_params.get("mail_user") or "",
+        "log_dir": str(log_dir),
+        "separate_error_log": True,
+        "signal": "B:TERM@60",
+        "mail_type": job_params.get("mail_type", "ALL"),
+        "ensemble_id": ensemble_id,
+        "db_file": getattr(backend, "connection_string", ""),
+        "operation": "GLU_WFLOW",
+        "config_start": config_start,
+        "config_end": config_end,
+        "config_inc": config_inc,
+        "run_dir": str(work_root),
+        "params": f"smear_type={smear_type} smiters={smiters}",
+        "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
+        "wflow_dir": str(wflow_dir),
+        "config_dir": str(work_root / "cnfg"),
+        "config_prefix": job_params.get("config_prefix", DEFAULT_CONFIG_PREFIX),
+        "output_prefix": job_params.get("output_prefix", DEFAULT_OUTPUT_PREFIX),
+        "glu_exec_path": job_params.get("glu_path", DEFAULT_GLU_EXEC),
+        "glu_input_path": str(glu_input_path),
+        "nsim": nsim,
     }
-    
-    # Add alpha values if provided
-    if alpha_values:
-        if len(alpha_values) >= 1:
-            glu_overrides['ALPHA1'] = str(alpha_values[0])
-        if len(alpha_values) >= 2:
-            glu_overrides['ALPHA2'] = str(alpha_values[1])
-        if len(alpha_values) >= 3:
-            glu_overrides['ALPHA3'] = str(alpha_values[2])
-    if custom_changes:
-        glu_overrides.update(custom_changes)
 
-    generate_glu_input(str(inp), glu_overrides)
 
-    # build SBATCH - save in the t0 directory's slurm subfolder
-    sbatch_dir = t0_dir / "slurm"
-    sbatch_dir.mkdir(parents=True, exist_ok=True)
+def _write_glu_input(
+    target_path: Path,
+    L: int,
+    T: int,
+    job_params: Dict,
+    smear_type: str,
+    smiters: int,
+    input_params: Dict,
+) -> None:
+    """Generate the GLU input for Wilson flow."""
+    overrides = {
+        "CONFNO": str(job_params["config_start"]),
+        "DIM_0": str(L),
+        "DIM_1": str(L),
+        "DIM_2": str(L),
+        "DIM_3": str(T),
+        "SMEARTYPE": smear_type,
+        "SMITERS": str(smiters),
+    }
 
-    if not output_file:
-        fname = f"GLU_{SMEARTYPE}{SMITERS}_{config_start}_{config_end}.sh"
-        output_file = str(sbatch_dir / fname)
+    for key in ("ALPHA1", "ALPHA2", "ALPHA3"):
+        if key in input_params:
+            overrides[key] = str(input_params[key])
 
-    alpha_str = "[" + ",".join(map(str, alpha_values or [])) + "]"
-
-    txt = f"""#!/usr/bin/env bash
-#SBATCH -A {account}
-#SBATCH -C {constraint}
-#SBATCH -q {queue}
-#SBATCH -t {time_limit}
-#SBATCH -J {job_name}
-#SBATCH --output={t0_dir}/jlog/%j.out
-#SBATCH --error={t0_dir}/jlog/%j.err
-#SBATCH -N {nodes}
-#SBATCH --cpus-per-task={cpus_per_task}
-#SBATCH --signal=B:TERM@60
-{f"#SBATCH --mail-user={mail_user}" if mail_user else ""}
-
-module load cpu
-module load intel-mixed/2023.2.0
-module load cray-fftw/3.3.10.8
-module load conda
-conda activate /global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf
-
-# On many network filesystems WAL journal mode causes SQLite disk I/O errors.
-# Default to DELETE unless the user overrides MDWF_DB_JOURNAL in the environment.
-export MDWF_DB_JOURNAL="${{MDWF_DB_JOURNAL:-DELETE}}"
-
-DB="{db_file}"
-EID={ensemble_id}
-OP="GLU_WFLOW"
-SC={config_start}
-EC={config_end}
-IC={config_inc}
-USER=$(whoami)
-LOGFILE="/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
-RUN_DIR="{str(base_work)}"
-
-mkdir -p "{t0_dir}/jlog"
-
-# Source logging helper via process substitution
-source <(python -m MDWFutils.jobs.slurm_update_trap)
-SECONDS=0
-
-GLU="{glu_path}"
-step={config_inc}
-nsim={nsim}
-let 'Nth={cpus_per_task}/nsim'
-export OMP_NUM_THREADS=$Nth
-
-echo "step=$step nsim=$nsim Nth=$Nth"
-
-let 'mxcnf=step*nsim'
-for((cnf=$SC;cnf<$EC;cnf+=$mxcnf));do
-    for((i=0;i<$nsim;i++));do
-        let 'c=cnf+step*i'
-        (( c>EC )) && break
-        
-        # Calculate CPU binding for physical and logical cores
-        let 'lo=i*Nth/2'
-        let 'hi=lo+Nth/2-1'
-        let 'loh=128+i*Nth/2'
-        let 'hih=loh+Nth/2-1'
-        
-        echo "Config $c: CPUs $lo-$hi $loh-$hih"
-        export GOMP_CPU_AFFINITY="${{lo}}-${{hi}} ${{loh}}-${{hih}}"
-        
-        in_cfg="{str(base_work)}/cnfg/{config_prefix}${{c}}"
-        out_cfg="{t0_dir}/{output_prefix}.${{c}}.out"
-        $GLU -i "{inp}" -c "$in_cfg" > "$out_cfg" &
-    done
-    wait
-done
-
-echo "Done in $SECONDS s"
-"""
-    with open(output_file,'w') as f: f.write(txt)
-    os.chmod(output_file,0o775)
-    return output_file
+    generate_glu_input(str(target_path), overrides)

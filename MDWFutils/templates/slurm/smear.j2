@@ -1,0 +1,45 @@
+{% include 'common/sbatch_header.j2' %}
+
+set -euo pipefail
+
+cd "{{ smear_dir }}"
+mkdir -p jlog
+
+module load cpu
+module load intel-mixed/2023.2.0
+module load cray-fftw/3.3.10.8
+module load conda
+conda activate {{ conda_env }}
+
+{% include 'common/db_tracking.j2' %}
+SECONDS=0
+
+GLU="{{ glu_exec_path }}"
+STEP={{ config_inc }}
+NSIM={{ nsim }}
+let 'Nth={{ cpus_per_task }} / NSIM'
+export OMP_NUM_THREADS=$Nth
+
+let 'mxcnf=STEP*NSIM'
+for((cnf=$SC; cnf<$EC; cnf+=$mxcnf)); do
+    for((i=0;i<NSIM;i++)); do
+        let 'c=cnf+STEP*i'
+        (( c>EC )) && break
+
+        # Calculate CPU binding for physical and logical cores
+        let 'lo=i*Nth/2'
+        let 'hi=lo+Nth/2-1'
+        let 'loh=128+i*Nth/2'
+        let 'hih=loh+Nth/2-1'
+
+        echo "Config $c: CPUs $lo-$hi $loh-$hih"
+        export GOMP_CPU_AFFINITY="${lo}-${hi} ${loh}-${hih}"
+
+        in_cfg="{{ config_dir }}/{{ config_prefix }}${c}"
+        out_cfg="{{ smear_dir }}/{{ prefix_for_files }}n${c}"
+        "$GLU" -i "{{ glu_input_path }}" -c "$in_cfg" -o "$out_cfg" &
+    done
+    wait
+done
+
+echo "Done in $SECONDS s"

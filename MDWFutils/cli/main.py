@@ -25,6 +25,22 @@ def find_database_file():
     # If not found, return default path in current directory
     return str(current_dir / db_filename)
 
+def get_default_db_connection():
+    """
+    Get default database connection string, preferring MongoDB URL over SQLite file.
+    
+    Returns:
+        str: MongoDB connection string if MDWF_DB_URL is set, otherwise SQLite file path
+    """
+    # Prefer MongoDB URL if set
+    mongo_url = os.getenv('MDWF_DB_URL')
+    if mongo_url:
+        return mongo_url
+    
+    # Fall back to SQLite file discovery
+    sqlite_file = os.getenv('MDWF_DB', find_database_file())
+    return sqlite_file
+
 def main():
     parser = argparse.ArgumentParser(
         prog="mdwf_db",
@@ -68,22 +84,30 @@ Most commands accept either ensemble IDs (integers) or directory paths:
   -e /full/path/to/ens    # Use absolute path
   -e .                    # Use current directory (when inside ensemble)
 
-DATABASE AUTO-DISCOVERY:
-The database file is automatically found by walking up the directory tree.
-No need to specify --db-file when working within project directories.
+DATABASE CONNECTION:
+The database connection is determined by:
+  1. MDWF_DB_URL environment variable (MongoDB connection string)
+  2. MDWF_DB environment variable (SQLite file path)
+  3. Auto-discovery: SQLite file found by walking up directory tree
+  4. --db-file command-line argument (overrides environment)
+
+For MongoDB: Set MDWF_DB_URL=mongodb://host:port/database
+For SQLite: Set MDWF_DB=/path/to/file.db or rely on auto-discovery
 
 For detailed help: mdwf_db <command> --help
 """
     )
 
-    # Use environment variable if set, otherwise search up directory tree
-    DEFAULT_DB = os.getenv('MDWF_DB', find_database_file())
+    # Prefer MongoDB URL, fall back to SQLite file discovery
+    DEFAULT_DB = get_default_db_connection()
     
     db_parent = argparse.ArgumentParser(add_help=False)
     db_parent.add_argument(
         '--db-file',
         default=DEFAULT_DB,
-        help='Path to the SQLite DB (or set MDWF_DB env). Auto-discovered by walking up directory tree.'
+        help='Database connection string (MongoDB URL or SQLite file path). '
+             'Defaults to MDWF_DB_URL env var (MongoDB) or MDWF_DB env var (SQLite), '
+             'or auto-discovered SQLite file by walking up directory tree.'
     )
 
     subs   = parser.add_subparsers(dest='cmd')
@@ -117,11 +141,15 @@ For detailed help: mdwf_db <command> --help
     # Validate DB presence for commands that require an existing DB
     # Allow init-db to create a new database
     if args.cmd != 'init-db':
-        db_path = Path(getattr(args, 'db_file', find_database_file()))
-        if not db_path.exists():
-            print("ERROR: No database file found.")
-            print("Hint: Run from your mdwf project directory (where mdwf_ensembles.db lives) or pass --db-file.")
-            return 1
+        db_conn = getattr(args, 'db_file', get_default_db_connection())
+        # For MongoDB URLs (including mongomock), skip file existence check
+        if not db_conn.startswith(("mongodb://", "mongodb+srv://", "mongomock://")):
+            db_path = Path(db_conn)
+            if not db_path.exists():
+                print("ERROR: No database file found.")
+                print("Hint: Run from your mdwf project directory (where mdwf_ensembles.db lives),")
+                print("      set MDWF_DB_URL env var for MongoDB, or pass --db-file.")
+                return 1
 
     # every module must set args.func to its handler in register()
     return args.func(args)

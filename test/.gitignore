@@ -1,0 +1,15 @@
+# Test artifacts
+test_run/
+*.log
+*.tmp
+
+# Generated files
+*.sh.bak
+*.xml.bak
+*.in.bak
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+

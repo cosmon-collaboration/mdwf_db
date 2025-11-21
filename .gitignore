@@ -1,3 +1,12 @@
 MDWFutils.egg-info
 test_hmc_xml/
 **/*/__pycache__
+
+# MongoDB credential files
+config/*.env
+!config/*.env.template
+
+# Test artifacts
+test_run/
+test/*.log
+test/test_ensembles.db

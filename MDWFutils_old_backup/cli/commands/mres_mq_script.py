@@ -1,0 +1,311 @@
+import argparse, sys, os, ast
+from pathlib import Path
+from MDWFutils.db    import get_ensemble_details, resolve_ensemble_identifier
+from MDWFutils.jobs.mres_mq import generate_mres_mq_sbatch
+from MDWFutils.config import get_operation_config, merge_params, get_config_path, save_operation_config
+
+# Required job params: time_limit, nodes. Config range lives in WIT params.
+REQUIRED_JOB_PARAMS = ['time_limit', 'nodes']
+DEFAULT_JOB_PARAMS = {
+    'account'    : 'm2986_g',
+    'constraint' : 'gpu',
+    'queue'      : 'regular',
+    'time_limit' : '06:00:00',
+    'nodes'      : '1',
+    'gpus'       : '4',
+    'gpu_bind'   : 'none',
+    'ranks'      : '4',
+    'ogeom'      : '1,1,1,4',
+}
+
+def register(subparsers):
+    p = subparsers.add_parser(
+        'mres-mq-script',
+        aliases=['mres-mq'], 
+        help='Generate WIT mres script for single quark mass (charm only, 1 propagator/1 solver)',
+        description="""
+Generate WIT mres measurement script for single quark mass (charm only).
+This command produces a WIT script with ONLY ONE propagator and ONE solver, 
+unlike the full mres-script which uses 3 propagators and 2 solvers.
+
+Similar to mres-script but simplified for single quark mass measurements.
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    # Flexible identifier (preferred)
+    p.add_argument('-e','--ensemble', required=False,
+                   help='Ensemble ID, directory path, or "." for current directory')
+    # Legacy integer-only option for backward compatibility
+    p.add_argument('--ensemble-id', dest='ensemble_id', type=int, required=False,
+                   help='[DEPRECATED] Ensemble ID (use -e/--ensemble for flexible ID or path)')
+    p.add_argument('-j','--job-params', default='',
+                   help=f'Space-separated key=val for SLURM job parameters. Required: {REQUIRED_JOB_PARAMS}')
+    p.add_argument('-w','--wit-params', default='',
+                   help='Space-separated key=val for WIT parameters using dot notation. Required: Configurations.first, Configurations.last')
+    p.add_argument('--use-default-params', action='store_true',
+                   help='Load parameters from ensemble default parameter file (mdwf_default_params.yaml)')
+    p.add_argument('--params-variant',
+                   help='Specify which parameter variant to use (e.g., default, wall, point)')
+    p.add_argument('-o','--output-file', help='Output SBATCH script path (auto-generated if not specified)')
+    p.add_argument('--save-default-params', action='store_true',
+                   help='Save current command parameters to default parameter file for later reuse')
+    p.add_argument('--save-params-as',
+                   help='Save current parameters under specific variant name (default: default)')
+    p.add_argument('--run-dir',
+                   help='Directory to run the job from (must contain a full copy of the ensemble directory)')
+    # Mass override parameters
+    p.add_argument('--mc', type=float, help='Override charm quark mass (mc) and recalculate kappa')
+    p.set_defaults(func=do_mres_mq)
+
+def do_mres_mq(args):
+    # Resolve ensemble from flexible identifier first, then legacy --ensemble-id
+    ensemble_id = None
+    ens = None
+    if getattr(args, 'ensemble', None):
+        eid, info = resolve_ensemble_identifier(args.db_file, args.ensemble)
+        if eid is None:
+            print(f"ERROR: Ensemble not found: {args.ensemble}", file=sys.stderr)
+            return 1
+        ensemble_id, ens = eid, info
+    elif getattr(args, 'ensemble_id', None) is not None:
+        ens = get_ensemble_details(args.db_file, args.ensemble_id)
+        if not ens:
+            print(f"ERROR: ensemble {args.ensemble_id} not found", file=sys.stderr)
+            return 1
+        ensemble_id = args.ensemble_id
+    else:
+        print("ERROR: Missing ensemble identifier. Use -e/--ensemble (ID or path) or --ensemble-id.", file=sys.stderr)
+        return 1
+    ens_dir = Path(ens['directory']).resolve()
+
+    # Load parameters from config file if requested
+    config_job_params = ""
+    config_wit_params = ""
+    
+    if args.use_default_params:
+        if args.params_variant:
+            # Use specified variant
+            config = get_operation_config(ens_dir, 'mres', args.params_variant)
+            if config:
+                config_job_params = config.get('job_params', '')
+                config_wit_params = config.get('params', '')
+                print(f"Loaded mres.{args.params_variant} default parameters from {get_config_path(ens_dir)}")
+            else:
+                config_path = get_config_path(ens_dir)
+                print(f"Warning: No mres.{args.params_variant} default parameters found in {config_path}")
+        else:
+            # Try different parameter variants for mres (fallback behavior)
+            config = None
+            for meson_type in ['default', 'wall', 'point']:
+                config = get_operation_config(ens_dir, 'mres', meson_type)
+                if config:
+                    config_job_params = config.get('job_params', '')
+                    config_wit_params = config.get('params', '')
+                    print(f"Loaded mres.{meson_type} default parameters from {get_config_path(ens_dir)}")
+                    break
+            
+            if not config:
+                config_path = get_config_path(ens_dir)
+                if config_path.exists():
+                    print(f"Warning: No mres default parameters found in {config_path}")
+                else:
+                    print(f"Warning: No default parameter file found at {config_path}")
+                    print("Use 'mdwf_db default_params generate' to create one")
+
+    # Merge config parameters with CLI parameters (CLI takes precedence)
+    merged_job_params = merge_params(config_job_params, args.job_params)
+    merged_wit_params = merge_params(config_wit_params, args.wit_params)
+
+    # Parse merged job parameters
+    job_dict = DEFAULT_JOB_PARAMS.copy()
+    if merged_job_params:
+        for param in merged_job_params.split():
+            if '=' in param:
+                key, val = param.split('=', 1)
+                job_dict[key] = val
+
+    # Require essential job parameters
+    missing = [k for k in REQUIRED_JOB_PARAMS if k not in job_dict]
+    if missing:
+        if args.use_default_params:
+            print(f"ERROR: missing required job parameters: {missing}. Add them to your default parameter file or use -j", file=sys.stderr)
+        else:
+            print(f"ERROR: missing required job parameters: {missing}", file=sys.stderr)
+        return 1
+
+    # Parse merged WIT parameters into nested dict - only parameters that go into DWF.in
+    wdict = {}
+    # Key alias normalization to allow shorthand without spaces in section names
+    # These aliases are kept for backward compatibility and map to CLI underscore format
+    section_alias = {
+        'RNG': 'Random_number_generator',
+        'Random number generator': 'Random_number_generator', # backward compatibility
+        'Run name': 'Run_name', # backward compatibility
+        'Exact Deflation': 'Exact_Deflation', # backward compatibility
+        'Boundary conditions': 'Boundary_conditions', # backward compatibility
+        'Propagator0': 'Propagator_0',
+        'Solver0': 'Solver_0',
+        'Lattice parameters': 'Lattice_parameters', # backward compatibility
+    }
+    def normalize_keypath(key: str) -> list:
+        parts = key.split('.')
+        if not parts:
+            return parts
+        # Normalize first section name if aliased
+        head = section_alias.get(parts[0], parts[0])
+        return [head] + parts[1:]
+    for tok in merged_wit_params.split():
+        if not tok.strip():  # Skip empty tokens
+            continue
+        if '=' not in tok:
+            print(f"ERROR: bad WIT-param {tok}", file=sys.stderr)
+            return 1
+        key, raw = tok.split('=',1)
+        try:
+            val = ast.literal_eval(raw)
+        except:
+            val = raw
+        parts = normalize_keypath(key)
+        d = wdict
+        for p in parts[:-1]:
+            if p not in d or not isinstance(d[p], dict):
+                d[p] = {}
+            d = d[p]
+        d[parts[-1]] = val
+
+    # List of valid WIT parameters (only those that go into DWF.in) - CLI underscore format
+    valid_wit_params = {
+        'Run_name.name', 'Directories.cnfg_dir', 'Configurations.first', 'Configurations.last', 'Configurations.step',
+        'Random_number_generator.level', 'Random_number_generator.seed', 'Lattice_parameters.Ls', 
+        'Lattice_parameters.M5', 'Lattice_parameters.b', 'Lattice_parameters.c', 'Boundary_conditions.type',
+        'Witness.no_prop', 'Witness.no_solver', 'Solver_0.solver', 'Solver_0.nkv', 'Solver_0.isolv', 
+        'Solver_0.nmr', 'Solver_0.ncy', 'Solver_0.nmx', 'Solver_0.exact_deflation', 'Exact_Deflation.Cheby_fine', 'Exact_Deflation.Cheby_smooth', 
+        'Exact_Deflation.Cheby_coarse', 'Exact_Deflation.kappa', 'Exact_Deflation.res', 
+        'Exact_Deflation.nmx', 'Exact_Deflation.Ns', 'Propagator_0.Noise', 'Propagator_0.Source', 
+        'Propagator_0.Dilution', 'Propagator_0.pos', 'Propagator_0.mom', 'Propagator_0.twist', 
+        'Propagator_0.kappa', 'Propagator_0.mu', 'Propagator_0.Seed', 'Propagator_0.idx_solver', 
+        'Propagator_0.res', 'Propagator_0.sloppy_res', 'AMA.NEXACT', 'AMA.SLOPPY_PREC', 'AMA.NHITS', 'AMA.NT',
+        'Propagator.Seed'  # Special parameter that applies to propagator 0
+    }
+
+    # Helper to recursively check for unused WIT parameters
+    def find_unused_keys(d, valid_keys, prefix=""):
+        unused = []
+        for k, v in d.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                unused.extend(find_unused_keys(v, valid_keys, full_key))
+            elif full_key not in valid_keys:
+                unused.append(full_key)
+        return unused
+
+    # Helper to recursively remove unused keys from nested dict
+    def remove_unused_keys(d, unused, prefix=""):
+        keys_to_remove = []
+        for k, v in d.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                remove_unused_keys(v, unused, full_key)
+                if not v:  # Remove empty dicts
+                    keys_to_remove.append(k)
+            elif full_key in unused:
+                keys_to_remove.append(k)
+        for k in keys_to_remove:
+            d.pop(k)
+
+    required_wit_params = {'Configurations.first', 'Configurations.last', 'Configurations.step', 'Propagator.Seed'}
+    present = set()
+    def collect_keys(d, prefix=""):
+        for k, v in d.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                collect_keys(v, full_key)
+            else:
+                present.add(full_key)
+    collect_keys(wdict)
+    missing_wit = [k for k in required_wit_params if k not in present]
+    if missing_wit:
+        print(f"ERROR: missing required WIT parameters: {missing_wit}", file=sys.stderr)
+        return 1
+
+    # Handle Propagator.Seed parameter - apply to all individual propagators
+    if 'Propagator' in wdict and 'Seed' in wdict['Propagator']:
+        propagator_seed = wdict['Propagator']['Seed']
+        print(f"Applying Propagator.Seed={propagator_seed} to all propagators")
+        
+        # Apply to all propagator sections
+        for prop_key in ['Propagator_0']:
+            if prop_key not in wdict:
+                wdict[prop_key] = {}
+            wdict[prop_key]['Seed'] = propagator_seed
+        
+        # Remove the Propagator.Seed entry since it's not a real WIT parameter
+        del wdict['Propagator']['Seed']
+        # Remove empty Propagator section if it has no other parameters
+        if not wdict['Propagator']:
+            del wdict['Propagator']
+    
+    # Check for any remaining inconsistent individual propagator seeds
+    propagator_seeds = []
+    for prop_key in ['Propagator_0']:
+        if prop_key in wdict and 'Seed' in wdict[prop_key]:
+            propagator_seeds.append((prop_key, wdict[prop_key]['Seed']))
+    
+    if propagator_seeds:
+        # Check if all propagator seeds are the same
+        first_seed = propagator_seeds[0][1]
+        inconsistent = [(prop, seed) for prop, seed in propagator_seeds if seed != first_seed]
+        if inconsistent:
+            print(f"ERROR: All propagator seeds must be the same. Found inconsistent seeds:", file=sys.stderr)
+            for prop, seed in propagator_seeds:
+                print(f"  {prop}.Seed = {seed}", file=sys.stderr)
+            print("Use 'Propagator.Seed=VALUE' to set the same seed for all propagators", file=sys.stderr)
+            return 1
+
+    # Check for unused WIT parameters and warn
+    unused_w = find_unused_keys(wdict, valid_wit_params)
+    for param in unused_w:
+        print(f"\n ERROR: WIT parameter '{param}' was provided but is not used in DWF.in \n", file=sys.stderr)
+        sys.exit(1)
+    
+    # Remove unused keys from wdict
+    remove_unused_keys(wdict, unused_w)
+
+    # Use ensemble directory from earlier
+
+    # Generate the script
+    sbatch = generate_mres_mq_sbatch(
+        db_file        = args.db_file,
+        ensemble_id    = ensemble_id,
+        ensemble_dir   = str(ens_dir),
+        run_dir        = args.run_dir,
+        custom_changes = wdict,
+        output_file    = args.output_file,
+        account        = job_dict.get('account'),
+        constraint     = job_dict.get('constraint'),
+        queue          = job_dict.get('queue'),
+        time_limit     = job_dict.get('time_limit'),
+        nodes          = int(job_dict.get('nodes')),
+        gpus           = int(job_dict.get('gpus')),
+        gpu_bind       = job_dict.get('gpu_bind'),
+        mail_user      = job_dict.get('mail_user'),
+        ranks          = int(job_dict.get('ranks', 4)),
+        ogeom          = job_dict.get('ogeom'),
+        # Mass overrides
+        mc             = args.mc,
+    )
+    
+    # Save parameters to default params if requested
+    if args.save_default_params:
+        save_variant = args.save_params_as if args.save_params_as else 'default'
+        success = save_operation_config(
+            ens_dir, 'mres_mq', save_variant,
+            job_params=merged_job_params,
+            params=merged_wit_params
+        )
+        if success:
+            print(f"Saved parameters to {get_config_path(ens_dir)}: mres.{save_variant}")
+        else:
+            print(f"Warning: Failed to save parameters to default params", file=sys.stderr)
+    
+    return 0

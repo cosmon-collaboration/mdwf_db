@@ -1,0 +1,20 @@
+DB="{{ db_file }}"
+EID={{ ensemble_id }}
+OP="{{ operation }}"
+SC={{ config_start }}
+EC={{ config_end }}
+{% if config_inc %}
+IC={{ config_inc }}
+{% endif %}
+USER=$(whoami)
+{% if run_dir %}
+RUN_DIR="{{ run_dir }}"
+{% endif %}
+{% if params %}
+PARAMS="{{ params }}"
+{% endif %}
+LOGFILE="{{ logfile | default('/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log') }}"
+
+# Source logging helper via process substitution
+source <(python -m MDWFutils.jobs.slurm_update_trap)
+

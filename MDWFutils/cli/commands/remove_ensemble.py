@@ -1,7 +1,7 @@
 import shutil
 import argparse
-from MDWFutils.db import remove_ensemble
-from ..ensemble_utils import resolve_ensemble_from_args
+
+from ..ensemble_utils import resolve_ensemble_from_args, get_backend_for_args
 
 def register(subparsers):
     p = subparsers.add_parser(
@@ -65,17 +65,19 @@ EXAMPLES:
     p.set_defaults(func=do_remove)
 
 def do_remove(args):
+    backend = get_backend_for_args(args)
     ensemble_id, ens = resolve_ensemble_from_args(args)
     if not ens:
         return 1
 
-    print(f"Removing ensemble {ens['id']} @ {ens['directory']}")
+    display_id = ens.get('ensemble_id', ens.get('id'))
+    print(f"Removing ensemble {display_id} @ {ens['directory']}")
     if not args.force:
         if input("Proceed? (y/N) ").lower() not in ('y','yes'):
             print("Aborted")
             return 0
 
-    ok = remove_ensemble(args.db_file, ensemble_id)
+    ok = backend.delete_ensemble(ensemble_id)
     print("DB removal:", "OK" if ok else "FAILED")
 
     if ok and args.remove_directory:

@@ -5,8 +5,12 @@ ensemble_utils.py
 Common utilities for CLI commands that work with ensembles.
 """
 
+import os
 import sys
-from MDWFutils.db import resolve_ensemble_identifier
+
+from MDWFutils.backends import get_backend
+from MDWFutils.exceptions import EnsembleNotFoundError
+from .components import EnsembleResolver
 
 
 def add_ensemble_argument(parser, help_text=None):
@@ -28,24 +32,18 @@ def add_ensemble_argument(parser, help_text=None):
 
 def resolve_ensemble_from_args(args):
     """
-    Resolve ensemble from CLI arguments using the new flexible identifier system.
-    
-    Args:
-        args: Parsed command line arguments containing 'ensemble' and 'db_file'
-    
-    Returns:
-        tuple: (ensemble_id, ensemble_details) or (None, None) on error
+    Resolve ensemble from CLI arguments using the backend abstraction.
     """
-    ensemble_id, ensemble_details = resolve_ensemble_identifier(args.db_file, args.ensemble)
-    
-    if ensemble_id is None:
+    backend = _backend_from_args(args)
+    resolver = EnsembleResolver(backend)
+    try:
+        return resolver.resolve(args.ensemble)
+    except EnsembleNotFoundError:
         if isinstance(args.ensemble, str) and not args.ensemble.isdigit():
             print(f"ERROR: Ensemble not found at path: {args.ensemble}", file=sys.stderr)
         else:
             print(f"ERROR: Ensemble not found with ID: {args.ensemble}", file=sys.stderr)
         return None, None
-    
-    return ensemble_id, ensemble_details
 
 
 def migrate_ensemble_id_argument(parser):
@@ -63,3 +61,14 @@ def migrate_ensemble_id_argument(parser):
             break
     
     add_ensemble_argument(parser) 
+
+
+def get_backend_for_args(args):
+    connection = getattr(args, "db_file", None)
+    if not connection:
+        connection = os.getenv("MDWF_DB_URL") or os.getenv("MDWF_DB_FILE", "mdwf_db.sqlite")
+    return get_backend(connection)
+
+
+def _backend_from_args(args):
+    return get_backend_for_args(args)
