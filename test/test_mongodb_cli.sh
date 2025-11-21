@@ -283,7 +283,7 @@ phase_2_ensemble_mgmt() {
     
     run_test "promote-ensemble: Move to PRODUCTION"
     local promote_output
-    promote_output=$(run_cmd mdwf_db promote-ensemble -e test_ens --force 2>&1 || true)
+    promote_output=$(run_cmd mdwf_db promote-ensemble -e test_ens --base-dir="$TEST_DIR" --force 2>&1 || true)
     
     if echo "$promote_output" | grep -q "Promotion OK"; then
         pass "Ensemble promoted to PRODUCTION"
@@ -687,7 +687,7 @@ phase_6_defaults() {
     local smear_defaults="$TEST_DIR/smear_with_defaults.sh"
     local smear_defaults_output
     smear_defaults_output=$(run_cmd mdwf_db smear-script -e test_ens \
-        -i "SMEARTYPE=STOUT SMITERS=8" \
+        --use-default-params \
         -j "config_start=0 config_end=100" \
         -o "$smear_defaults" 2>&1 || true)
     

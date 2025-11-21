@@ -102,11 +102,13 @@ class BaseCommand:
                 if self.input_schema
                 else merged_input
             )
-            typed_job = (
+            # Merge validated job params with original to preserve extra parameters not in schema
+            validated_job = (
                 self.help_gen.validate_and_cast(merged_job, self.job_schema)
                 if self.job_schema
-                else merged_job
+                else {}
             )
+            typed_job = {**merged_job, **validated_job}  # Preserve all params, with validated ones taking precedence
 
             self.custom_validation(typed_input, typed_job, ensemble)
 

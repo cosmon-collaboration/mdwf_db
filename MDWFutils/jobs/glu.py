@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from pathlib import Path
+from typing import Dict, Optional
 
 from MDWFutils.exceptions import ValidationError
+from MDWFutils.templates.loader import TemplateLoader
+from MDWFutils.templates.renderer import TemplateRenderer
 
 from .utils import ensure_keys, get_ensemble_doc, get_physics_params
 
@@ -88,5 +91,41 @@ def _apply_override(context: Dict, key: str, value) -> None:
     context[target_key] = str(value)
 
 
-__all__ = ["build_glu_context"]
+def generate_glu_input(output_file: str, overrides: Optional[Dict] = None) -> str:
+    """
+    Generate GLU input file using template with defaults and overrides.
+    
+    This function provides backward compatibility with the old API where
+    smear.py and wflow.py directly call generate_glu_input().
+    
+    Args:
+        output_file: Path to output file
+        overrides: Dictionary of parameter overrides using flat parameter names
+                  e.g. {'DIM_0': '32', 'CONFNO': '100', 'SMITERS': '10', 'ALPHA1': '0.8'}
+    
+    Returns:
+        Path to generated file
+    """
+    if overrides is None:
+        overrides = {}
+    
+    # Start with defaults and apply overrides
+    context = DEFAULT_GLU_PARAMS.copy()
+    for key, value in overrides.items():
+        _apply_override(context, key, value)
+    
+    # Render using template system
+    loader = TemplateLoader()
+    renderer = TemplateRenderer(loader)
+    content = renderer.render("input/glu_input.j2", context)
+    
+    # Write the file
+    outf = Path(output_file)
+    outf.parent.mkdir(parents=True, exist_ok=True)
+    outf.write_text(content)
+    
+    return str(outf)
+
+
+__all__ = ["build_glu_context", "generate_glu_input"]
 
