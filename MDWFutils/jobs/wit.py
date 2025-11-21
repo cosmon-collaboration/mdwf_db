@@ -16,11 +16,31 @@ from ..templates.renderer import TemplateRenderer
 _renderer = TemplateRenderer(TemplateLoader())
 
 
+def _unflatten_params(flat_params: Dict) -> Dict:
+    """Convert flat dotted keys to nested dictionaries, restoring legacy CLI behavior."""
+    nested: Dict = {}
+    for key, value in flat_params.items():
+        if "." not in key:
+            nested[key] = value
+            continue
+        parts = key.split(".")
+        target = nested
+        for part in parts[:-1]:
+            existing = target.get(part)
+            if not isinstance(existing, dict):
+                existing = {}
+                target[part] = existing
+            target = existing
+        target[parts[-1]] = value
+    return nested
+
+
 def build_wit_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
     """Build template context for the WIT input command."""
     ensemble = get_ensemble_doc(backend, ensemble_id)
     physics = get_physics_params(ensemble)
-    params = _build_parameters(physics, input_params or {})
+    unflattened = _unflatten_params(input_params or {})
+    params = _build_parameters(physics, unflattened)
     sections = _ordered_dict_to_sections(params)
     return {"sections": sections}
 

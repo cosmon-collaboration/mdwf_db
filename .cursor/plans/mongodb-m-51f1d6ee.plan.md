@@ -1,196 +1,225 @@
-<!-- 51f1d6ee-407a-446f-85bd-be0108cddf65 0469af6f-718d-4851-a951-d880b4f473dd -->
-# Perlmutter Test Readiness Audit
+<!-- 51f1d6ee-407a-446f-85bd-be0108cddf65 123902a3-3f8d-4cae-9abe-6017d53e4bed -->
+# Fix Remaining Test Issues
 
-## Issues Found
+## Issues from Test Run
 
-### Issue 1: Missing @ symbol in admin.env connection string
+From the Perlmutter test output, we have these failures:
 
-**Location**: `config/admin.env` line 6
+### 1. IndentationError in hmc.py (Line 196)
 
-**Problem**: The connection string is missing the `@` symbol before the hostname:
+**File**: `MDWFutils/jobs/hmc.py` line 196
 
-```
-mongodb://mdwf_ensembles_admin:a+place+for+everything+and+everything+in+its+place"@mongodb05.nersc.gov...
-```
+**Error**: `IndentationError: unexpected indent`
 
-The closing quote after the password should be removed, and the connection string format should be:
+**Problem**: Line 196 has incorrect indentation - it's indented when it shouldn't be
 
-```
-mongodb://username:password@hostname:port/database
-```
+**Fix**: Remove the extra indentation from line 196
 
-**Fix**: Change line 6 to:
+### 2. Remove --db-file argument entirely
 
-```bash
-export MDWF_DB_URL="mongodb://mdwf_ensembles_admin:a+place+for+everything+and+everything+in+its+place@mongodb05.nersc.gov:27017/mdwf_ensembles?authSource=admin"
-```
+**Rationale**: User confirmed only one DB exists on NERSC, so --db-file is unnecessary
 
-### Issue 2: Test script database cleanup needs NERSC consideration
+**Files to modify**:
 
-**Location**: `test/test_mongodb_cli.sh` line 508-510
+- `MDWFutils/cli/main.py` - Remove db_parent parser and --db-file argument
+- `MDWFutils/cli/ensemble_utils.py` - Update `get_backend_for_args()` to use env var only
+- `test/test_mongodb_cli.sh` - Remove all `--db-file="$MDWF_DB_URL"` from commands (appears ~30 times)
 
-**Problem**: The cleanup function drops the entire `mdwf_test` database, but on NERSC you're using `mdwf_ensembles` (production database name). The test script currently:
+### 3. wit-input parameter parsing issue
 
-1. Uses `MDWF_DB_URL` which points to `mdwf_ensembles`
-2. But tries to drop `mdwf_test` database (hardcoded)
+**File**: `MDWFutils/jobs/wit.py` line 132
 
-**Current code**:
+**Error**: `AttributeError: 'int' object has no attribute 'items'`
 
-```bash
-if [[ "$MDWF_DB_URL" != "mongomock://"* ]]; then
-    echo "Cleaning up test database..."
-    python3 -c "from pymongo import MongoClient; client = MongoClient('$MDWF_DB_URL'); client.drop_database('mdwf_test')" 2>/dev/null || true
-fi
-```
+**Problem**: CLI parameters come as flat keys like `{"Configurations.first": 0}` but `_build_parameters` expects nested dicts like `{"Configurations": {"first": 0}}`
 
-**Issue**: This will NOT clean up the test data from `mdwf_ensembles` because it's dropping the wrong database.
+**Root cause**: `update_nested_dict()` only handles already-nested dicts, doesn't convert flat dotted keys
 
-**Two possible solutions**:
+**Fix**: Add `_unflatten_params()` helper to convert flat keys to nested structure (like old code lines 139-146 in wit_input.py)
 
-**Option A**: Use a separate test database URL for testing
+### 4. Test pattern mismatches
 
-- Create a test database `mdwf_test` on NERSC MongoDB
-- Test with: `export MDWF_DB_URL="mongodb://user:pass@mongodb05.nersc.gov:27017/mdwf_test?authSource=admin"`
-- This is safer and cleaner
+**Test 4 (nickname)**: Fails to detect "Nickname" in output - check actual output format
 
-**Option B**: Extract database name from connection string
+**Test 6 (promote)**: Fails to detect "Promoted|PRODUCTION" - check actual output format
 
-- Parse the database name from `MDWF_DB_URL`
-- Use that for cleanup
-- Risk: might accidentally drop production data if misconfigured
+**Test 9 (glu-input)**: Pattern checks fail - template may have different format
 
-**Recommendation**: Use Option A - request a separate `mdwf_test` database from NERSC for testing.
+### 5. hmc-script command doesn't accept --db-file
 
-### Issue 3: Test README references wrong paths and setup
+**Tests 11-12**: Error shows hmc-script doesn't recognize --db-file
 
-**Location**: `test/README.md` lines 35-36
+**Root cause**: This is from issue #2 - removing --db-file will fix this
 
-**Problem**: Hardcoded local path `/Users/wyatt/Development/mdwf_db` in documentation.
+## Implementation Steps
 
-**Fix**: Change to relative paths for portability:
+### Step 1: Fix indentation error in hmc.py
 
-```bash
-cd ~/mdwf_db  # or wherever you cloned it
-pip install -e .
+```python
+# Line 196 - remove leading spaces
+seed = seed_override if seed_override is not None else random.randint(1, 10**6)
 ```
 
-### Issue 4: Missing Perlmutter-specific setup instructions
+### Step 2: Remove --db-file from CLI
 
-**Location**: `test/README.md` (needs new section)
+**In `MDWFutils/cli/main.py`**:
 
-**Problem**: No instructions for:
+- Remove the `db_parent` parser creation (lines ~104-111)
+- Remove it from `add_parser` wrapper (lines ~116-126)
+- Remove DB validation logic (lines ~143-152)
+- Just use `MDWF_DB_URL` from environment
 
-1. Setting up SSH tunnel (per NERSC docs)
-2. Loading Python modules on Perlmutter
-3. Installing dependencies with `--user` flag
-4. Using `$SCRATCH` instead of local directories
+**In `MDWFutils/cli/ensemble_utils.py`**:
 
-**Fix**: Add new section "Running Tests on Perlmutter" with:
+```python
+def get_backend_for_args(args):
+    """Get backend from environment variable only."""
+    connection = os.getenv("MDWF_DB_URL")
+    if not connection:
+        connection = os.getenv("MDWF_DB", "mdwf_ensembles.db")
+    return get_backend(connection)
+```
 
-- SSH tunnel setup matching NERSC documentation pattern
-- Module loading: `module load python`
-- User package installation: `pip install --user`
-- Environment variable setup for admin account
-- Reference to `config/admin.env`
+**In test script** - Remove all occurrences of `--db-file="$MDWF_DB_URL"`
 
-## Validation Checklist
+### Step 3: Fix wit-input parameter parsing
 
-Before running on Perlmutter, verify:
+**In `MDWFutils/jobs/wit.py`**:
 
-1. **Connection String Format**
+Add helper function to convert flat dotted keys to nested structure (similar to old code):
 
-   - [ ] No stray quotes in password
-   - [ ] Has `@` before hostname
-   - [ ] Spaces replaced with `+`
-   - [ ] Database name matches target
-   - [ ] Format: `mongodb://user:pass@host:port/db?authSource=admin`
+```python
+def _unflatten_params(flat_params: Dict) -> Dict:
+    """Convert flat dotted keys to nested dict structure."""
+    result = {}
+    for key, value in flat_params.items():
+        parts = key.split('.')
+        d = result
+        for part in parts[:-1]:
+            if part not in d:
+                d[part] = {}
+            d = d[part]
+        d[parts[-1]] = value
+    return result
+```
 
-2. **Test Database Strategy**
+Then update `build_wit_context` (line 23) to unflatten before passing to `_build_parameters`:
 
-   - [ ] Decide: Use `mdwf_test` or `mdwf_ensembles` for testing?
-   - [ ] If `mdwf_ensembles`: Add warning about cleanup
-   - [ ] If `mdwf_test`: Request separate test database from NERSC
+```python
+unflattened = _unflatten_params(input_params or {})
+params = _build_parameters(physics, unflattened)
+```
 
-3. **Perlmutter Environment**
+### Step 4: Update test output patterns
 
-   - [ ] Python module availability: `module avail python`
-   - [ ] Install dependencies: `pip install --user pymongo jinja2 pyyaml pydantic`
-   - [ ] SSH tunnel configured: `~/.ssh/config` entry for `mongo-tunnel`
-   - [ ] Test connection: `python3 -c "from pymongo import MongoClient; MongoClient('$MDWF_DB_URL').admin.command('ping')"`
+After other fixes, re-run tests and update patterns for:
 
-4. **Test Script Configuration**
-
-   - [ ] `MDWF_DB_URL` set correctly via `source config/admin.env`
-   - [ ] Database name in URL matches cleanup expectations
-   - [ ] Test directory will be in `$SCRATCH` or writable location
+- nickname command output
+- promote-ensemble command output  
+- glu-input content format
 
 ## Files to Modify
 
-1. **config/admin.env** - Fix connection string syntax error
-2. **test/test_mongodb_cli.sh** - Extract database name from URL for cleanup (optional, depending on strategy)
-3. **test/README.md** - Add Perlmutter-specific instructions
-4. **New file: config/PERLMUTTER_SETUP.md** - Create detailed Perlmutter deployment guide
+1. `MDWFutils/jobs/hmc.py` - Fix indentation (line 196)
+2. `MDWFutils/cli/main.py` - Remove --db-file argument and db_parent parser
+3. `MDWFutils/cli/command.py` - Update _resolve_backend to not use args.db_file
+4. `MDWFutils/cli/ensemble_utils.py` - Simplify get_backend_for_args to use env vars only
+5. `MDWFutils/jobs/wit.py` - Add _unflatten_params and update build_wit_context
+6. `test/test_mongodb_cli.sh` - Remove all --db-file references (~28 occurrences) and fix GLU pattern checks
 
-## Recommended Testing Workflow on Perlmutter
+## Functionality Verification
 
-```bash
-# 1. Transfer code
-scp -r mdwf_db perlmutter.nersc.gov:~/
+All old commands are present in new code:
 
-# 2. SSH to Perlmutter
-ssh perlmutter.nersc.gov
+- add-ensemble, clear-history, default_params, glu-input, hmc-script, hmc-xml, init-db, meson2pt-script, mres-mq-script, mres-script, nickname, promote-ensemble, query, remove-ensemble, scan, smear-script, update, wflow-script, wit-input, zv-script
 
-# 3. Set up environment
-module load python
-pip install --user pymongo jinja2 pyyaml pydantic
+All job functionality preserved:
 
-# 4. Set up SSH tunnel (in separate terminal/tmux)
-ssh mongo-tunnel  # Keep running
+- hmc_resubmit.py used correctly in templates
+- All SLURM templates include DB tracking
+- All input templates working
 
-# 5. Source admin credentials
-cd ~/mdwf_db
-source config/admin.env
+**init-db command**: Keep it - still useful for MongoDB:
 
-# 6. Verify connection
-python3 -c "from pymongo import MongoClient; print(MongoClient(os.environ['MDWF_DB_URL']).admin.command('ping'))"
+- Creates TUNING/ and ENSEMBLES/ directory structure
+- Verifies DB connection works
+- MongoDB schema is auto-initialized: indexes created in MongoDBBackend.**init**, collections auto-created on first insert
+- No explicit schema creation needed (unlike SQLite)
 
-# 7. Run tests
-./test/test_mongodb_cli.sh
+## Priority Order
 
-# 8. Review results
-# Expected: 29/29 tests pass
-```
+**CRITICAL**:
 
-## Priority Fixes
+1. Fix hmc.py indentation (blocks all HMC tests)
+2. Remove --db-file from CLI (blocks all SLURM script tests)
 
-**CRITICAL (must fix before testing)**:
+**HIGH**:
 
-1. Fix admin.env connection string (missing @)
+3. Fix wit-input parsing (blocks wit-input test)
+4. Remove --db-file from test script
 
-**HIGH (should fix before testing)**:
+**MEDIUM**:
 
-2. Clarify test database strategy (separate mdwf_test vs. production mdwf_ensembles)
-3. Add Perlmutter setup documentation
-
-**MEDIUM (can fix after initial test)**:
-
-4. Make test cleanup database-name-aware
-5. Update README with portable paths
-
-## Safety Notes
-
-1. **Production Database Testing**: Tests run against `mdwf_ensembles` (production database)
-2. Test creates ensemble with nickname "test_ens" and removes it at completion
-3. Cleanup is **ensemble-specific**, NOT database-wide - other ensembles are safe
-4. If test fails mid-run, manual cleanup: `mdwf_db remove-ensemble -e test_ens`
-5. Test ensemble creates files in `test_run/` directory which is cleaned up locally
-6. No existing production ensembles are affected by the test suite
+5. Update test output patterns (cosmetic - tests work but fail pattern match)
 
 ### To-dos
 
-- [ ] Fix admin.env connection string - remove stray quote, add @ symbol
-- [ ] Determine if using mdwf_test or mdwf_ensembles for testing
-- [ ] Update test script cleanup to extract DB name from connection URL
-- [ ] Create config/PERLMUTTER_SETUP.md with deployment instructions
-- [ ] Update test/README.md with Perlmutter section and portable paths
-- [ ] Test MongoDB connection with fixed connection string
+- [ ] Phase 0: Copy MDWFutils/ to MDWFutils_old_backup/
+- [ ] Phase 1: Create exceptions.py with hierarchy
+- [ ] Phase 1: Create schemas/ directory structure
+- [ ] Phase 1: Create validators.py with Pydantic
+- [ ] Phase 2: Create backends/base.py abstract interface
+- [ ] Phase 2: Implement backends/mongodb.py
+- [ ] Phase 2: Move SQLite to backends/sqlite.py
+- [ ] Phase 2: Create backends/__init__.py factory
+- [ ] Phase 3: Create templates/loader.py
+- [ ] Phase 3: Create templates/context.py
+- [ ] Phase 3: Create templates/renderer.py
+- [ ] Phase 3: Create 7 SLURM job templates
+- [ ] Phase 3: Create 3 input file templates
+- [ ] Phase 4: Create cli/param_schemas.py
+- [ ] Phase 4: Create cli/help_generator.py
+- [ ] Phase 4: Create cli/args.py
+- [ ] Phase 4: Create cli/components.py
+- [ ] Phase 5: Create cli/command.py BaseCommand
+- [ ] Phase 6: Refactor smear/wflow/mres commands
+- [ ] Phase 6: Refactor remaining 17 commands
+- [ ] Phase 7: Create migration script
+- [ ] Phase 7: Update setup.py dependencies
+- [ ] Create job registry mapping job_type to (template, builder)
+- [ ] Add shared context utilities for common ensemble/physics extraction
+- [ ] Port smear f-string SLURM body to templates/slurm/smear.j2
+- [ ] Refactor jobs/smear.py to build_smear_context function
+- [ ] Port wflow f-string SLURM body to templates/slurm/wflow.j2
+- [ ] Refactor jobs/wflow.py to build_wflow_context function
+- [ ] Port mres f-string SLURM body to templates/slurm/mres.j2
+- [ ] Refactor jobs/mres.py to build_mres_context function
+- [ ] Port mres_mq f-string SLURM body to templates/slurm/mres_mq.j2
+- [ ] Refactor jobs/mres_mq.py to build_mres_mq_context function
+- [ ] Port meson2pt f-string SLURM body to templates/slurm/meson2pt.j2
+- [ ] Refactor jobs/meson2pt.py to build_meson2pt_context function
+- [ ] Port zv f-string SLURM body to templates/slurm/zv.j2
+- [ ] Refactor jobs/zv.py to build_zv_context function
+- [ ] Port HMC GPU f-string SLURM body to templates/slurm/hmc_gpu.j2
+- [ ] Port HMC CPU f-string SLURM body to templates/slurm/hmc_cpu.j2
+- [ ] Refactor jobs/hmc.py to build_hmc_context functions for CPU/GPU
+- [ ] Port HMC XML generation to templates/input/hmc_xml.j2
+- [ ] Port GLU input generation to templates/input/glu_input.j2
+- [ ] Port WIT input generation to templates/input/wit_input.j2
+- [ ] Update ScriptGenerator to use job registry for routing
+- [ ] Update slurm_update_trap.py to use backend abstraction
+- [ ] Update CLI main.py to prefer MDWF_DB_URL env var for Mongo
+- [ ] Remove or mark deprecated old generate_*_sbatch functions
+- [ ] Create verification scripts to compare old vs new output
+- [ ] Test all CLI commands end-to-end with test ensemble
+- [ ] Fix grep -oP → portable sed (Lines 154-155)
+- [ ] Fix -x, -g, -w → -i (Lines 224, 237, 250, 271, 288)
+- [ ] Fix default_params save → set (Line 427)
+- [ ] Fix --input-params → --input (Lines 429-430)
+- [ ] Fix scan -e → scan (Line 206)
+- [ ] Fix query → query --detailed (Line 162)
+- [ ] Fix default params test (Lines 446-456)
+- [ ] Fix HMC XML content checks (Lines 225-227)
+- [ ] Simplify success detection (remove output greps)
+- [ ] Fix --params → -p consistency (Line 388)
+- [ ] Test with local MongoDB - fixes validated, mongomock limitations noted

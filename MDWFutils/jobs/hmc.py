@@ -193,7 +193,7 @@ def build_hmc_xml_context(backend, ensemble_id: int, input_params: Dict) -> Dict
 
 def _make_default_tree(mode: str, seed_override: Optional[int] = None):
     """Build a fresh ElementTree with defaults for tepid/continue/reseed."""
-        seed = seed_override if seed_override is not None else random.randint(1, 10**6)
+    seed = seed_override if seed_override is not None else random.randint(1, 10**6)
 
     if mode == "tepid":
         start, traj = 0, 100

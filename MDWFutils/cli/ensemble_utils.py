@@ -64,9 +64,10 @@ def migrate_ensemble_id_argument(parser):
 
 
 def get_backend_for_args(args):
-    connection = getattr(args, "db_file", None)
+    """Resolve backend connection using environment variables only."""
+    connection = os.getenv("MDWF_DB_URL")
     if not connection:
-        connection = os.getenv("MDWF_DB_URL") or os.getenv("MDWF_DB_FILE", "mdwf_db.sqlite")
+        connection = os.getenv("MDWF_DB", "mdwf_ensembles.db")
     return get_backend(connection)
 
 

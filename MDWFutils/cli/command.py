@@ -24,7 +24,7 @@ from .param_schemas import ParamDef
 def _load_default_backend():
     connection = os.getenv("MDWF_DB_URL")
     if not connection:
-        connection = os.getenv("MDWF_DB_FILE", "mdwf_db.sqlite")
+        connection = os.getenv("MDWF_DB", "mdwf_ensembles.db")
     return get_backend(connection)
 
 
@@ -159,9 +159,6 @@ class BaseCommand:
     def _resolve_backend(self, args):
         if self._backend_override is not None:
             return self._backend_override
-        connection = getattr(args, "db_file", None)
-        if connection:
-            return get_backend(connection)
         return _load_default_backend()
 
     def _write_file(self, ensemble, content: str, output_file: str | None, suffix: str, executable: bool = False):

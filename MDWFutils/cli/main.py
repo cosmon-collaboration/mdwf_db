@@ -85,45 +85,19 @@ Most commands accept either ensemble IDs (integers) or directory paths:
   -e .                    # Use current directory (when inside ensemble)
 
 DATABASE CONNECTION:
-The database connection is determined by:
-  1. MDWF_DB_URL environment variable (MongoDB connection string)
-  2. MDWF_DB environment variable (SQLite file path)
-  3. Auto-discovery: SQLite file found by walking up directory tree
-  4. --db-file command-line argument (overrides environment)
+Use environment variables (no CLI overrides):
+  1. MDWF_DB_URL (MongoDB connection string) — preferred for production
+  2. MDWF_DB (SQLite file path) — for local development or offline use
+     (If unset, mdwf_db will auto-discover mdwf_ensembles.db by walking up directories.)
 
-For MongoDB: Set MDWF_DB_URL=mongodb://host:port/database
-For SQLite: Set MDWF_DB=/path/to/file.db or rely on auto-discovery
+For MongoDB: export MDWF_DB_URL=mongodb://host:port/database
+For SQLite: export MDWF_DB=/path/to/file.db (or rely on auto-discovery)
 
 For detailed help: mdwf_db <command> --help
 """
     )
 
-    # Prefer MongoDB URL, fall back to SQLite file discovery
-    DEFAULT_DB = get_default_db_connection()
-    
-    db_parent = argparse.ArgumentParser(add_help=False)
-    db_parent.add_argument(
-        '--db-file',
-        default=DEFAULT_DB,
-        help='Database connection string (MongoDB URL or SQLite file path). '
-             'Defaults to MDWF_DB_URL env var (MongoDB) or MDWF_DB env var (SQLite), '
-             'or auto-discovered SQLite file by walking up directory tree.'
-    )
-
     subs   = parser.add_subparsers(dest='cmd')
-
-    orig_add = subs.add_parser
-    def add_parser(name, **kwargs):
-        # collect any existing parents, make them into a list
-        parents = kwargs.get('parents', [])
-        if not isinstance(parents, list):
-            parents = [parents]
-        # ensure our db_parent is always there
-        parents.append(db_parent)
-        kwargs['parents'] = parents
-        return orig_add(name, **kwargs)
-    
-    subs.add_parser = add_parser
 
     # Dynamically import every module in cli/commands and call its register()
     pkg = importlib.import_module('MDWFutils.cli.commands')
@@ -141,14 +115,14 @@ For detailed help: mdwf_db <command> --help
     # Validate DB presence for commands that require an existing DB
     # Allow init-db to create a new database
     if args.cmd != 'init-db':
-        db_conn = getattr(args, 'db_file', get_default_db_connection())
+        db_conn = get_default_db_connection()
         # For MongoDB URLs, skip file existence check
         if not db_conn.startswith(("mongodb://", "mongodb+srv://")):
             db_path = Path(db_conn)
             if not db_path.exists():
                 print("ERROR: No database file found.")
                 print("Hint: Run from your mdwf project directory (where mdwf_ensembles.db lives),")
-                print("      set MDWF_DB_URL env var for MongoDB, or pass --db-file.")
+                print("      or set MDWF_DB_URL (MongoDB) / MDWF_DB (SQLite) environment variables.")
                 return 1
 
     # every module must set args.func to its handler in register()
