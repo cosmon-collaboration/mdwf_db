@@ -303,15 +303,18 @@ phase_2_ensemble_mgmt() {
     fi
     
     run_test "query by relative path: Resolve from ensemble directory"
-    pushd "$ENSEMBLE_DIR" >/dev/null
-    local rel_query_output
-    rel_query_output=$(run_cmd mdwf_db query -e . 2>&1 || true)
-    if echo "$rel_query_output" | grep -q "beta"; then
-        pass "Ensemble resolved from current directory"
+    if pushd "$ENSEMBLE_DIR" >/dev/null 2>&1; then
+        local rel_query_output
+        rel_query_output=$(run_cmd mdwf_db query -e . 2>&1 || true)
+        if echo "$rel_query_output" | grep -q "beta"; then
+            pass "Ensemble resolved from current directory"
+        else
+            fail "Failed to resolve from current directory"
+        fi
+        popd >/dev/null
     else
-        fail "Failed to resolve from current directory"
+        fail "Could not enter ensemble directory: $ENSEMBLE_DIR"
     fi
-    popd >/dev/null
     
     run_test "query: Invalid ensemble ID shows error"
     local invalid_query_output
@@ -619,14 +622,9 @@ phase_5_operations() {
     
     run_test "clear-history: Clear operations but preserve ensemble"
     local clear_output
-    clear_output=$(timeout 10s mdwf_db clear-history -e test_ens 2>&1 || true)
-    local exit_code=$?
+    clear_output=$(run_cmd mdwf_db clear-history -e test_ens --force 2>&1 || true)
     
-    echo "$clear_output" | tee -a "$LOG_FILE"
-    
-    if [[ $exit_code -eq 124 ]]; then
-        fail "clear-history timed out (hung for >10s)"
-    elif echo "$clear_output" | grep -qE "(Cleared|cleared|removed|Removed)"; then
+    if echo "$clear_output" | grep -qE "(Cleared|cleared|removed|Removed|Successfully cleared)"; then
         pass "Operation history cleared"
     else
         fail "Failed to clear history"
@@ -635,15 +633,23 @@ phase_5_operations() {
     run_test "MongoDB: Verify ensemble document structure"
     if python3 <<'EOF'
 import os
+import sys
 from pymongo import MongoClient
 
-client = MongoClient(os.environ['MDWF_DB_URL'])
-db = client.get_database()
-doc = db.ensembles.find_one({"nickname": "test_ens"})
-assert doc is not None, "Ensemble not found"
-for field in ("physics", "paths", "status"):
-    assert field in doc, f"Missing field: {field}"
-print("✓ Document structure valid")
+try:
+    client = MongoClient(os.environ['MDWF_DB_URL'])
+    db = client.get_database()
+    doc = db.ensembles.find_one({"nickname": "test_ens"})
+    assert doc is not None, "Ensemble not found"
+    for field in ("physics", "paths", "status"):
+        assert field in doc, f"Missing field: {field}"
+    print("✓ Document structure valid")
+except AssertionError as e:
+    print(f"Assertion failed: {e}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
 EOF
     then
         pass "MongoDB document contains required fields"
@@ -718,9 +724,9 @@ phase_7_cleanup() {
     
     run_test "remove-ensemble: Delete test ensemble"
     local remove_output
-    remove_output=$(run_cmd mdwf_db remove-ensemble -e test_ens 2>&1 || true)
+    remove_output=$(run_cmd mdwf_db remove-ensemble -e test_ens --force 2>&1 || true)
     
-    if echo "$remove_output" | grep -qE "(Removed|Deleted)"; then
+    if echo "$remove_output" | grep -qE "(Removed|Deleted|DB removal.*OK)"; then
         pass "Ensemble removed from database"
     else
         fail "Failed to remove ensemble"
