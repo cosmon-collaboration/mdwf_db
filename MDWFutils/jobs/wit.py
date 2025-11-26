@@ -44,6 +44,7 @@ def build_wit_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
     sections = _ordered_dict_to_sections(params)
     
     # Add output directory info for standalone WIT input generation
+    # Don't specify a subdirectory - let the user control via -o flag
     ensemble_dir = Path(ensemble["directory"]).resolve()
     return {
         "sections": sections,

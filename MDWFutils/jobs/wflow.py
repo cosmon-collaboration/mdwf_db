@@ -7,7 +7,6 @@ from typing import Dict
 
 from MDWFutils.exceptions import ValidationError
 
-from .glu import generate_glu_input
 from .utils import get_ensemble_doc, get_physics_params
 
 DEFAULT_GLU_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU"
@@ -42,8 +41,15 @@ def build_wflow_context(
     smear_type = str(input_params.get("SMEARTYPE", DEFAULT_SMEAR_TYPE))
     smiters = int(input_params.get("SMITERS", DEFAULT_SMITERS))
 
+    # GLU input will be written by BaseCommand using build_glu_context
+    # We just need to tell it where via _glu_input_dir
     glu_input_path = wflow_dir / "glu_smear.in"
-    _write_glu_input(glu_input_path, L, T, job_params, smear_type, smiters, input_params)
+
+    # Validate required config range
+    if "config_start" not in job_params:
+        raise ValidationError("config_start is required for wflow jobs (pass with -j)")
+    if "config_end" not in job_params:
+        raise ValidationError("config_end is required for wflow jobs (pass with -j)")
 
     config_start = int(job_params["config_start"])
     config_end = int(job_params["config_end"])
@@ -84,31 +90,8 @@ def build_wflow_context(
         "smiters": smiters,
         "_output_dir": str(wflow_dir / "slurm"),
         "_output_prefix": f"wflow_{config_start}_{config_end}",
+        # Tell BaseCommand where to put the GLU input file
+        "_input_output_dir": str(wflow_dir),
+        "_input_output_prefix": "glu_smear",
     }
 
-
-def _write_glu_input(
-    target_path: Path,
-    L: int,
-    T: int,
-    job_params: Dict,
-    smear_type: str,
-    smiters: int,
-    input_params: Dict,
-) -> None:
-    """Generate the GLU input for Wilson flow."""
-    overrides = {
-        "CONFNO": str(job_params["config_start"]),
-        "DIM_0": str(L),
-        "DIM_1": str(L),
-        "DIM_2": str(L),
-        "DIM_3": str(T),
-        "SMEARTYPE": smear_type,
-        "SMITERS": str(smiters),
-    }
-
-    for key in ("ALPHA1", "ALPHA2", "ALPHA3"):
-        if key in input_params:
-            overrides[key] = str(input_params[key])
-
-    generate_glu_input(str(target_path), overrides)

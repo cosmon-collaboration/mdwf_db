@@ -19,8 +19,8 @@ class ParamDef:
 
 
 COMMON_JOB_SCHEMA = [
-    ParamDef("config_start", int, required=True, help="First configuration"),
-    ParamDef("config_end", int, required=True, help="Last configuration"),
+    ParamDef("config_start", int, required=False, help="First configuration"),
+    ParamDef("config_end", int, required=False, help="Last configuration"),
     ParamDef("config_inc", int, default=1, help="Configuration increment"),
     ParamDef("time_limit", str, default="01:00:00", help="SLURM time limit"),
     ParamDef("nodes", int, default=1, help="Number of nodes"),

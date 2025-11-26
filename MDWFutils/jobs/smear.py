@@ -7,7 +7,6 @@ from typing import Dict
 
 from MDWFutils.exceptions import ValidationError
 
-from .glu import generate_glu_input
 from .utils import get_ensemble_doc, get_physics_params
 
 DEFAULT_GLU_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU"
@@ -49,10 +48,17 @@ def build_smear_context(
     log_dir.mkdir(parents=True, exist_ok=True)
     (smear_dir / "slurm").mkdir(parents=True, exist_ok=True)
 
+    # GLU input will be written by BaseCommand using build_glu_context
+    # We specify where via _input_output_dir
     glu_input_path = smear_dir / "glu_smear.in"
-    _write_glu_input(glu_input_path, L, T, job_params, smear_type, smiters, alpha_values)
 
     prefix_for_files = _determine_output_prefix(smear_type, smiters, job_params)
+
+    # Validate required config range
+    if "config_start" not in job_params:
+        raise ValidationError("config_start is required for smear jobs (pass with -j)")
+    if "config_end" not in job_params:
+        raise ValidationError("config_end is required for smear jobs (pass with -j)")
 
     config_start = int(job_params["config_start"])
     config_end = int(job_params["config_end"])
@@ -94,37 +100,12 @@ def build_smear_context(
         "nsim": nsim,
         "_output_dir": str(smear_dir / "slurm"),
         "_output_prefix": f"smear_{config_start}_{config_end}",
+        # Tell BaseCommand where to put the GLU input file
+        "_input_output_dir": str(smear_dir),
+        "_input_output_prefix": "glu_smear",
     }
 
     return context
-
-
-def _write_glu_input(
-    target_path: Path,
-    L: int,
-    T: int,
-    job_params: Dict,
-    smear_type: str,
-    smiters: int,
-    alpha_values,
-) -> None:
-    """Generate the GLU input file with the appropriate overrides."""
-    overrides = {
-        "CONFNO": str(job_params["config_start"]),
-        "DIM_0": str(L),
-        "DIM_1": str(L),
-        "DIM_2": str(L),
-        "DIM_3": str(T),
-        "SMEARTYPE": smear_type,
-        "SMITERS": str(smiters),
-    }
-
-    alphas = ["ALPHA1", "ALPHA2", "ALPHA3"]
-    for key, value in zip(alphas, alpha_values):
-        if value is not None:
-            overrides[key] = str(value)
-
-    generate_glu_input(str(target_path), overrides)
 
 
 def _determine_output_prefix(smear_type: str, smiters: int, job_params: Dict) -> str:

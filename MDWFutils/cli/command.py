@@ -112,14 +112,26 @@ class BaseCommand:
 
             self.custom_validation(typed_input, typed_job, ensemble)
 
-            # Build contexts for input and job generation
-            input_context = None
+            # Build job context first (if exists) to get custom input file location
             job_context = None
-            
+            if self.job_type:
+                from ..jobs.registry import get_job_builder
+                job_builder = get_job_builder(self.job_type)
+                job_context = job_builder(backend, ensemble_id, typed_job, typed_input)
+
+            # Generate input file if needed
             if self.input_type:
                 from ..jobs.registry import get_input_builder
                 input_builder = get_input_builder(self.input_type)
                 input_context = input_builder(backend, ensemble_id, typed_input)
+                
+                # Override input location if job context specifies it
+                if job_context and "_input_output_dir" in job_context:
+                    input_context["_output_dir"] = job_context["_input_output_dir"]
+                    # Optionally override prefix too
+                    if "_input_output_prefix" in job_context:
+                        input_context["_output_prefix"] = job_context["_input_output_prefix"]
+                
                 input_content = generator.generate_input(
                     ensemble_id, self.input_type, typed_input
                 )
@@ -134,10 +146,8 @@ class BaseCommand:
                 display_name = input_names.get(self.input_type, self.input_type)
                 print(f"Generated {display_name} input: {input_path}")
 
+            # Generate job script if needed
             if self.job_type:
-                from ..jobs.registry import get_job_builder
-                job_builder = get_job_builder(self.job_type)
-                job_context = job_builder(backend, ensemble_id, typed_job, typed_input)
                 script_content = generator.generate_slurm(
                     ensemble_id, self.job_type, typed_job, typed_input
                 )

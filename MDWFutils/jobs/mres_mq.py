@@ -15,7 +15,6 @@ from .utils import (
     parse_ogeom,
     validate_geometry,
 )
-from .wit import generate_wit_input
 
 DEFAULT_WIT_ENV = "source /global/cfs/cdirs/m2986/cosmon/mdwf/software/scripts/env_gpu.sh"
 DEFAULT_WIT_BIND = "/global/cfs/cdirs/m2986/cosmon/mdwf/ANALYSIS/WIT/bind.sh"
@@ -62,18 +61,9 @@ def build_mres_mq_context(
     ogeom = parse_ogeom(str(job_params.get("ogeom") or DEFAULT_OGEOM))
     lgeom = validate_geometry(L, T, ogeom)
 
+    # WIT input will be written by BaseCommand using build_wit_context
+    # We specify where via _input_output_dir
     wit_input_path = workdir / "DWF_mres_mq.in"
-    wit_overrides = _convert_cli_params(input_params)
-    _apply_mq_defaults(wit_overrides, kappa_c)
-
-    ensemble_params = {**physics, "mc": mc, "ml": ml, "ms": ms}
-    generate_wit_input(
-        str(wit_input_path),
-        custom_params=wit_overrides,
-        ensemble_params=ensemble_params,
-        cli_format=True,
-        prune_prop_solvers=(1, 1),
-    )
 
     config_start = int(input_params["Configurations.first"])
     config_end = int(input_params["Configurations.last"])
@@ -109,6 +99,9 @@ def build_mres_mq_context(
         "ranks": int(job_params.get("ranks", 4)),
         "_output_dir": str(workdir / "slurm"),
         "_output_prefix": f"mres_mq_{config_start}_{config_end}",
+        # Tell BaseCommand where to put the WIT input file
+        "_input_output_dir": str(workdir),
+        "_input_output_prefix": "DWF_mres_mq",
     }
 
 

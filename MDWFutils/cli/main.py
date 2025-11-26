@@ -41,60 +41,25 @@ def get_default_db_connection():
     sqlite_file = os.getenv('MDWF_DB', find_database_file())
     return sqlite_file
 
+def _generate_command_help(subparsers):
+    """Auto-generate command list from registered subparsers."""
+    commands = []
+    
+    for name in sorted(subparsers.choices.keys()):
+        parser = subparsers.choices[name]
+        help_text = parser.description or ''
+        commands.append(f"  {name:<20} {help_text}")
+    
+    lines = ["Available commands:", ""]
+    lines.extend(commands)
+    return "\n".join(lines)
+
 def main():
+    # Create parser WITHOUT epilog initially
     parser = argparse.ArgumentParser(
         prog="mdwf_db",
         description="MDWF Database Management Tool for Domain Wall Fermion Lattice QCD",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Available commands by category:
-
-DATABASE MANAGEMENT:
-  init-db             Initialize database and directory structure
-  add-ensemble        Add ensemble to database (supports pre-existing directories)
-  remove-ensemble     Remove ensemble and all its operations from database
-  promote-ensemble    Move ensemble from TUNING to PRODUCTION status
-  query              List ensembles or show detailed info for one ensemble
-  clear-history      Clear operation history while preserving ensemble record
-  nickname           Set or clear a human-friendly nickname for an ensemble
-
-JOB SCRIPT GENERATION:
-  hmc-script         Generate HMC XML and SLURM script for gauge generation
-  hmc-xml            Generate standalone HMC XML parameter file
-  smear-script       Generate GLU smearing SLURM script
-  wflow-script       Generate gradient flow SLURM script
-  meson2pt-script    Generate WIT meson correlator measurement script
-  mres-script        Generate WIT mres measurement script
-  mres-mq-script     Generate WIT mres measurement script with changed heavy quark mass
-  zv-script          Generate Zv correlator measurement script
-  glu-input          Generate GLU input file for gauge field utilities
-  wit-input          Generate WIT input file for correlator measurements
-
-OPERATION TRACKING:
-  update             Record or update operation status and parameters
-
-CONFIGURATION MANAGEMENT:
-  default_params     Manage ensemble default parameter files for operation parameters
-  scan               Scan cnfg/ folders to store config ranges and optionally scan filesystem
-
-FLEXIBLE IDENTIFIERS:
-Most commands accept either ensemble IDs (integers) or directory paths:
-  -e 1                    # Use ensemble ID
-  -e ./TUNING/b6.0/...    # Use relative path
-  -e /full/path/to/ens    # Use absolute path
-  -e .                    # Use current directory (when inside ensemble)
-
-DATABASE CONNECTION:
-Use environment variables (no CLI overrides):
-  1. MDWF_DB_URL (MongoDB connection string) — preferred for production
-  2. MDWF_DB (SQLite file path) — for local development or offline use
-     (If unset, mdwf_db will auto-discover mdwf_ensembles.db by walking up directories.)
-
-For MongoDB: export MDWF_DB_URL=mongodb://host:port/database
-For SQLite: export MDWF_DB=/path/to/file.db (or rely on auto-discovery)
-
-For detailed help: mdwf_db <command> --help
-"""
     )
 
     subs   = parser.add_subparsers(dest='cmd')
@@ -107,6 +72,25 @@ For detailed help: mdwf_db <command> --help
         if hasattr(mod, 'register'):
             mod.register(subs)
 
+    # NOW generate and set epilog with registered commands
+    command_help = _generate_command_help(subs)
+    parser.epilog = f"""
+{command_help}
+
+FLEXIBLE IDENTIFIERS:
+Most commands accept either ensemble IDs (integers) or directory paths:
+  -e 1                    # Use ensemble ID
+  -e ./TUNING/b6.0/...    # Use relative path
+  -e /full/path/to/ens    # Use absolute path
+  -e .                    # Use current directory (when inside ensemble)
+
+DATABASE CONNECTION:
+Use MDWF_DB_URL environment variable:
+  export MDWF_DB_URL=mongodb://host:port/database?authSource=admin
+
+For detailed help: mdwf_db <command> --help
+"""
+
     args = parser.parse_args()
     if not args.cmd:
         parser.print_help()
@@ -116,14 +100,10 @@ For detailed help: mdwf_db <command> --help
     # Allow init-db to create a new database
     if args.cmd != 'init-db':
         db_conn = get_default_db_connection()
-        # For MongoDB URLs, skip file existence check
-        if not db_conn.startswith(("mongodb://", "mongodb+srv://")):
-            db_path = Path(db_conn)
-            if not db_path.exists():
-                print("ERROR: No database file found.")
-                print("Hint: Run from your mdwf project directory (where mdwf_ensembles.db lives),")
-                print("      or set MDWF_DB_URL (MongoDB) / MDWF_DB (SQLite) environment variables.")
-                return 1
+        if not db_conn:
+            print("ERROR: No database connection configured.")
+            print("Hint: Set MDWF_DB_URL environment variable.")
+            return 1
 
     # every module must set args.func to its handler in register()
     return args.func(args)
