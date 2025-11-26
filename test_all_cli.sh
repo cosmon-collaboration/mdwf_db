@@ -12,6 +12,10 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Get absolute path to script directory (where test_run will be created)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+BASE_DIR="${SCRIPT_DIR}"
+
 # Function to print section headers
 print_section() {
     echo ""
@@ -40,6 +44,7 @@ run_cmd() {
 echo "================================================================================"
 echo "  MDWF CLI Comprehensive Test Suite"
 echo "  Started: $(date)"
+echo "  Base directory: ${BASE_DIR}"
 echo "================================================================================"
 echo ""
 
@@ -47,9 +52,9 @@ echo ""
 print_section "1. INITIALIZATION & BASIC SETUP"
 # -----------------------------------------------------------------------------
 
-run_cmd mdwf_db init-db --base-dir test_run
+run_cmd mdwf_db init-db --base-dir "${BASE_DIR}"
 
-run_cmd mdwf_db add-ensemble -s TUNING -p 'beta=6.0 b=2.5 Ls=12 mc=0.6 ms=0.04 ml=0.005 L=24 T=48'
+run_cmd mdwf_db add-ensemble -s TUNING -p 'beta=6.0 b=2.5 Ls=12 mc=0.6 ms=0.04 ml=0.005 L=24 T=48' --base-dir "${BASE_DIR}"
 
 run_cmd mdwf_db query
 
@@ -76,17 +81,7 @@ run_cmd mdwf_db nickname -e 1 --clear
 run_cmd mdwf_db nickname -e 1
 
 # -----------------------------------------------------------------------------
-print_section "3. STANDALONE INPUT FILE GENERATION"
-# -----------------------------------------------------------------------------
-
-run_cmd mdwf_db glu-input -e 1 -i 'SMEARTYPE=STOUT SMITERS=8'
-
-run_cmd mdwf_db wit-input -e 1 -i 'Configurations.first=0 Configurations.last=12'
-
-run_cmd mdwf_db hmc-xml -e 1 -i 'Trajectories=100 trajL=0.75'
-
-# -----------------------------------------------------------------------------
-print_section "4. DEFAULT PARAMETERS MANAGEMENT"
+print_section "3. DEFAULT PARAMETERS MANAGEMENT"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db default_params list -e 1
@@ -108,7 +103,7 @@ run_cmd mdwf_db default_params set -e 1 --job-type smear --variant ape10 \
 run_cmd mdwf_db default_params list -e 1
 
 # -----------------------------------------------------------------------------
-print_section "5. JOB SCRIPT GENERATION (Smear & Wilson Flow)"
+print_section "4. JOB SCRIPT GENERATION (Smear & Wilson Flow)"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db smear-script -e 1 --use-default-params --params-variant stout8
@@ -123,7 +118,7 @@ run_cmd mdwf_db wflow-script -e 1 \
   -j 'config_start=0 config_end=12 config_inc=4 nodes=1 ranks=1'
 
 # -----------------------------------------------------------------------------
-print_section "6. JOB SCRIPT GENERATION (HMC)"
+print_section "5. JOB SCRIPT GENERATION (HMC)"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db hmc-script gpu -e 1 \
@@ -135,7 +130,7 @@ run_cmd mdwf_db hmc-script cpu -e 1 \
   -j 'n_trajec=100 trajL=0.75 lvl_sizes=9,1,1 exec_path=/dummy/hmc/path bind_script=/dummy/bind.sh nodes=4'
 
 # -----------------------------------------------------------------------------
-print_section "7. JOB SCRIPT GENERATION (WIT-based measurements)"
+print_section "6. JOB SCRIPT GENERATION (WIT-based measurements)"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db mres-script -e 1 \
@@ -155,7 +150,7 @@ run_cmd mdwf_db zv-script -e 1 \
   -j 'nodes=1 ranks=4'
 
 # -----------------------------------------------------------------------------
-print_section "8. OPERATION TRACKING"
+print_section "7. OPERATION TRACKING & UPDATES"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db update -e 1 -o GLU_SMEAR -s COMPLETED \
@@ -175,7 +170,7 @@ run_cmd mdwf_db update -e 1 -o HMC_GPU -s COMPLETED -i 1 \
 run_cmd mdwf_db query -e 1 --detailed
 
 # -----------------------------------------------------------------------------
-print_section "9. CONFIGURATION SCANNING"
+print_section "8. CONFIGURATION SCANNING"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db scan
@@ -185,7 +180,7 @@ run_cmd mdwf_db scan --force
 run_cmd mdwf_db query -e 1 --detailed
 
 # -----------------------------------------------------------------------------
-print_section "10. CLEAR HISTORY (Preserves ensemble, clears operations)"
+print_section "9. CLEAR HISTORY (Preserves ensemble, clears operations)"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db clear-history -e 1 --force
@@ -196,12 +191,12 @@ run_cmd mdwf_db query -e 1 --detailed
 print_section "11. PROMOTE ENSEMBLE (TUNING → PRODUCTION)"
 # -----------------------------------------------------------------------------
 
-run_cmd mdwf_db promote-ensemble -e 1 --base-dir test_run --force
+run_cmd mdwf_db promote-ensemble -e 1 --base-dir "${BASE_DIR}" --force
 
 run_cmd mdwf_db query -e 1
 
 # -----------------------------------------------------------------------------
-print_section "12. CLEANUP DEFAULT PARAMS"
+print_section "11. CLEANUP DEFAULT PARAMS"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db default_params delete -e 1 --job-type smear --variant stout8 --force
@@ -213,7 +208,7 @@ run_cmd mdwf_db default_params delete -e 1 --job-type smear --variant hyp5 --for
 run_cmd mdwf_db default_params list -e 1
 
 # -----------------------------------------------------------------------------
-print_section "13. FINAL VERIFICATION"
+print_section "12. FINAL VERIFICATION"
 # -----------------------------------------------------------------------------
 
 run_cmd mdwf_db query -e 1 --detailed
