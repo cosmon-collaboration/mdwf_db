@@ -1,0 +1,66 @@
+[Run name]
+name         u_stout8
+
+[Directories]
+cnfg_dir     ../cnfg/
+
+[Configurations]
+first        0
+last         12
+step         4
+
+[Random number generator]
+level        0
+seed         3993
+
+[Lattice parameters]
+Ls           12
+M5           1.0
+b            2.5
+c            1.5
+
+[Boundary conditions]
+type         APeri
+
+[Witness]
+no_prop      1
+no_solver    1
+
+[Solver 0]
+solver       CG
+nkv          24
+isolv        1
+nmr          3
+ncy          3
+nmx          8000
+exact_deflation true
+
+[Exact Deflation]
+Cheby_fine   0.01,-1,24
+Cheby_smooth 0,0,0
+Cheby_coarse 0,0,0
+kappa        0.125
+res          1E-5
+nmx          64
+Ns           64
+
+[Propagator 0]
+Noise        Z2xZ2
+Source       Wall
+Dilution     PS
+pos          0 0 0 -1
+mom          0 0 0 0
+twist        0 0 0
+kappa        0.12484394506866417
+mu           0.
+Seed         54321
+idx_solver   0
+res          1E-12
+sloppy_res   1E-4
+
+[AMA]
+NEXACT       2
+SLOPPY_PREC  1E-5
+NHITS        1
+NT           48
+
