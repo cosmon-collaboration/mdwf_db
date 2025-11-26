@@ -91,7 +91,6 @@ def build_hmc_gpu_context(backend, ensemble_id: int, job_params: Dict, input_par
         "separate_error_log": True,
         "job_name": _resolve_job_name(job_params, ensemble_id),
         # Script-specific values
-        "db_file": backend.connection_string,
         "ensemble_id": ensemble_id,
         "mode": job_params.get("mode", "tepid"),
         "ensemble_name": ens_name,
@@ -165,7 +164,6 @@ def build_hmc_cpu_context(backend, ensemble_id: int, job_params: Dict, input_par
         "log_dir": str(log_dir),
         "separate_error_log": True,
         "job_name": _resolve_job_name(job_params, ensemble_id),
-        "db_file": backend.connection_string,
         "ensemble_id": ensemble_id,
         "mode": job_params.get("mode", "tepid"),
         "ensemble_name": ens_name,

@@ -77,7 +77,6 @@ def build_smear_context(
         "mail_type": job_params.get("mail_type", "ALL"),
         # DB tracking
         "ensemble_id": ensemble_id,
-        "db_file": getattr(backend, "connection_string", ""),
         "operation": "GLU_SMEAR",
         "config_start": config_start,
         "config_end": config_end,

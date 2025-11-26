@@ -66,7 +66,6 @@ def build_wflow_context(
         "signal": "B:TERM@60",
         "mail_type": job_params.get("mail_type", "ALL"),
         "ensemble_id": ensemble_id,
-        "db_file": getattr(backend, "connection_string", ""),
         "operation": "GLU_WFLOW",
         "config_start": config_start,
         "config_end": config_end,
@@ -81,6 +80,8 @@ def build_wflow_context(
         "glu_exec_path": job_params.get("glu_path", DEFAULT_GLU_EXEC),
         "glu_input_path": str(glu_input_path),
         "nsim": nsim,
+        "smear_type": smear_type,
+        "smiters": smiters,
         "_output_dir": str(wflow_dir / "slurm"),
         "_output_prefix": f"wflow_{config_start}_{config_end}",
     }

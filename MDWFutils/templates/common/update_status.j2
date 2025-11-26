@@ -1,0 +1,23 @@
+# Capture exit code immediately
+EXIT_CODE=$?
+
+# Determine status based on exit code
+if [ $EXIT_CODE -eq 0 ]; then
+    # Job completed successfully
+    mdwf_db update -e {{ ensemble_id }} -o {{ operation_type }} -s COMPLETED \
+      -p "slurm_job_id=$SLURM_JOB_ID exit_code=0 runtime=$SECONDS host=$(hostname)" \
+      || true
+elif [ $EXIT_CODE -eq 130 ] || [ $EXIT_CODE -eq 137 ] || [ $EXIT_CODE -eq 143 ]; then
+    # Job was killed/canceled
+    mdwf_db update -e {{ ensemble_id }} -o {{ operation_type }} -s CANCELED \
+      -p "slurm_job_id=$SLURM_JOB_ID exit_code=$EXIT_CODE runtime=$SECONDS host=$(hostname)" \
+      || true
+    exit $EXIT_CODE
+else
+    # Job failed
+    mdwf_db update -e {{ ensemble_id }} -o {{ operation_type }} -s FAILED \
+      -p "slurm_job_id=$SLURM_JOB_ID exit_code=$EXIT_CODE runtime=$SECONDS host=$(hostname)" \
+      || true
+    exit $EXIT_CODE
+fi
+

@@ -6,7 +6,10 @@ mkdir -p DATA
 module load conda
 conda activate {{ conda_env }}
 
-{% include 'common/db_tracking.j2' %}
+# Record job start
+mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
+  -p "slurm_job_id=$SLURM_JOB_ID config_start={{ config_start }} config_end={{ config_end }} config_increment={{ config_inc }} wit_input={{ wit_input_path }} workdir={{ workdir }} nodes={{ nodes }} ranks={{ ranks }}" \
+  || true
 
 SECONDS=0
 
@@ -39,5 +42,8 @@ echo "Running mres-mq range {{ config_start }}-{{ config_end }} step {{ config_i
 srun -n {{ ranks }} "$BIND" "$EXEC" -i "$WIT_INPUT" \
     -ogeom {{ ogeom }} \
     -lgeom {{ lgeom }}
+
+{% set operation_type = operation %}
+{% include 'common/update_status.j2' %}
 
 echo "All done in $SECONDS seconds"

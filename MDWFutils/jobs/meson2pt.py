@@ -92,7 +92,6 @@ def build_meson2pt_context(
         "log_dir": str(log_dir),
         "separate_error_log": False,
         "ensemble_id": ensemble_id,
-        "db_file": getattr(backend, "connection_string", ""),
         "operation": "WIT_MESON2PT",
         "config_start": config_start,
         "config_end": config_end,

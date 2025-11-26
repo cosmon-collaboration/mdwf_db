@@ -123,7 +123,16 @@ class BaseCommand:
                 input_content = generator.generate_input(
                     ensemble_id, self.input_type, typed_input
                 )
-                self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
+                input_path = self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
+                
+                # Print friendly name
+                input_names = {
+                    "hmc_xml": "HMC XML",
+                    "wit_input": "WIT",
+                    "glu_input": "GLU"
+                }
+                display_name = input_names.get(self.input_type, self.input_type)
+                print(f"Generated {display_name} input: {input_path}")
 
             if self.job_type:
                 from ..jobs.registry import get_job_builder

@@ -45,7 +45,13 @@ def do_update(args):
     if slurm_job_id:
         payload = _flatten_update_fields(param_dict)
         payload['slurm.job_id'] = slurm_job_id
-        updated = backend.update_operation_by_slurm_id(slurm_job_id, status, **payload)
+        updated = backend.update_operation_by_slurm_id(
+            slurm_job_id, 
+            status,
+            ensemble_id,
+            args.operation_type,
+            **payload
+        )
         if updated:
             print(f"Updated SLURM job {slurm_job_id}")
             return 0

@@ -1,8 +1,6 @@
 {% include 'common/sbatch_header.j2' %}
 
 batch="$0"
-DB="{{ db_file }}"
-EID={{ ensemble_id }}
 mode="{{ mode }}"
 ens="{{ ensemble_name }}"
 ens_rel="{{ ensemble_relpath }}"
@@ -21,7 +19,6 @@ cfg_max={{ cfg_max }}
 {% endif %}
 
 cd "$work_root"
-LOGFILE="{{ logfile }}"
 
 echo "ens = $ens"
 echo "ens_dir = {{ ensemble_dir }}"
@@ -69,18 +66,17 @@ echo "No automatic resubmission (cfg_max not set)"
 echo ""
 {% endif %}
 
-# Prepare DB update variables and queue RUNNING update off-node
-USER=$(whoami)
-OP="HMC_{{ mode }}"
-SC=$start
+# Record job start
 EC=$(( start + n_trajec ))
 {% if cfg_max %}
-PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec cfg_max=$cfg_max mode={{ mode }}"
+mdwf_db update -e {{ ensemble_id }} -o HMC_{{ mode }} -s RUNNING \
+  -p "slurm_job_id=$SLURM_JOB_ID n_trajec=$n_trajec traj_length={{ trajL }} mode={{ mode }} xml_path=$work_root/cnfg/HMCparameters.xml workdir=$work_root/cnfg nodes={{ nodes }} config_start=$start config_end=$EC cfg_max=$cfg_max" \
+  || true
 {% else %}
-PARAMS="config_start=$start config_end=$EC n_trajectories=$n_trajec mode={{ mode }}"
+mdwf_db update -e {{ ensemble_id }} -o HMC_{{ mode }} -s RUNNING \
+  -p "slurm_job_id=$SLURM_JOB_ID n_trajec=$n_trajec traj_length={{ trajL }} mode={{ mode }} xml_path=$work_root/cnfg/HMCparameters.xml workdir=$work_root/cnfg nodes={{ nodes }} config_start=$start config_end=$EC" \
+  || true
 {% endif %}
-RUN_DIR="$work_root"
-source <(python -m MDWFutils.jobs.slurm_update_trap)
 
 SECONDS=0
 
@@ -101,6 +97,9 @@ echo "Nthreads $OMP_NUM_THREADS"
 echo "START $(date)"
 srun $BIND $EXEC --mpi {{ mpi }} --grid {{ volume }} --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > log_hmc/log_{{ ensemble_name }}.$start
 echo "STOP $(date)"
+
+{% set operation_type = "HMC_" ~ mode %}
+{% include 'common/update_status.j2' %}
 
 echo "Job completed in $SECONDS seconds"
 echo "Log file: cnfg/log_hmc/log_{{ ensemble_name }}.$start"

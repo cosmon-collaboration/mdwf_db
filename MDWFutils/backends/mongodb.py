@@ -243,6 +243,28 @@ class MongoDBBackend(DatabaseBackend):
         )
         return result.modified_count > 0
 
+    def list_default_params(self, ensemble_id: int, job_type: Optional[str] = None) -> List[Dict]:
+        """List all default parameters for an ensemble, optionally filtered by job_type."""
+        ensemble = self.get_ensemble(ensemble_id)
+        if not ensemble:
+            raise EnsembleNotFoundError(ensemble_id)
+        
+        defaults = ensemble.get("default_params", {})
+        result = []
+        
+        for jt, variants in defaults.items():
+            if job_type and jt != job_type:
+                continue
+            for variant_name, variant_data in variants.items():
+                result.append({
+                    "job_type": jt,
+                    "variant": variant_name,
+                    "input_params": variant_data.get("input_params", ""),
+                    "job_params": variant_data.get("job_params", ""),
+                })
+        
+        return result
+
     # ------------------------------------------------------------------
     # Operation tracking
     # ------------------------------------------------------------------
@@ -320,12 +342,22 @@ class MongoDBBackend(DatabaseBackend):
         self,
         slurm_job_id: str,
         status: str,
+        ensemble_id: int,
+        operation_type: str,
         **updates,
     ) -> bool:
         set_doc = {"status": status, "timing.update_time": datetime.utcnow()}
         for key, value in updates.items():
             set_doc[key] = value
-        result = self.operations.update_one({"slurm.job_id": slurm_job_id}, {"$set": set_doc})
+        
+        # Match by slurm_job_id, ensemble_id, and operation_type
+        query = {
+            "slurm.job_id": slurm_job_id,
+            "ensemble_id": ensemble_id,
+            "operation_type": operation_type
+        }
+        
+        result = self.operations.update_one(query, {"$set": set_doc})
         return result.modified_count > 0
 
     @retry_on_error()

@@ -94,9 +94,11 @@ class DatabaseBackend(ABC):
         self,
         slurm_job_id: str,
         status: str,
+        ensemble_id: int,
+        operation_type: str,
         **updates,
     ) -> bool:
-        """Update an operation record by SLURM job ID."""
+        """Update an operation record by SLURM job ID, ensemble ID, and operation type."""
 
     @abstractmethod
     def clear_ensemble_history(self, ensemble_id: int) -> int:

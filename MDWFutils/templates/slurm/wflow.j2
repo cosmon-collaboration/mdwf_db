@@ -14,7 +14,11 @@ conda activate {{ conda_env }}
 # On many network filesystems WAL journal mode causes SQLite disk I/O errors.
 export MDWF_DB_JOURNAL="${MDWF_DB_JOURNAL:-DELETE}"
 
-{% include 'common/db_tracking.j2' %}
+# Record job start
+mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
+  -p "slurm_job_id=$SLURM_JOB_ID config_start={{ config_start }} config_end={{ config_end }} config_increment={{ config_inc }} glu_input={{ glu_input_path }} workdir={{ wflow_dir }} nodes={{ nodes }} smear_type={{ smear_type|default('ADAPTWFLOW_STOUT') }} smiters={{ smiters }}" \
+  || true
+
 SECONDS=0
 
 GLU="{{ glu_exec_path }}"
@@ -24,10 +28,10 @@ let 'Nth={{ cpus_per_task }} / NSIM'
 export OMP_NUM_THREADS=$Nth
 
 let 'mxcnf=STEP*NSIM'
-for((cnf=$SC;cnf<$EC;cnf+=$mxcnf)); do
+for((cnf={{ config_start }};cnf<{{ config_end }};cnf+=$mxcnf)); do
     for((i=0;i<NSIM;i++)); do
         let 'c=cnf+STEP*i'
-        (( c>EC )) && break
+        (( c>{{ config_end }} )) && break
 
         let 'lo=i*Nth/2'
         let 'hi=lo+Nth/2-1'
@@ -43,5 +47,8 @@ for((cnf=$SC;cnf<$EC;cnf+=$mxcnf)); do
     done
     wait
 done
+
+{% set operation_type = operation %}
+{% include 'common/update_status.j2' %}
 
 echo "Done in $SECONDS s"

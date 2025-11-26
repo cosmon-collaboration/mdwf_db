@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, List
 
 from ..backends.base import DatabaseBackend
 from ..exceptions import EnsembleNotFoundError
@@ -63,6 +63,32 @@ class ParameterManager:
             input_params,
             job_params,
         )
+
+    def list_all_defaults(self, ensemble_id: int, job_type: str = None) -> List[Dict]:
+        """List all saved defaults, optionally filtered by job_type."""
+        if hasattr(self.backend, 'list_default_params'):
+            return self.backend.list_default_params(ensemble_id, job_type)
+        # Fallback for backends that don't support this
+        ensemble = self.backend.get_ensemble(ensemble_id)
+        if not ensemble:
+            return []
+        defaults = ensemble.get("default_params", {})
+        result = []
+        for jt, variants in defaults.items():
+            if job_type and jt != job_type:
+                continue
+            for variant_name, variant_data in variants.items():
+                result.append({
+                    "job_type": jt,
+                    "variant": variant_name,
+                    "input_params": variant_data.get("input_params", ""),
+                    "job_params": variant_data.get("job_params", ""),
+                })
+        return result
+
+    def delete_defaults(self, ensemble_id: int, job_type: str, variant: str) -> bool:
+        """Delete a specific variant."""
+        return self.backend.delete_default_params(ensemble_id, job_type, variant)
 
 
 class ScriptGenerator:

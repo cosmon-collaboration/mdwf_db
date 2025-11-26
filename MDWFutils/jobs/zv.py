@@ -81,7 +81,6 @@ def build_zv_context(
         "log_dir": str(log_dir),
         "separate_error_log": False,
         "ensemble_id": ensemble_id,
-        "db_file": getattr(backend, "connection_string", ""),
         "operation": "WIT_Zv",
         "config_start": config_start,
         "config_end": config_end,

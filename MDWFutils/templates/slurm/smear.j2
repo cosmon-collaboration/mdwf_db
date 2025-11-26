@@ -11,7 +11,11 @@ module load cray-fftw/3.3.10.8
 module load conda
 conda activate {{ conda_env }}
 
-{% include 'common/db_tracking.j2' %}
+# Record job start
+mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
+  -p "slurm_job_id=$SLURM_JOB_ID config_start={{ config_start }} config_end={{ config_end }} config_increment={{ config_inc }} glu_input={{ glu_input_path }} workdir={{ smear_dir }} nodes={{ nodes }} smear_type={{ smear_type }} smiters={{ smiters }}" \
+  || true
+
 SECONDS=0
 
 GLU="{{ glu_exec_path }}"
@@ -21,10 +25,10 @@ let 'Nth={{ cpus_per_task }} / NSIM'
 export OMP_NUM_THREADS=$Nth
 
 let 'mxcnf=STEP*NSIM'
-for((cnf=$SC; cnf<$EC; cnf+=$mxcnf)); do
+for((cnf={{ config_start }}; cnf<{{ config_end }}; cnf+=$mxcnf)); do
     for((i=0;i<NSIM;i++)); do
         let 'c=cnf+STEP*i'
-        (( c>EC )) && break
+        (( c>{{ config_end }} )) && break
 
         # Calculate CPU binding for physical and logical cores
         let 'lo=i*Nth/2'
@@ -41,5 +45,8 @@ for((cnf=$SC; cnf<$EC; cnf+=$mxcnf)); do
     done
     wait
 done
+
+{% set operation_type = operation %}
+{% include 'common/update_status.j2' %}
 
 echo "Done in $SECONDS s"

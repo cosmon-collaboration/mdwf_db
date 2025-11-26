@@ -718,7 +718,7 @@ class SQLiteBackend(DatabaseBackend):
         raise NotImplementedError("SQLite backend is read-only for migration")
 
     def update_operation_by_slurm_id(
-        self, slurm_job_id: str, status: str, **updates
+        self, slurm_job_id: str, status: str, ensemble_id: int, operation_type: str, **updates
     ) -> bool:
         raise NotImplementedError("SQLite backend is read-only for migration")
 
