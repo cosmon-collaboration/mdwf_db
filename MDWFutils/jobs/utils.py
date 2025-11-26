@@ -101,3 +101,34 @@ def ensure_keys(mapping: dict, keys: Iterable[str]):
     missing = [key for key in keys if key not in mapping]
     if missing:
         raise ValidationError(f"Missing required parameters: {', '.join(missing)}")
+
+
+def require_all(params: Dict, requirements: Dict[str, str], param_type: str = "job") -> Dict:
+    """Check for multiple required parameters at once.
+    
+    Args:
+        params: Parameter dictionary
+        requirements: Dict mapping parameter names to descriptions
+        param_type: "job" or "input" for error message context
+        
+    Returns:
+        Dict of validated non-empty values
+        
+    Raises:
+        ValidationError listing all missing parameters with examples
+    """
+    missing = []
+    for key, description in requirements.items():
+        if params.get(key) in (None, ""):
+            missing.append((key, description))
+    
+    if missing:
+        flag = "-i" if param_type == "input" else "-j"
+        msg = f"\nMissing required {param_type} parameters (pass with {flag}):\n"
+        for key, desc in missing:
+            msg += f"  • {key}: {desc}\n"
+        examples = " ".join(f"{k}=<value>" for k, _ in missing)
+        msg += f"\nExample: {flag} \"{examples}\""
+        raise ValidationError(msg)
+    
+    return {key: params[key] for key in requirements.keys()}

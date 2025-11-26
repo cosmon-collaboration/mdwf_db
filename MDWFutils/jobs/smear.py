@@ -93,6 +93,8 @@ def build_smear_context(
         "glu_exec_path": job_params.get("glu_path", DEFAULT_GLU_EXEC),
         "glu_input_path": str(glu_input_path),
         "nsim": nsim,
+        "_output_dir": str(smear_dir / "slurm"),
+        "_output_prefix": f"smear_{config_start}_{config_end}",
     }
 
     return context

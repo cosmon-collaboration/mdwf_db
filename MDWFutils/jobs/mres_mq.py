@@ -108,6 +108,8 @@ def build_mres_mq_context(
         "ogeom": " ".join(str(x) for x in ogeom),
         "lgeom": " ".join(str(x) for x in lgeom),
         "ranks": int(job_params.get("ranks", 4)),
+        "_output_dir": str(workdir / "slurm"),
+        "_output_prefix": f"mres_mq_{config_start}_{config_end}",
     }
 
 

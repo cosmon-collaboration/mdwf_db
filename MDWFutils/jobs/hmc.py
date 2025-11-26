@@ -15,6 +15,7 @@ from .utils import (
     ensure_keys,
     get_ensemble_doc,
     get_physics_params,
+    require_all,
 )
 
 DEFAULT_CONDA_ENV = "/global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf"
@@ -49,12 +50,19 @@ def build_hmc_gpu_context(backend, ensemble_id: int, job_params: Dict, input_par
             "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_gpu)"
         )
 
-    n_trajec = _require(job_params, "n_trajec", "HMC GPU requires n_trajec")
-    trajL = _require(job_params, "trajL", "HMC GPU requires trajL")
-    lvl_sizes = _require(job_params, "lvl_sizes", "HMC GPU requires lvl_sizes")
+    required = require_all(job_params, {
+        "n_trajec": "Number of trajectories per job",
+        "trajL": "Trajectory length",
+        "lvl_sizes": "Level sizes (e.g., 9,1,1)",
+    }, param_type="job")
+    n_trajec = required["n_trajec"]
+    trajL = required["trajL"]
+    lvl_sizes = required["lvl_sizes"]
 
     work_root = Path(job_params.get("run_dir") or ensemble["directory"]).resolve()
     log_dir = work_root / "cnfg" / "jlog"
+    script_dir = work_root / "cnfg" / "slurm"
+    script_dir.mkdir(parents=True, exist_ok=True)
     volume = _format_volume(physics)
     ens_name = _format_ensemble_name(physics)
     mpi = job_params.get("mpi", DEFAULT_GPU_MPI)
@@ -101,6 +109,8 @@ def build_hmc_gpu_context(backend, ensemble_id: int, job_params: Dict, input_par
         "logfile": DEFAULT_LOGFILE,
         "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
         "omp_num_threads": int(job_params.get("omp_num_threads", 16)),
+        "_output_dir": str(script_dir),
+        "_output_prefix": f"hmc_gpu_{job_params.get('config_start', 0)}_{job_params.get('config_end', 100)}",
     }
     return context
 
@@ -122,12 +132,19 @@ def build_hmc_cpu_context(backend, ensemble_id: int, job_params: Dict, input_par
             "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_cpu)"
         )
 
-    n_trajec = _require(job_params, "n_trajec", "HMC CPU requires n_trajec")
-    trajL = _require(job_params, "trajL", "HMC CPU requires trajL")
-    lvl_sizes = _require(job_params, "lvl_sizes", "HMC CPU requires lvl_sizes")
+    required = require_all(job_params, {
+        "n_trajec": "Number of trajectories per job",
+        "trajL": "Trajectory length",
+        "lvl_sizes": "Level sizes (e.g., 9,1,1)",
+    }, param_type="job")
+    n_trajec = required["n_trajec"]
+    trajL = required["trajL"]
+    lvl_sizes = required["lvl_sizes"]
 
     work_root = Path(job_params.get("run_dir") or ensemble["directory"]).resolve()
     log_dir = work_root / "cnfg" / "jlog"
+    script_dir = work_root / "cnfg" / "slurm"
+    script_dir.mkdir(parents=True, exist_ok=True)
     volume = _format_volume(physics)
     ens_name = _format_ensemble_name(physics)
     mpi = job_params.get("mpi", DEFAULT_CPU_MPI)
@@ -167,6 +184,8 @@ def build_hmc_cpu_context(backend, ensemble_id: int, job_params: Dict, input_par
         "logfile": DEFAULT_LOGFILE,
         "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
         "omp_num_threads": int(job_params.get("omp_num_threads", 4)),
+        "_output_dir": str(script_dir),
+        "_output_prefix": f"hmc_cpu_{job_params.get('config_start', 0)}_{job_params.get('config_end', 100)}",
     }
     return context
 
@@ -184,7 +203,18 @@ def build_hmc_xml_context(backend, ensemble_id: int, input_params: Dict) -> Dict
     tree, root = _make_default_tree(mode, _maybe_int(seed_override))
     _apply_xml_overrides(root, overrides)
     xml_string = _tree_to_string(tree)
-    return {"xml": xml_string}
+    
+    # Get ensemble directory for output placement
+    ensemble = get_ensemble_doc(backend, ensemble_id)
+    ensemble_dir = Path(ensemble["directory"]).resolve()
+    xml_dir = ensemble_dir / "cnfg"
+    xml_dir.mkdir(parents=True, exist_ok=True)
+    
+    return {
+        "xml": xml_string,
+        "_output_dir": str(xml_dir),
+        "_output_prefix": "HMCparameters",
+    }
 
 
 # --------------------------------------------------------------------------- #

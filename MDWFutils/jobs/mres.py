@@ -100,6 +100,8 @@ def build_mres_context(backend, ensemble_id: int, job_params: Dict, input_params
         "ogeom": " ".join(str(x) for x in ogeom),
         "lgeom": " ".join(str(x) for x in lgeom),
         "ranks": int(job_params.get("ranks", 4)),
+        "_output_dir": str(workdir / "slurm"),
+        "_output_prefix": f"mres_{config_start}_{config_end}",
     }
 
 

@@ -97,6 +97,8 @@ def build_zv_context(
         "ogeom": " ".join(str(x) for x in ogeom),
         "lgeom": " ".join(str(x) for x in lgeom),
         "ranks": int(job_params.get("ranks", 4)),
+        "_output_dir": str(workdir / "slurm"),
+        "_output_prefix": f"Zv_{config_start}_{config_end}",
     }
 
 

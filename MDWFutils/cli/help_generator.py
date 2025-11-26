@@ -28,15 +28,23 @@ class HelpGenerator:
         return "\n".join(lines)
 
     @staticmethod
-    def validate_and_cast(params: Dict[str, str], schema: List[ParamDef]) -> Dict:
+    def validate_and_cast(params: Dict[str, str], schema: List[ParamDef], param_type: str = "parameter") -> Dict:
+        """Validate and cast parameters.
+        
+        Args:
+            params: Parameters to validate
+            schema: Parameter schema definitions
+            param_type: Type hint for error messages ("input" or "job")
+        """
         typed: Dict[str, object] = {}
         errors: List[str] = []
+        missing_required: List[ParamDef] = []
 
         for definition in schema:
             value = params.get(definition.name, definition.default)
 
             if definition.required and value is None:
-                errors.append(f"Missing required parameter: {definition.name}")
+                missing_required.append(definition)
                 continue
 
             if value is None:
@@ -52,6 +60,15 @@ class HelpGenerator:
                 typed[definition.name] = definition.type(value)
             except (TypeError, ValueError):
                 errors.append(f"{definition.name}: expected {definition.type.__name__}")
+
+        if missing_required:
+            flag = "-i" if param_type == "input" else "-j"
+            msg = f"\nMissing required {param_type} parameters (pass with {flag}):\n"
+            for param in missing_required:
+                msg += f"  • {param.name}: {param.help}\n"
+            examples = " ".join(f"{p.name}=<value>" for p in missing_required)
+            msg += f"\nExample: {flag} \"{examples}\""
+            errors.append(msg)
 
         if errors:
             raise ValidationError("\n".join(errors))

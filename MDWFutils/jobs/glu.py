@@ -72,6 +72,11 @@ def build_glu_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
     for key, value in (input_params or {}).items():
         _apply_override(context, key, value)
 
+    # Add output directory info for standalone GLU input generation
+    ensemble_dir = Path(ensemble["directory"]).resolve()
+    context["_output_dir"] = str(ensemble_dir)
+    context["_output_prefix"] = "glu_smear"
+
     return context
 
 

@@ -42,7 +42,14 @@ def build_wit_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
     unflattened = _unflatten_params(input_params or {})
     params = _build_parameters(physics, unflattened)
     sections = _ordered_dict_to_sections(params)
-    return {"sections": sections}
+    
+    # Add output directory info for standalone WIT input generation
+    ensemble_dir = Path(ensemble["directory"]).resolve()
+    return {
+        "sections": sections,
+        "_output_dir": str(ensemble_dir),
+        "_output_prefix": "DWF",
+    }
 
 
 def render_wit_input(

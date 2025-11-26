@@ -98,13 +98,13 @@ class BaseCommand:
             merged_job = param_manager.merge(default_job, cli_job)
 
             typed_input = (
-                self.help_gen.validate_and_cast(merged_input, self.input_schema)
+                self.help_gen.validate_and_cast(merged_input, self.input_schema, "input")
                 if self.input_schema
                 else merged_input
             )
             # Merge validated job params with original to preserve extra parameters not in schema
             validated_job = (
-                self.help_gen.validate_and_cast(merged_job, self.job_schema)
+                self.help_gen.validate_and_cast(merged_job, self.job_schema, "job")
                 if self.job_schema
                 else {}
             )
@@ -112,13 +112,23 @@ class BaseCommand:
 
             self.custom_validation(typed_input, typed_job, ensemble)
 
+            # Build contexts for input and job generation
+            input_context = None
+            job_context = None
+            
             if self.input_type:
+                from ..jobs.registry import get_input_builder
+                input_builder = get_input_builder(self.input_type)
+                input_context = input_builder(backend, ensemble_id, typed_input)
                 input_content = generator.generate_input(
                     ensemble_id, self.input_type, typed_input
                 )
-                self._write_file(ensemble, input_content, args.output_file, suffix=".in")
+                self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
 
             if self.job_type:
+                from ..jobs.registry import get_job_builder
+                job_builder = get_job_builder(self.job_type)
+                job_context = job_builder(backend, ensemble_id, typed_job, typed_input)
                 script_content = generator.generate_slurm(
                     ensemble_id, self.job_type, typed_job, typed_input
                 )
@@ -127,6 +137,7 @@ class BaseCommand:
                     script_content,
                     args.output_file,
                     suffix=".sh",
+                    context=job_context,
                     executable=True,
                 )
                 print(f"Wrote SLURM script to {script_path}")
@@ -163,16 +174,24 @@ class BaseCommand:
             return self._backend_override
         return _load_default_backend()
 
-    def _write_file(self, ensemble, content: str, output_file: str | None, suffix: str, executable: bool = False):
+    def _write_file(self, ensemble, content: str, output_file: str | None, suffix: str, context: dict = None, executable: bool = False):
         if output_file:
             path = Path(output_file)
+        elif context and "_output_dir" in context:
+            # Use job-specific directory from context
+            target_dir = Path(context["_output_dir"])
+            prefix = context.get("_output_prefix", self.job_type or "output")
+            path = target_dir / f"{prefix}{suffix}"
         else:
+            # Fallback for commands without context
             target_dir = Path(ensemble["directory"]) / "cnfg" / "slurm"
             target_dir.mkdir(parents=True, exist_ok=True)
             prefix = self.job_type or "output"
             identifier = ensemble.get("id", ensemble.get("ensemble_id", ""))
             filename = f"{prefix}_{identifier}{suffix}" if identifier else f"{prefix}{suffix}"
             path = target_dir / filename
+        
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
         if executable:
             path.chmod(0o755)
