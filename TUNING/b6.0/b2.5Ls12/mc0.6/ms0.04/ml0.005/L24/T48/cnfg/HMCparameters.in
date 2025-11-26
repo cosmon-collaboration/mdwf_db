@@ -7,7 +7,7 @@
     <NoMetropolisUntil>0</NoMetropolisUntil>
     <PerformRandomShift>false</PerformRandomShift>
     <StartingType>TepidStart</StartingType>
-    <Seed>606505</Seed>
+    <Seed>748073</Seed>
     <MD>
       <name>
         <elem>OMF2_5StepV</elem>

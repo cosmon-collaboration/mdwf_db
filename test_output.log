@@ -1,0 +1,385 @@
+================================================================================
+  MDWF CLI Comprehensive Test Suite
+  Started: Wed 26 Nov 2025 02:33:06 PM PST
+================================================================================
+
+
+============================================================================
+  1. INITIALIZATION & BASIC SETUP
+============================================================================
+
+[0;34m[CMD][0m mdwf_db init-db --base-dir test_run
+Ensured directory: /global/u2/s/smithwya/mdwf_db/test_run/TUNING
+Ensured directory: /global/u2/s/smithwya/mdwf_db/test_run/ENSEMBLES
+Database connection OK
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db add-ensemble -s TUNING -p beta=6.0 b=2.5 Ls=12 mc=0.6 ms=0.04 ml=0.005 L=24 T=48
+Ensemble added: ID=1
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query
+ID  Status  Nickname  Directory                                                                      
+--  ------  --------  -------------------------------------------------------------------------------
+1   TUNING  None      /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query --sort-by-id
+ID  Status  Nickname  Directory                                                                      
+--  ------  --------  -------------------------------------------------------------------------------
+1   TUNING  None      /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query -e 1
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+  (none)
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query -e 1 --detailed
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+  (none)
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query -e 1 --dir
+/global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  2. NICKNAME MANAGEMENT
+============================================================================
+
+[0;34m[CMD][0m mdwf_db nickname -e 1
+None
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db nickname -e 1 --set test_ensemble
+Set nickname: test_ensemble
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db nickname -e 1
+test_ensemble
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db nickname -e 1 --clear
+Cleared nickname
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db nickname -e 1
+None
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  3. STANDALONE INPUT FILE GENERATION
+============================================================================
+
+[0;34m[CMD][0m mdwf_db glu-input -e 1 -i SMEARTYPE=STOUT SMITERS=8
+Generated GLU input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/glu_smear.in
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db wit-input -e 1 -i Configurations.first=0 Configurations.last=12
+Generated WIT input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/DWF.in
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db hmc-xml -e 1 -i Trajectories=100 trajL=0.75
+Generated HMC XML input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg/HMCparameters.in
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  4. DEFAULT PARAMETERS MANAGEMENT
+============================================================================
+
+[0;34m[CMD][0m mdwf_db default_params list -e 1
+No default parameter variants stored
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db default_params set -e 1 --job-type smear --variant stout8 --input SMEARTYPE=STOUT SMITERS=8 --job config_start=0 config_end=12 nodes=1 ranks=1
+Stored defaults for smear.stout8
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db default_params list -e 1
+
+Default parameters for ensemble 'ID 1' (ID: 1):
+
+smear:
+  - stout8
+    Input:  SMEARTYPE=STOUT SMITERS=8
+    Job:    config_start=0 config_end=12 nodes=1 ranks=1
+
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db default_params show -e 1 --job-type smear --variant stout8
+
+Default parameters: smear (variant: stout8)
+
+Input Parameters:
+  SMEARTYPE: STOUT
+  SMITERS: 8
+
+Job Parameters:
+  config_start: 0
+  config_end: 12
+  nodes: 1
+  ranks: 1
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db default_params list -e 1 --job-type smear
+
+Default parameters for ensemble 'ID 1' (ID: 1):
+
+smear:
+  - stout8
+    Input:  SMEARTYPE=STOUT SMITERS=8
+    Job:    config_start=0 config_end=12 nodes=1 ranks=1
+
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db default_params set -e 1 --job-type smear --variant ape10 --input SMEARTYPE=APE SMITERS=10 --job config_start=0 config_end=12 nodes=2 ranks=1
+Stored defaults for smear.ape10
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db default_params list -e 1
+
+Default parameters for ensemble 'ID 1' (ID: 1):
+
+smear:
+  - ape10
+    Input:  SMEARTYPE=APE SMITERS=10
+    Job:    config_start=0 config_end=12 nodes=2 ranks=1
+  - stout8
+    Input:  SMEARTYPE=STOUT SMITERS=8
+    Job:    config_start=0 config_end=12 nodes=1 ranks=1
+
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  5. JOB SCRIPT GENERATION (Smear & Wilson Flow)
+============================================================================
+
+[0;34m[CMD][0m mdwf_db smear-script -e 1 --use-default-params --params-variant stout8
+Generated GLU input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_STOUT8/glu_smear.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_STOUT8/slurm/smear_0_12.sh
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db smear-script -e 1 -i SMEARTYPE=HYP SMITERS=5 -j config_start=0 config_end=12 config_inc=4 nodes=1 ranks=1 --save-default-params --params-variant hyp5
+Generated GLU input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_HYP5/glu_smear.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg_HYP5/slurm/smear_0_12.sh
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db wflow-script -e 1 -i SMEARTYPE=ADAPTWFLOW_STOUT SMITERS=250 -j config_start=0 config_end=12 config_inc=4 nodes=1 ranks=1
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/t0/slurm/wflow_0_12.sh
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  6. JOB SCRIPT GENERATION (HMC)
+============================================================================
+
+[0;34m[CMD][0m mdwf_db hmc-script gpu -e 1 -i Trajectories=100 trajL=0.75 -j n_trajec=100 trajL=0.75 lvl_sizes=9,1,1 exec_path=/dummy/hmc/path bind_script=/dummy/bind.sh nodes=1
+Generated HMC XML input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg/HMCparameters.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg/slurm/hmc_gpu_0_100.sh
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db hmc-script cpu -e 1 -i Trajectories=100 trajL=0.75 -j n_trajec=100 trajL=0.75 lvl_sizes=9,1,1 exec_path=/dummy/hmc/path bind_script=/dummy/bind.sh nodes=4
+Generated HMC XML input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg/HMCparameters.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/cnfg/slurm/hmc_cpu_0_100.sh
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  7. JOB SCRIPT GENERATION (WIT-based measurements)
+============================================================================
+
+[0;34m[CMD][0m mdwf_db mres-script -e 1 -i Configurations.first=0 Configurations.last=12 -j nodes=1 ranks=4
+Generated WIT input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres/DWF_mres.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres/slurm/mres_0_12.sh
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db mres-mq-script -e 1 -i Configurations.first=0 Configurations.last=12 -j nodes=1 ranks=4
+Generated WIT input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq/DWF_mres_mq.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/mres_mq/slurm/mres_mq_0_12.sh
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db meson2pt-script -e 1 -i Configurations.first=0 Configurations.last=12 -j nodes=1 ranks=4
+Generated WIT input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/meson2pt/DWF_meson2pt.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/meson2pt/slurm/meson2pt_0_12.sh
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db zv-script -e 1 -i Configurations.first=0 Configurations.last=12 -j nodes=1 ranks=4
+Generated WIT input: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/Zv/DWF_Zv.in
+Wrote SLURM script to /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48/Zv/slurm/Zv_0_12.sh
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  8. OPERATION TRACKING
+============================================================================
+
+[0;34m[CMD][0m mdwf_db update -e 1 -o GLU_SMEAR -s COMPLETED -p slurm_job_id=12345 exit_code=0 runtime=3600 host=nid001234
+Created operation entry
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db update -e 1 -o WIT_MRES -s FAILED -p slurm_job_id=12346 exit_code=1 runtime=1800 host=nid001235
+Created operation entry
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db update -e 1 -o HMC_GPU -s RUNNING -p slurm_job_id=12347 host=nid001236
+Created operation entry
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query -e 1 --detailed
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+ID  Type       Status     Updated                     SLURM
+--  ---------  ---------  --------------------------  -----
+1   GLU_SMEAR  COMPLETED  2025-11-26 22:33:34.997000  12345
+2   WIT_MRES   FAILED     2025-11-26 22:33:35.907000  12346
+3   HMC_GPU    RUNNING    2025-11-26 22:33:36.824000  12347
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db update -e 1 -o HMC_GPU -s COMPLETED -i 1 -p exit_code=0 runtime=7200
+Updated operation 1
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query -e 1 --detailed
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+ID  Type       Status     Updated                     SLURM
+--  ---------  ---------  --------------------------  -----
+1   GLU_SMEAR  COMPLETED  2025-11-26 22:33:38.650000  12345
+2   WIT_MRES   FAILED     2025-11-26 22:33:35.907000  12346
+3   HMC_GPU    RUNNING    2025-11-26 22:33:36.824000  12347
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  9. CONFIGURATION SCANNING
+============================================================================
+
+[0;34m[CMD][0m mdwf_db scan
+Scan complete: 0 ensemble(s) updated
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db scan --force
+Scan complete: 0 ensemble(s) updated
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query -e 1 --detailed
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+ID  Type       Status     Updated                     SLURM
+--  ---------  ---------  --------------------------  -----
+1   GLU_SMEAR  COMPLETED  2025-11-26 22:33:38.650000  12345
+2   WIT_MRES   FAILED     2025-11-26 22:33:35.907000  12346
+3   HMC_GPU    RUNNING    2025-11-26 22:33:36.824000  12347
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  10. CLEAR HISTORY (Preserves ensemble, clears operations)
+============================================================================
+
+[0;34m[CMD][0m mdwf_db clear-history -e 1 --force
+Ensemble 1: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Found 3 operation(s) to clear
+Successfully cleared 3 operation(s) from ensemble 1
+[0;32m[OK][0m Command succeeded
+
+[0;34m[CMD][0m mdwf_db query -e 1 --detailed
+ID: 1
+Directory: /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48
+Status: TUNING
+
+Physics parameters:
+  beta = 6.0
+  b = 2.5
+  Ls = 12
+  ml = 0.005
+  ms = 0.04
+  mc = 0.6
+  L = 24
+  T = 48
+
+Operations:
+  (none)
+[0;32m[OK][0m Command succeeded
+
+
+============================================================================
+  11. PROMOTE ENSEMBLE (TUNING → PRODUCTION)
+============================================================================
+
+[0;34m[CMD][0m mdwf_db promote-ensemble -e 1 --base-dir test_run --force
+ERROR: Ensemble directory /global/u2/s/smithwya/mdwf_db/TUNING/b6.0/b2.5Ls12/mc0.6/ms0.04/ml0.005/L24/T48 is not under /global/u2/s/smithwya/mdwf_db/test_run/TUNING
+[0;31m[FAIL][0m Command failed with exit code 1
+
