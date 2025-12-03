@@ -133,12 +133,16 @@ class BaseCommand:
             job_context = None
             if self.job_type:
                 from ..jobs.registry import get_job_builder
+                import inspect
+                
                 job_builder = get_job_builder(self.job_type)
-                # Support both function builders (old) and class builders (new)
-                if hasattr(job_builder, 'build'):
-                    job_context = job_builder.build(backend, ensemble_id, typed_job, typed_input)
+                # Check if it's a class (new system) or function (old system)
+                if inspect.isclass(job_builder):
+                    # New class-based builder: instantiate then call build()
+                    builder_instance = job_builder()
+                    job_context = builder_instance.build(backend, ensemble_id, typed_job, typed_input)
                 else:
-                    # Old function-based builder
+                    # Old function-based builder: call directly
                     job_context = job_builder(backend, ensemble_id, typed_job, typed_input)
 
             # Generate input file if needed
