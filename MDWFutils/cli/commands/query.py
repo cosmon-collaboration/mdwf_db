@@ -55,6 +55,7 @@ def do_query(args):
         # Build table data
         rows = []
         for ens in ensembles:
+            ensemble_id = ens.get('ensemble_id', '')
             physics = ens.get('physics', {})
             cfg = ens.get('configurations', {})
             
@@ -68,8 +69,21 @@ def do_query(args):
                 except:
                     pass
             
+            # Get last operation info
+            last_op = ''
+            last_user = ''
+            try:
+                ops = backend.list_operations(ensemble_id)
+                if ops:
+                    # Get the most recent operation by update_time
+                    latest = max(ops, key=lambda o: o.get('timing', {}).get('update_time') or '')
+                    last_op = latest.get('operation_type', '')
+                    last_user = latest.get('slurm', {}).get('user', '')
+            except:
+                pass
+            
             row = {
-                'EID': ens.get('ensemble_id', ''),
+                'EID': ensemble_id,
                 'NICK': ens.get('nickname', ''),
                 'beta': physics.get('beta', ''),
                 'b': physics.get('b', ''),
@@ -80,6 +94,8 @@ def do_query(args):
                 'L': physics.get('L', ''),
                 'T': physics.get('T', ''),
                 'N_CFG': n_cfg,
+                'LAST_OP': last_op,
+                'LAST_USER': last_user,
                 'STATUS': ens.get('status', ''),
             }
             rows.append(row)
@@ -103,7 +119,7 @@ def do_query(args):
             rows.sort(key=sort_key)
 
         # Print table
-        headers = ['EID', 'NICK', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'N_CFG', 'STATUS']
+        headers = ['EID', 'NICK', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'N_CFG', 'LAST_OP', 'LAST_USER', 'STATUS']
         _print_table(headers, rows)
         return 0
 
