@@ -32,8 +32,8 @@
 {% if signal %}
 #SBATCH --signal={{ signal }}
 {% endif %}
-#SBATCH -o {{ log_dir }}/%j.{{ log_suffix | default("log") }}
+#SBATCH --output={{ log_dir }}/%j.{{ log_suffix | default("log") }}
 {% if separate_error_log %}
-#SBATCH -e {{ log_dir }}/%j.err
+#SBATCH --error={{ log_dir }}/%j.err
 {% endif %}
 

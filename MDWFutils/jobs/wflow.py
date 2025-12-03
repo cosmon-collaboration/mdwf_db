@@ -7,6 +7,7 @@ from typing import Dict
 
 from MDWFutils.exceptions import ValidationError
 
+from .schema import ContextParam, common_slurm_params
 from .utils import get_ensemble_doc, get_physics_params
 
 DEFAULT_GLU_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install/GLU_ICC/bin/GLU"
@@ -18,80 +19,110 @@ DEFAULT_SMITERS = 250
 DEFAULT_NSIM = 4
 
 
-def build_wflow_context(
-    backend, ensemble_id: int, job_params: Dict, input_params: Dict
-) -> Dict:
-    """Create context for the Wilson flow SLURM template."""
-    ensemble = get_ensemble_doc(backend, ensemble_id)
-    physics = get_physics_params(ensemble)
+class WflowContextBuilder:
+    """Wilson flow job context builder with declarative parameter schema."""
+    
+    job_params_schema = [
+        *common_slurm_params(),
+        ContextParam("account", str, default="m2986", help="SLURM account"),
+        ContextParam("constraint", str, default="cpu", help="Node constraint"),
+        ContextParam("queue", str, default="regular", help="SLURM queue/partition"),
+        ContextParam("time_limit", str, default="01:00:00", help="SLURM time limit"),
+        ContextParam("nodes", int, default=1, help="Number of nodes"),
+        ContextParam("ranks", int, default=1, help="MPI ranks"),
+        ContextParam("cpus_per_task", int, default=256, help="CPUs per task"),
+        ContextParam("mail_type", str, default="ALL", help="Mail notification types"),
+        ContextParam("config_start", int, required=True, help="First configuration"),
+        ContextParam("config_end", int, required=True, help="Last configuration"),
+        ContextParam("config_inc", int, default=4, help="Configuration increment"),
+        ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
+        ContextParam("conda_env", str, default=DEFAULT_CONDA_ENV, help="Conda environment path"),
+        ContextParam("config_prefix", str, default=DEFAULT_CONFIG_PREFIX, help="Configuration file prefix"),
+        ContextParam("output_prefix", str, default=DEFAULT_OUTPUT_PREFIX, help="Output file prefix"),
+        ContextParam("glu_path", str, default=DEFAULT_GLU_EXEC, help="GLU executable path"),
+        ContextParam("nsim", int, default=DEFAULT_NSIM, help="Number of simultaneous configurations"),
+    ]
+    
+    input_params_schema = [
+        ContextParam("SMEARTYPE", str, default=DEFAULT_SMEAR_TYPE, help="Smearing algorithm"),
+        ContextParam("SMITERS", int, default=DEFAULT_SMITERS, help="Smearing iterations"),
+    ]
+    
+    def build(self, backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
+        """Create context for the Wilson flow SLURM template."""
+        ensemble = get_ensemble_doc(backend, ensemble_id)
+        physics = get_physics_params(ensemble)
 
-    try:
-        L = int(physics["L"])
-        T = int(physics["T"])
-    except KeyError as exc:
-        raise ValidationError("Ensemble is missing L/T lattice dimensions") from exc
+        try:
+            L = int(physics["L"])
+            T = int(physics["T"])
+        except KeyError as exc:
+            raise ValidationError("Ensemble is missing L/T lattice dimensions") from exc
 
-    ensemble_dir = Path(ensemble["directory"]).resolve()
-    work_root = Path(job_params.get("run_dir") or ensemble_dir).resolve()
-    wflow_dir = work_root / "t0"
-    log_dir = wflow_dir / "jlog"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    (wflow_dir / "slurm").mkdir(parents=True, exist_ok=True)
+        ensemble_dir = Path(ensemble["directory"]).resolve()
+        work_root = Path(job_params.get("run_dir") or ensemble_dir).resolve()
+        wflow_dir = work_root / "t0"
+        log_dir = wflow_dir / "jlog"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (wflow_dir / "slurm").mkdir(parents=True, exist_ok=True)
 
-    smear_type = str(input_params.get("SMEARTYPE", DEFAULT_SMEAR_TYPE))
-    smiters = int(input_params.get("SMITERS", DEFAULT_SMITERS))
+        # Input params already have defaults applied from schema
+        smear_type = str(input_params.get("SMEARTYPE", DEFAULT_SMEAR_TYPE))
+        smiters = int(input_params.get("SMITERS", DEFAULT_SMITERS))
 
-    # GLU input will be written by BaseCommand using build_glu_context
-    # We just need to tell it where via _glu_input_dir
-    glu_input_path = wflow_dir / "glu_smear.in"
+        # GLU input will be written by BaseCommand using build_glu_context
+        # We just need to tell it where via _glu_input_dir
+        glu_input_path = wflow_dir / "glu_smear.in"
 
-    # Validate required config range
-    if "config_start" not in job_params:
-        raise ValidationError("config_start is required for wflow jobs (pass with -j)")
-    if "config_end" not in job_params:
-        raise ValidationError("config_end is required for wflow jobs (pass with -j)")
+        # Job params already have defaults applied and are type-cast from schema
+        config_start = job_params["config_start"]
+        config_end = job_params["config_end"]
+        config_inc = job_params.get("config_inc", 4)
+        cpus_per_task = job_params.get("cpus_per_task", 256)
+        nsim = job_params.get("nsim", DEFAULT_NSIM)
 
-    config_start = int(job_params["config_start"])
-    config_end = int(job_params["config_end"])
-    config_inc = int(job_params.get("config_inc", 4))
-    cpus_per_task = int(job_params.get("cpus_per_task", 256))
-    nsim = int(job_params.get("nsim", DEFAULT_NSIM))
+        return {
+            "account": job_params.get("account", "m2986"),
+            "constraint": job_params.get("constraint", "cpu"),
+            "queue": job_params.get("queue", "regular"),
+            "time_limit": job_params.get("time_limit", "01:00:00"),
+            "nodes": job_params.get("nodes", 1),
+            "ntasks_per_node": job_params.get("ranks", 1),
+            "cpus_per_task": cpus_per_task,
+            "job_name": job_params.get("job_name") or f"wflow_{ensemble_id}",
+            "mail_user": job_params.get("mail_user") or "",
+            "log_dir": str(log_dir),
+            "separate_error_log": True,
+            "signal": "B:TERM@60",
+            "mail_type": job_params.get("mail_type", "ALL"),
+            "ensemble_id": ensemble_id,
+            "operation": "GLU_WFLOW",
+            "config_start": config_start,
+            "config_end": config_end,
+            "config_inc": config_inc,
+            "run_dir": str(work_root),
+            "params": f"smear_type={smear_type} smiters={smiters}",
+            "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
+            "wflow_dir": str(wflow_dir),
+            "config_dir": str(work_root / "cnfg"),
+            "config_prefix": job_params.get("config_prefix", DEFAULT_CONFIG_PREFIX),
+            "output_prefix": job_params.get("output_prefix", DEFAULT_OUTPUT_PREFIX),
+            "glu_exec_path": job_params.get("glu_path", DEFAULT_GLU_EXEC),
+            "glu_input_path": str(glu_input_path),
+            "nsim": nsim,
+            "smear_type": smear_type,
+            "smiters": smiters,
+            "_output_dir": str(wflow_dir / "slurm"),
+            "_output_prefix": f"wflow_{config_start}_{config_end}",
+            # Tell BaseCommand where to put the GLU input file
+            "_input_output_dir": str(wflow_dir),
+            "_input_output_prefix": "glu_smear",
+        }
 
-    return {
-        "account": job_params.get("account", "m2986"),
-        "constraint": job_params.get("constraint", "cpu"),
-        "queue": job_params.get("queue", "regular"),
-        "time_limit": job_params.get("time_limit", "01:00:00"),
-        "nodes": int(job_params.get("nodes", 1)),
-        "ntasks_per_node": int(job_params.get("ranks", 1)),
-        "cpus_per_task": cpus_per_task,
-        "job_name": job_params.get("job_name") or f"wflow_{ensemble_id}",
-        "mail_user": job_params.get("mail_user") or "",
-        "log_dir": str(log_dir),
-        "separate_error_log": True,
-        "signal": "B:TERM@60",
-        "mail_type": job_params.get("mail_type", "ALL"),
-        "ensemble_id": ensemble_id,
-        "operation": "GLU_WFLOW",
-        "config_start": config_start,
-        "config_end": config_end,
-        "config_inc": config_inc,
-        "run_dir": str(work_root),
-        "params": f"smear_type={smear_type} smiters={smiters}",
-        "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
-        "wflow_dir": str(wflow_dir),
-        "config_dir": str(work_root / "cnfg"),
-        "config_prefix": job_params.get("config_prefix", DEFAULT_CONFIG_PREFIX),
-        "output_prefix": job_params.get("output_prefix", DEFAULT_OUTPUT_PREFIX),
-        "glu_exec_path": job_params.get("glu_path", DEFAULT_GLU_EXEC),
-        "glu_input_path": str(glu_input_path),
-        "nsim": nsim,
-        "smear_type": smear_type,
-        "smiters": smiters,
-        "_output_dir": str(wflow_dir / "slurm"),
-        "_output_prefix": f"wflow_{config_start}_{config_end}",
-        # Tell BaseCommand where to put the GLU input file
-        "_input_output_dir": str(wflow_dir),
-        "_input_output_prefix": "glu_smear",
-    }
+
+# Backward compatibility: function wrapper
+def build_wflow_context(backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
+    """Legacy function wrapper for backward compatibility."""
+    builder = WflowContextBuilder()
+    return builder.build(backend, ensemble_id, job_params, input_params)
 

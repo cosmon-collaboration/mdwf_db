@@ -1,7 +1,6 @@
 """Wilson flow script command implemented via BaseCommand."""
 
 from ..command import BaseCommand
-from ..param_schemas import COMMON_JOB_SCHEMA
 from ...exceptions import ValidationError
 
 
@@ -11,7 +10,6 @@ class WFlowCommand(BaseCommand):
     job_type = "wflow"
     input_type = None
     input_schema = []
-    job_schema = COMMON_JOB_SCHEMA
     default_variant = "default"
 
     def custom_validation(self, input_params, job_params, ensemble):

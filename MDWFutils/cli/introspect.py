@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from .command import BaseCommand
 from .param_schemas import ParamDef
+from ..jobs.schema import ContextParam
 
 
 def get_command_metadata() -> Dict[str, Any]:
@@ -124,6 +125,8 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
     """
     Find input_schema and job_schema for a BaseCommand.
     Returns (input_schema, job_schema) or (None, None) if not a BaseCommand.
+    
+    Schemas are now retrieved from context builders via the registry.
     """
     try:
         # Convert cmd_name to module name (hmc-script -> hmc_script)
@@ -144,6 +147,12 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                             # This is a multi-variant wrapper
                             if variant and variant in wrapper_instance.commands:
                                 variant_cmd = wrapper_instance.commands[variant]
+                                # Get schemas from context builder via registry
+                                if variant_cmd.job_type:
+                                    from ..jobs.registry import get_job_schema
+                                    job_schema, input_schema = get_job_schema(variant_cmd.job_type)
+                                    return (input_schema, job_schema)
+                                # Fall back to command attributes if no job_type
                                 return (variant_cmd.input_schema, variant_cmd.job_schema)
                             return (None, None)
                     except Exception:
@@ -161,6 +170,12 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                 
                 # Single variant command
                 if hasattr(cmd_instance, 'name') and cmd_instance.name == cmd_name:
+                    # Get schemas from context builder via registry
+                    if cmd_instance.job_type:
+                        from ..jobs.registry import get_job_schema
+                        job_schema, input_schema = get_job_schema(cmd_instance.job_type)
+                        return (input_schema, job_schema)
+                    # Fall back to command attributes if no job_type
                     return (cmd_instance.input_schema, cmd_instance.job_schema)
     except (ImportError, AttributeError, TypeError):
         pass
@@ -168,8 +183,11 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
     return (None, None)
 
 
-def _serialize_schema(schema: List[ParamDef]) -> List[Dict[str, Any]]:
-    """Convert ParamDef list to JSON-serializable dicts."""
+def _serialize_schema(schema) -> List[Dict[str, Any]]:
+    """Convert ParamDef or ContextParam list to JSON-serializable dicts."""
+    if schema is None:
+        return []
+    
     result = []
     for param in schema:
         param_dict = {
@@ -180,7 +198,7 @@ def _serialize_schema(schema: List[ParamDef]) -> List[Dict[str, Any]]:
         }
         if param.default is not None:
             param_dict["default"] = str(param.default)
-        if param.choices:
+        if hasattr(param, 'choices') and param.choices:
             param_dict["choices"] = param.choices
         result.append(param_dict)
     return result

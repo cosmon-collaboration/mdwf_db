@@ -1,4 +1,13 @@
-"""Parameter schema definitions used by CLI commands."""
+"""Parameter schema definitions used by CLI commands.
+
+ParamDef is kept for backward compatibility with legacy code,
+but new code should use ContextParam from jobs.schema.
+All job schemas are now defined in context builders.
+
+The schemas below are ONLY used by input-file-generation commands
+(hmc-xml, glu-input, wit-input) which have job_type=None and input_type="...".
+These will be migrated to input builder classes in a future refactor.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +17,7 @@ from typing import Any, List, Optional
 
 @dataclass
 class ParamDef:
-    """Declarative parameter definition."""
+    """Declarative parameter definition (legacy)."""
 
     name: str
     type: type
@@ -18,23 +27,8 @@ class ParamDef:
     choices: Optional[List[Any]] = None
 
 
-COMMON_JOB_SCHEMA = [
-    ParamDef("config_start", int, required=False, help="First configuration"),
-    ParamDef("config_end", int, required=False, help="Last configuration"),
-    ParamDef("config_inc", int, default=1, help="Configuration increment"),
-    ParamDef("time_limit", str, default="01:00:00", help="SLURM time limit"),
-    ParamDef("nodes", int, default=1, help="Number of nodes"),
-    ParamDef("account", str, default="m0000", help="SLURM account"),
-    ParamDef("queue", str, default="regular", help="SLURM queue/partition"),
-    ParamDef("constraint", str, default="gpu", help="Node constraint"),
-    ParamDef("gpus", int, default=4, help="GPUs per node"),
-    ParamDef("gpu_bind", str, default="none", help="GPU binding policy"),
-    ParamDef("cpus_per_task", int, default=32, help="CPUs per task"),
-    ParamDef("ranks", int, default=4, help="MPI ranks"),
-    ParamDef("bind_sh", str, default="bind.sh", help="CPU binding script"),
-    ParamDef("mail_user", str, default="", help="User email for notifications"),
-]
-
+# Input schemas for input-file-generation commands only
+# (Not used by job script commands - those get schemas from context builders)
 HMC_INPUT_SCHEMA = [
     ParamDef("Trajectories", int, required=True, help="Number of trajectories"),
     ParamDef("trajL", float, required=True, help="Trajectory length"),
@@ -44,23 +38,22 @@ SMEAR_INPUT_SCHEMA = [
     ParamDef(
         "SMEARTYPE",
         str,
-        required=True,
-        default="STOUT",
+        required=False,
         choices=["STOUT", "APE", "HYP"],
         help="Smearing algorithm",
     ),
-    ParamDef("SMITERS", int, required=True, default=8, help="Smearing iterations"),
-    ParamDef("ALPHA1", float, default=0.75, help="Alpha1 parameter"),
-    ParamDef("ALPHA2", float, default=0.4, help="Alpha2 parameter"),
-    ParamDef("ALPHA3", float, default=0.2, help="Alpha3 parameter"),
+    ParamDef("SMITERS", int, required=False, help="Smearing iterations"),
+    ParamDef("ALPHA1", float, help="Alpha1 parameter"),
+    ParamDef("ALPHA2", float, help="Alpha2 parameter"),
+    ParamDef("ALPHA3", float, help="Alpha3 parameter"),
 ]
 
 WIT_INPUT_SCHEMA = [
     ParamDef("Configurations.first", int, required=True, help="First config"),
     ParamDef("Configurations.last", int, required=True, help="Last config"),
-    ParamDef("Configurations.step", int, default=1, help="Step size"),
-    ParamDef("Run_name.name", str, default="u_stout8", help="Run label"),
-    ParamDef("Directories.cnfg_dir", str, default="../cnfg/", help="CNFG directory"),
+    ParamDef("Configurations.step", int, help="Step size"),
+    ParamDef("Run_name.name", str, help="Run label"),
+    ParamDef("Directories.cnfg_dir", str, help="CNFG directory"),
 ]
 
 
