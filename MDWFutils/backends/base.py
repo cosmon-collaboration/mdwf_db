@@ -108,6 +108,10 @@ class DatabaseBackend(ABC):
     def list_operations(self, ensemble_id: int) -> List[Dict]:
         """List operations for an ensemble."""
 
+    @abstractmethod
+    def get_operation(self, ensemble_id: int, operation_id: int) -> Optional[Dict]:
+        """Get a single operation by ensemble_id and operation_id."""
+
     # ------------------------------------------------------------------
     # Measurement operations
     # ------------------------------------------------------------------

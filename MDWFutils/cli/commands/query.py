@@ -13,11 +13,11 @@ def register(subparsers):
         description="""
 Query the MDWF database for ensemble information.
 
-TWO MODES:
+THREE MODES:
 
 1. List mode (no --ensemble specified):
    Shows a spreadsheet-like table of all ensembles with columns:
-   EID, NICK, beta, b, Ls, mc, ms, ml, L, T, N_CFG, STATUS
+   EID, NICK, beta, b, Ls, mc, ms, ml, L, T, N_CFG, LAST_OP, LAST_USER, STATUS
    
    Sorting options:
    • Default: Ensembles are sorted numerically by physics parameters
@@ -27,12 +27,17 @@ TWO MODES:
    Shows complete information for one ensemble including physics parameters,
    configuration details, HMC paths, and operation history.
 
+3. Operation detail mode (with --ensemble and --op specified):
+   Shows complete information for a specific operation including all timing,
+   SLURM details, execution context, chain information, and parameters.
+
 EXAMPLES:
   mdwf_db query                    # List all ensembles (sorted by parameters)
   mdwf_db query --sort-by-id       # List all ensembles sorted by EID
   mdwf_db query -e 1               # Show ensemble 1 details
   mdwf_db query -e .               # Show current ensemble
   mdwf_db query -e 1 --dir         # Show only the directory path
+  mdwf_db query -e 21 --op 147     # Show details for operation 147
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -40,11 +45,18 @@ EXAMPLES:
     p.add_argument('--detailed', action='store_true', help='Show extended operation details in detail view')
     p.add_argument('--sort-by-id', action='store_true', help='Sort list output by ensemble ID')
     p.add_argument('--dir', action='store_true', help='Only print directory path in detail view')
+    p.add_argument('--op', '--operation', type=int, metavar='OP_ID',
+                   help='Show detailed information for a specific operation (requires -e)')
     p.set_defaults(func=do_query)
 
 
 def do_query(args):
     backend = get_backend_for_args(args)
+
+    # Check if --op is used without -e
+    if args.op and not args.ensemble:
+        print("ERROR: --op requires -e/--ensemble")
+        return 1
 
     if not args.ensemble:
         ensembles = backend.list_ensembles(detailed=True)
@@ -130,6 +142,16 @@ def do_query(args):
 
     if args.dir:
         print(ensemble['directory'])
+        return 0
+
+    # Operation detail mode - show specific operation
+    if args.op:
+        operation = backend.get_operation(ensemble_id, args.op)
+        if not operation:
+            print(f"ERROR: Operation {args.op} not found for ensemble {ensemble_id}")
+            return 1
+        
+        _print_operation_details(operation)
         return 0
 
     # Print ensemble header
@@ -235,3 +257,81 @@ def _print_table(headers, rows):
         print("  ".join("-" * w for w in widths))
         for row in rows:
             print("  ".join(str(row[i]).ljust(widths[i]) for i in range(len(headers))))
+
+
+def _print_operation_details(operation):
+    """Print detailed information about a single operation."""
+    print(f"Operation ID: {operation.get('operation_id')}")
+    print(f"Ensemble ID:  {operation.get('ensemble_id')}")
+    print(f"Type:         {operation.get('operation_type')}")
+    print(f"Status:       {operation.get('status')}")
+    print(f"Directory:    {operation.get('ensemble_directory', 'N/A')}")
+    
+    # Timing section
+    timing = operation.get('timing', {})
+    if timing:
+        print("\nTiming:")
+        if timing.get('creation_time'):
+            print(f"  Created:  {str(timing['creation_time'])[:19]}")
+        if timing.get('start_time'):
+            print(f"  Started:  {str(timing['start_time'])[:19]}")
+        if timing.get('update_time'):
+            print(f"  Updated:  {str(timing['update_time'])[:19]}")
+        if timing.get('end_time'):
+            print(f"  Ended:    {str(timing['end_time'])[:19]}")
+        if timing.get('runtime_seconds') is not None:
+            runtime = timing['runtime_seconds']
+            hours = runtime // 3600
+            minutes = (runtime % 3600) // 60
+            seconds = runtime % 60
+            print(f"  Runtime:  {runtime}s ({hours}h {minutes}m {seconds}s)")
+    
+    # SLURM section
+    slurm = operation.get('slurm', {})
+    if slurm and any(slurm.values()):
+        print("\nSLURM:")
+        if slurm.get('job_id'):
+            print(f"  Job ID:      {slurm['job_id']}")
+        if slurm.get('user'):
+            print(f"  User:        {slurm['user']}")
+        if slurm.get('host'):
+            print(f"  Host:        {slurm['host']}")
+        if slurm.get('exit_code') is not None:
+            print(f"  Exit code:   {slurm['exit_code']}")
+        if slurm.get('slurm_status'):
+            print(f"  SLURM status: {slurm['slurm_status']}")
+        if slurm.get('batch_script'):
+            print(f"  Batch script: {slurm['batch_script']}")
+        if slurm.get('output_log'):
+            print(f"  Output log:   {slurm['output_log']}")
+        if slurm.get('error_log'):
+            print(f"  Error log:    {slurm['error_log']}")
+    
+    # Execution section
+    execution = operation.get('execution', {})
+    if execution and any(execution.values()):
+        print("\nExecution:")
+        if execution.get('run_dir'):
+            print(f"  Run dir:    {execution['run_dir']}")
+        if execution.get('config_start') is not None:
+            print(f"  Config start: {execution['config_start']}")
+        if execution.get('config_end') is not None:
+            print(f"  Config end:   {execution['config_end']}")
+        if execution.get('config_increment') is not None:
+            print(f"  Config step:  {execution['config_increment']}")
+    
+    # Chain section
+    chain = operation.get('chain', {})
+    if chain and (chain.get('is_chain_member') or chain.get('parent_operation_id')):
+        print("\nChain:")
+        print(f"  Is chain member: {chain.get('is_chain_member', False)}")
+        if chain.get('parent_operation_id'):
+            print(f"  Parent op ID:    {chain['parent_operation_id']}")
+        print(f"  Attempt number:  {chain.get('attempt_number', 1)}")
+    
+    # Additional parameters
+    params = operation.get('params', {})
+    if params:
+        print("\nAdditional parameters:")
+        for key, value in sorted(params.items()):
+            print(f"  {key} = {value}")

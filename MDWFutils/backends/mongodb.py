@@ -373,6 +373,16 @@ class MongoDBBackend(DatabaseBackend):
             rows.append(doc)
         return rows
 
+    @retry_on_error()
+    def get_operation(self, ensemble_id: int, operation_id: int) -> Optional[Dict]:
+        """Get a single operation by ensemble_id and operation_id."""
+        projection = {"_id": 0}
+        doc = self.operations.find_one(
+            {"ensemble_id": ensemble_id, "operation_id": operation_id},
+            projection
+        )
+        return doc
+
     # ------------------------------------------------------------------
     # Measurements
     # ------------------------------------------------------------------
