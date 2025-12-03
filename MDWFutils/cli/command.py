@@ -104,14 +104,15 @@ class BaseCommand:
                 from ..jobs.registry import get_job_schema
                 builder_job_schema, builder_input_schema = get_job_schema(self.job_type)
             
-            # Use builder input schema if available, otherwise fall back to command's input_schema
-            input_schema_to_use = builder_input_schema if builder_input_schema is not None else self.input_schema
-            
-            typed_input = (
-                self.help_gen.validate_and_cast(merged_input, input_schema_to_use, "input")
-                if input_schema_to_use
-                else merged_input
-            )
+            # Handle input params: use builder schema with defaults if available, else command schema without defaults
+            if builder_input_schema is not None:
+                # New system: apply defaults from context builder schema
+                typed_input = self.help_gen.apply_defaults_and_validate(merged_input, builder_input_schema, "input")
+            elif self.input_schema:
+                # Old system: validate only (no defaults from schema)
+                typed_input = self.help_gen.validate_and_cast(merged_input, self.input_schema, "input")
+            else:
+                typed_input = merged_input
             
             # Use builder job schema if available (applies defaults), otherwise fall back to command's job_schema (no defaults)
             if builder_job_schema is not None:
