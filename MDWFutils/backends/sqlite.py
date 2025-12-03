@@ -728,6 +728,9 @@ class SQLiteBackend(DatabaseBackend):
     def list_operations(self, ensemble_id: int):
         raise NotImplementedError("SQLite backend is read-only for migration")
 
+    def get_operation(self, ensemble_id: int, operation_id: int):
+        raise NotImplementedError("SQLite backend is read-only for migration")
+
     def add_measurement(
         self,
         ensemble_id: int,
