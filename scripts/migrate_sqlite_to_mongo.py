@@ -47,7 +47,7 @@ def build_ensemble_docs(conn):
     rows = cur.fetchall()
     for row in rows:
         params = fetch_params(conn, row["id"])
-        physics = {};
+        physics = {}
         for key, caster in PHYSICS_FIELDS.items():
             if key in params:
                 try:
@@ -58,6 +58,19 @@ def build_ensemble_docs(conn):
         for old_key, new_key in CONFIG_FIELDS.items():
             if old_key in params:
                 configurations[new_key] = _maybe_int(params[old_key])
+        
+        # Extract HMC paths from ensemble_parameters
+        hmc_paths = {}
+        if "hmc_exec_path" in params:
+            hmc_paths["exec_path"] = params["hmc_exec_path"]
+        # Prefer GPU-specific key, fall back to legacy
+        if "hmc_bind_script_gpu" in params:
+            hmc_paths["bind_script_gpu"] = params["hmc_bind_script_gpu"]
+        elif "hmc_bind_script" in params:
+            hmc_paths["bind_script_gpu"] = params["hmc_bind_script"]
+        if "hmc_bind_script_cpu" in params:
+            hmc_paths["bind_script_cpu"] = params["hmc_bind_script_cpu"]
+        
         doc = {
             "ensemble_id": row["id"],
             "directory": row["directory"],
@@ -66,6 +79,7 @@ def build_ensemble_docs(conn):
             "created_at": datetime.fromisoformat(row["creation_time"]) if row["creation_time"] else None,
             "physics": physics,
             "configurations": configurations,
+            "hmc_paths": hmc_paths,
             "default_params": {},
             "tags": [],
             "notes": None,

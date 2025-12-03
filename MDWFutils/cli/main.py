@@ -103,7 +103,7 @@ For detailed help: mdwf_db <command> --help
         if not db_conn:
             print("ERROR: No database connection configured.")
             print("Hint: Set MDWF_DB_URL environment variable.")
-            return 1
+                return 1
 
     # every module must set args.func to its handler in register()
     return args.func(args)
