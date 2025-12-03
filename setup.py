@@ -9,6 +9,7 @@ setup(
         'pymongo>=4.6',
         'jinja2>=3.1',
         'pyyaml>=6.0',
+        'pydantic>=2.0',
     ],
     entry_points={
         'console_scripts': [
