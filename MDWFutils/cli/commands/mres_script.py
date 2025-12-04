@@ -1,7 +1,6 @@
 """Residual mass script implemented via BaseCommand."""
 
 from ..command import BaseCommand
-from ..param_schemas import WIT_INPUT_SCHEMA
 from ...exceptions import ValidationError
 
 
@@ -10,7 +9,6 @@ class MresCommand(BaseCommand):
     help = "Generate WIT mres measurement script"
     job_type = "mres"
     input_type = "wit_input"
-    input_schema = WIT_INPUT_SCHEMA
     default_variant = "default"
 
     def custom_validation(self, input_params, job_params, ensemble):

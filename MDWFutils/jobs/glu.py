@@ -5,133 +5,76 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 
-from MDWFutils.exceptions import ValidationError
-from MDWFutils.templates.loader import TemplateLoader
-from MDWFutils.templates.renderer import TemplateRenderer
-
-from .utils import ensure_keys, get_ensemble_doc, get_physics_params
-
-DEFAULT_GLU_PARAMS = {
-    "MODE": "SMEARING",
-    "CONFNO": "24",
-    "RANDOM_TRANSFORM": "NO",
-    "SEED": "0",
-    "CUTTYPE": "GLUON_PROPS",
-    "HEADER": "NERSC",
-    "DIM_0": "16",
-    "DIM_1": "16",
-    "DIM_2": "16",
-    "DIM_3": "48",
-    "GFTYPE": "COULOMB",
-    "GF_TUNE": "0.09",
-    "ACCURACY": "14",
-    "MAX_ITERS": "650",
-    "FIELD_DEFINITION": "LINEAR",
-    "MOM_CUT": "CYLINDER_CUT",
-    "MAX_T": "7",
-    "MAXMOM": "4",
-    "CYL_WIDTH": "2.0",
-    "ANGLE": "60",
-    "OUTPUT": "./",
-    "SMEARTYPE": "STOUT",
-    "DIRECTION": "ALL",
-    "SMITERS": "8",
-    "ALPHA1": "0.75",
-    "ALPHA2": "0.4",
-    "ALPHA3": "0.2",
-    "U1_MEAS": "U1_RECTANGLE",
-    "U1_ALPHA": "0.07957753876221914",
-    "U1_CHARGE": "-1.0",
-    "CONFIG_INFO": "2+1DWF_b2.25_TEST",
-    "STORAGE": "CERN",
-    "BETA": "6.0",
-    "ITERS": "1500",
-    "MEASURE": "1",
-    "OVER_ITERS": "4",
-    "SAVE": "25",
-    "THERM": "100",
-}
+from .schema import ContextBuilder, ContextParam
+from .utils import ensure_keys
 
 
-def build_glu_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
-    """Build the context required for the GLU input template."""
-    ensemble = get_ensemble_doc(backend, ensemble_id)
-    physics = get_physics_params(ensemble)
-    ensure_keys(physics, ["L", "T"])
+class GluContextBuilder(ContextBuilder):
+    """GLU smearing input file context builder."""
+    
+    input_params_schema = [
+        # Core smearing params (used by smear jobs)
+        ContextParam("SMEARTYPE", str, default="STOUT", choices=["STOUT", "APE", "HYP"], help="Smearing algorithm"),
+        ContextParam("SMITERS", int, default=8, help="Smearing iterations"),
+        ContextParam("ALPHA1", float, default=0.75, help="Alpha1 smearing parameter"),
+        ContextParam("ALPHA2", float, default=0.4, help="Alpha2 smearing parameter"),
+        ContextParam("ALPHA3", float, default=0.2, help="Alpha3 smearing parameter"),
+        
+        # GLU-specific params
+        ContextParam("MODE", str, default="SMEARING", help="GLU operation mode"),
+        ContextParam("CONFNO", str, default="24", help="Configuration number"),
+        ContextParam("RANDOM_TRANSFORM", str, default="NO", help="Apply random gauge transform"),
+        ContextParam("SEED", str, default="0", help="Random seed"),
+        ContextParam("CUTTYPE", str, default="GLUON_PROPS", help="Cut type"),
+        ContextParam("HEADER", str, default="NERSC", help="Header type"),
+        ContextParam("DIM_0", str, help="Lattice dimension 0 (auto from ensemble)"),
+        ContextParam("DIM_1", str, help="Lattice dimension 1 (auto from ensemble)"),
+        ContextParam("DIM_2", str, help="Lattice dimension 2 (auto from ensemble)"),
+        ContextParam("DIM_3", str, help="Lattice dimension 3 (auto from ensemble)"),
+        ContextParam("GFTYPE", str, default="COULOMB", help="Gauge fixing type"),
+        ContextParam("GF_TUNE", str, default="0.09", help="Gauge fixing tune parameter"),
+        ContextParam("ACCURACY", str, default="14", help="Accuracy parameter"),
+        ContextParam("MAX_ITERS", str, default="650", help="Maximum iterations"),
+        ContextParam("FIELD_DEFINITION", str, default="LINEAR", help="Field definition"),
+        ContextParam("MOM_CUT", str, default="CYLINDER_CUT", help="Momentum cut type"),
+        ContextParam("MAX_T", str, default="7", help="Maximum T"),
+        ContextParam("MAXMOM", str, default="4", help="Maximum momentum"),
+        ContextParam("CYL_WIDTH", str, default="2.0", help="Cylinder width"),
+        ContextParam("ANGLE", str, default="60", help="Angle"),
+        ContextParam("OUTPUT", str, default="./", help="Output directory"),
+        ContextParam("DIRECTION", str, default="ALL", help="Direction"),
+        ContextParam("U1_MEAS", str, default="U1_RECTANGLE", help="U1 measurement type"),
+        ContextParam("U1_ALPHA", str, default="0.07957753876221914", help="U1 alpha parameter"),
+        ContextParam("U1_CHARGE", str, default="-1.0", help="U1 charge"),
+        ContextParam("CONFIG_INFO", str, default="2+1DWF_b2.25_TEST", help="Configuration info"),
+        ContextParam("STORAGE", str, default="CERN", help="Storage type"),
+        ContextParam("BETA", str, default="6.0", help="Beta parameter"),
+        ContextParam("ITERS", str, default="1500", help="Iterations"),
+        ContextParam("MEASURE", str, default="1", help="Measure parameter"),
+        ContextParam("OVER_ITERS", str, default="4", help="Over iterations"),
+        ContextParam("SAVE", str, default="25", help="Save frequency"),
+        ContextParam("THERM", str, default="100", help="Thermalization"),
+    ]
 
-    context = DEFAULT_GLU_PARAMS.copy()
-    context.update(
-        {
+    def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
+                      job_params: Dict, input_params: Dict) -> Dict:
+        """Build GLU input. All 38 schema params auto-merged and stringified."""
+        ensure_keys(physics, ["L", "T"])
+        
+        # Return ONLY overrides and special values
+        # (All input_params from schema auto-merged as strings)
+        ensemble_dir = Path(ensemble["directory"]).resolve()
+        return {
+            # Override lattice dimensions (computed from ensemble)
             "DIM_0": str(physics["L"]),
             "DIM_1": str(physics["L"]),
             "DIM_2": str(physics["L"]),
             "DIM_3": str(physics["T"]),
+            # Template control
+            "_output_dir": str(ensemble_dir),
+            "_output_prefix": "glu_smear",
         }
-    )
-
-    for key, value in (input_params or {}).items():
-        _apply_override(context, key, value)
-
-    # Add output directory info for standalone GLU input generation
-    # Don't specify a subdirectory - let the user control via -o flag
-    ensemble_dir = Path(ensemble["directory"]).resolve()
-    context["_output_dir"] = str(ensemble_dir)
-    context["_output_prefix"] = "glu_smear"
-
-    return context
 
 
-def _apply_override(context: Dict, key: str, value) -> None:
-    """Support both flat and dotted overrides."""
-    if value is None:
-        return
-    if "." in key:
-        _, child = key.split(".", 1)
-        target_key = child
-    else:
-        target_key = key
-
-    if target_key not in context:
-        raise ValidationError(f"Unknown GLU parameter '{target_key}'")
-
-    context[target_key] = str(value)
-
-
-def generate_glu_input(output_file: str, overrides: Optional[Dict] = None) -> str:
-    """
-    Generate GLU input file using template with defaults and overrides.
-    
-    This function provides backward compatibility with the old API where
-    smear.py and wflow.py directly call generate_glu_input().
-    
-    Args:
-        output_file: Path to output file
-        overrides: Dictionary of parameter overrides using flat parameter names
-                  e.g. {'DIM_0': '32', 'CONFNO': '100', 'SMITERS': '10', 'ALPHA1': '0.8'}
-    
-    Returns:
-        Path to generated file
-    """
-    if overrides is None:
-        overrides = {}
-    
-    # Start with defaults and apply overrides
-    context = DEFAULT_GLU_PARAMS.copy()
-    for key, value in overrides.items():
-        _apply_override(context, key, value)
-    
-    # Render using template system
-    loader = TemplateLoader()
-    renderer = TemplateRenderer(loader)
-    content = renderer.render("input/glu_input.j2", context)
-    
-    # Write the file
-    outf = Path(output_file)
-    outf.parent.mkdir(parents=True, exist_ok=True)
-    outf.write_text(content)
-    
-    return str(outf)
-
-
-__all__ = ["build_glu_context", "generate_glu_input"]
+__all__ = ["GluContextBuilder"]
 

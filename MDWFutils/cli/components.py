@@ -100,7 +100,7 @@ class ScriptGenerator:
 
     def generate_input(self, ensemble_id: int, input_type: str, params: Dict) -> str:
         builder = get_input_builder(input_type)
-        context = builder(self.backend, ensemble_id, params)
+        context = builder.build(self.backend, ensemble_id, input_params=params)
         return self.renderer.render(f"input/{input_type}.j2", context)
 
     def generate_slurm(
@@ -111,7 +111,7 @@ class ScriptGenerator:
         input_params: Dict,
     ) -> str:
         builder = get_job_builder(job_type)
-        context = builder(self.backend, ensemble_id, job_params, input_params)
+        context = builder.build(self.backend, ensemble_id, job_params, input_params)
         return self.renderer.render(f"slurm/{job_type}.j2", context)
 
 

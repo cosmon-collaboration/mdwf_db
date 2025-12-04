@@ -48,8 +48,6 @@ class HelpGenerator:
         missing_required: List[ParamDef] = []
 
         for definition in schema:
-            # Don't apply schema defaults for job params - let context builders handle defaults
-            # Schema defaults are only for documentation/help text
             value = params.get(definition.name)
             
             if value is None:

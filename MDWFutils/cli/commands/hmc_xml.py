@@ -1,7 +1,6 @@
 """Generate HMC XML input via BaseCommand."""
 
 from ..command import BaseCommand
-from ..param_schemas import HMC_INPUT_SCHEMA
 
 
 class HMCXMLCommand(BaseCommand):
@@ -9,7 +8,6 @@ class HMCXMLCommand(BaseCommand):
     help = "Generate HMC XML input file"
     job_type = None
     input_type = "hmc_xml"
-    input_schema = HMC_INPUT_SCHEMA
     job_schema = []
 
 

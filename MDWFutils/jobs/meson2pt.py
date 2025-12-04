@@ -7,40 +7,19 @@ from typing import Dict
 
 from MDWFutils.exceptions import ValidationError
 
-from .mres import _convert_cli_params
-from .schema import ContextParam
-from .utils import (
-    compute_kappa,
-    get_ensemble_doc,
-    get_physics_params,
-    parse_ogeom,
-    validate_geometry,
-)
+from .schema import WitGPUContextBuilder, ContextParam, common_wit_gpu_params, DEFAULT_WIT_ENV
+from .utils import compute_kappa
 
-DEFAULT_WIT_ENV = "source /global/cfs/cdirs/m2986/cosmon/mdwf/software/scripts/env_gpu.sh"
-DEFAULT_WIT_BIND = "/global/cfs/cdirs/m2986/cosmon/mdwf/ANALYSIS/WIT/bind.sh"
 DEFAULT_WIT_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Meson"
-DEFAULT_CONDA_ENV = "/global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf"
-DEFAULT_OGEOM = "1,1,1,4"
 
 
-class Meson2ptContextBuilder:
+class Meson2ptContextBuilder(WitGPUContextBuilder):
     """Meson two-point job context builder with declarative parameter schema."""
     
     job_params_schema = [
-        ContextParam("account", str, default="m2986_g", help="SLURM account"),
-        ContextParam("constraint", str, default="gpu", help="Node constraint"),
-        ContextParam("queue", str, default="regular", help="SLURM queue/partition"),
-        ContextParam("time_limit", str, default="06:00:00", help="SLURM time limit"),
-        ContextParam("nodes", int, default=1, help="Number of nodes"),
-        ContextParam("gpus", int, default=4, help="GPUs per node"),
-        ContextParam("gpu_bind", str, default="none", help="GPU binding policy"),
-        ContextParam("ranks", int, default=4, help="MPI ranks"),
-        ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
-        ContextParam("conda_env", str, default=DEFAULT_CONDA_ENV, help="Conda environment path"),
-        ContextParam("bind_script", str, default=DEFAULT_WIT_BIND, help="CPU binding script"),
+        *common_wit_gpu_params(),
+        # Meson2pt-specific params
         ContextParam("wit_exec_path", str, default=DEFAULT_WIT_EXEC, help="WIT executable path"),
-        ContextParam("ogeom", str, default=DEFAULT_OGEOM, help="Geometry override"),
         ContextParam("ml", float, help="Light quark mass override"),
         ContextParam("ms", float, help="Strange quark mass override"),
         ContextParam("mc", float, help="Charm quark mass override"),
@@ -52,14 +31,10 @@ class Meson2ptContextBuilder:
         ContextParam("Configurations.step", int, default=4, help="Configuration step"),
     ]
     
-    def build(self, backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
+    def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
+                      job_params: Dict, input_params: Dict) -> Dict:
         """Build the context dictionary for rendering meson2pt SLURM templates."""
-        ensemble = get_ensemble_doc(backend, ensemble_id)
-        physics = get_physics_params(ensemble)
-
         try:
-            L = int(physics["L"])
-            T = int(physics["T"])
             ml = float(physics["ml"])
             ms = float(physics["ms"])
             mc = float(physics["mc"])
@@ -74,66 +49,35 @@ class Meson2ptContextBuilder:
         kappa_s = compute_kappa(ms)
         kappa_c = compute_kappa(mc)
 
-        work_root = Path(job_params.get("run_dir") or ensemble["directory"]).resolve()
-        workdir = work_root / "meson2pt"
-        log_dir = workdir / "jlog"
-        workdir.mkdir(parents=True, exist_ok=True)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        (workdir / "slurm").mkdir(parents=True, exist_ok=True)
+        # Use shared helper methods
+        workdir, log_dir = self._setup_wit_workdir(ensemble, job_params, "meson2pt")
+        L, T, ogeom, lgeom = self._parse_geometry(physics, job_params)
 
-        ogeom = parse_ogeom(str(job_params.get("ogeom") or DEFAULT_OGEOM))
-        lgeom = validate_geometry(L, T, ogeom)
-
-        # WIT input will be written by BaseCommand using build_wit_context
-        # We specify where via _input_output_dir
         wit_input_path = workdir / "DWF_meson2pt.in"
 
-        # Input params already have defaults applied from schema
+        # Extract values needed for computations
         config_start = input_params["Configurations.first"]
         config_end = input_params["Configurations.last"]
-        config_inc = input_params.get("Configurations.step", 4)
 
+        # Return ONLY computed/special values
         return {
-            "account": job_params.get("account", "m2986_g"),
-            "constraint": job_params.get("constraint", "gpu"),
-            "queue": job_params.get("queue", "regular"),
-            "time_limit": job_params.get("time_limit", "06:00:00"),
-            "nodes": job_params.get("nodes", 1),
-            "gpus": job_params.get("gpus", 4),
-            "gpu_bind": job_params.get("gpu_bind", "none"),
-            "job_name": job_params.get("job_name") or f"meson2pt_{ensemble_id}",
-            "mail_user": job_params.get("mail_user") or "",
             "log_dir": str(log_dir),
             "separate_error_log": False,
+            "job_name": job_params.get("job_name") or f"meson2pt_{ensemble_id}",
             "ensemble_id": ensemble_id,
             "operation": "WIT_MESON2PT",
-            "config_start": config_start,
-            "config_end": config_end,
-            "config_inc": config_inc,
-            "run_dir": str(work_root),
+            "run_dir": str(self._resolve_run_dir(ensemble, job_params)),
             "params": f"kappaL={kappa_l:.6f} kappaS={kappa_s:.6f} kappaC={kappa_c:.6f}",
             "workdir": str(workdir),
-            "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
             "env_setup": DEFAULT_WIT_ENV,
-            "bind_script": job_params.get("bind_script", DEFAULT_WIT_BIND),
-            "wit_exec_path": job_params.get("wit_exec_path", DEFAULT_WIT_EXEC),
             "wit_input_path": str(wit_input_path),
             "ogeom": " ".join(str(x) for x in ogeom),
             "lgeom": " ".join(str(x) for x in lgeom),
-            "ranks": job_params.get("ranks", 4),
             "_output_dir": str(workdir / "slurm"),
             "_output_prefix": f"meson2pt_{config_start}_{config_end}",
-            # Tell BaseCommand where to put the WIT input file
             "_input_output_dir": str(workdir),
             "_input_output_prefix": "DWF_meson2pt",
         }
-
-
-# Backward compatibility: function wrapper
-def build_meson2pt_context(backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
-    """Legacy function wrapper for backward compatibility."""
-    builder = Meson2ptContextBuilder()
-    return builder.build(backend, ensemble_id, job_params, input_params)
 
 
 def _apply_meson_defaults(wit_params: Dict, kappa_l: float, kappa_s: float, kappa_c: float) -> None:

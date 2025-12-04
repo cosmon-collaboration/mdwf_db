@@ -1,14 +1,12 @@
 """HMC script command with cpu/gpu variants."""
 
 from ..command import BaseCommand
-from ..param_schemas import HMC_INPUT_SCHEMA
 
 
 class HMCGPUCommand(BaseCommand):
     help = "Generate GPU HMC script"
     job_type = "hmc_gpu"
     input_type = "hmc_xml"
-    input_schema = HMC_INPUT_SCHEMA
     default_variant = "gpu"
 
 
@@ -16,7 +14,6 @@ class HMCCPUCommand(BaseCommand):
     help = "Generate CPU HMC script"
     job_type = "hmc_cpu"
     input_type = "hmc_xml"
-    input_schema = HMC_INPUT_SCHEMA
     default_variant = "cpu"
 
 

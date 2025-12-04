@@ -11,6 +11,8 @@ from functools import lru_cache
 from importlib import import_module
 from typing import Callable, Dict, List, Tuple, Optional
 
+from .schema import _deduplicate_schema
+
 
 def _load_builder(path: str) -> Callable:
     """Lazily import and return a builder function specified as module:attr."""
@@ -23,49 +25,66 @@ def _load_builder(path: str) -> Callable:
 
 
 @lru_cache(maxsize=None)
-def get_job_builder(job_type: str) -> Callable:
-    """Return the context builder callable for a SLURM job type."""
+def get_job_builder(job_type: str):
+    """Return an INSTANCE of the job builder, ready to call .build()."""
     target = JOB_BUILDERS.get(job_type)
     if target is None:
         raise KeyError(f"Unknown job_type '{job_type}'")
-    return _load_builder(target)
+    builder_class = _load_builder(target)
+    return builder_class()  # Instantiate
 
 
 @lru_cache(maxsize=None)
-def get_input_builder(input_type: str) -> Callable:
-    """Return the context builder callable for an input file type."""
+def get_input_builder(input_type: str):
+    """Return an INSTANCE of the input builder, ready to call .build()."""
     target = INPUT_BUILDERS.get(input_type)
     if target is None:
         raise KeyError(f"Unknown input_type '{input_type}'")
-    return _load_builder(target)
+    builder_class = _load_builder(target)
+    return builder_class()  # Instantiate
 
 
 def get_job_schema(job_type: str) -> Tuple[Optional[List], Optional[List]]:
-    """Extract job_params_schema and input_params_schema from a job builder.
+    """Get schemas from builder CLASS (not instance).
+    
+    Deduplicates schemas to handle common param overrides.
     
     Returns:
         Tuple of (job_params_schema, input_params_schema) or (None, None) if builder
-        doesn't have schema attributes (backward compatibility with function builders).
+        doesn't have schema attributes.
     """
     try:
-        builder = get_job_builder(job_type)
-        # Check if builder has schema attributes (class-based builder)
-        job_schema = getattr(builder, 'job_params_schema', None)
-        input_schema = getattr(builder, 'input_params_schema', None)
+        target = JOB_BUILDERS.get(job_type)
+        if target is None:
+            return (None, None)
+        builder_class = _load_builder(target)  # Get class, don't instantiate
+        job_schema = getattr(builder_class, 'job_params_schema', None)
+        input_schema = getattr(builder_class, 'input_params_schema', None)
+        
+        # Deduplicate to handle common param overrides
+        job_schema = _deduplicate_schema(job_schema)
+        input_schema = _deduplicate_schema(input_schema)
+        
         return (job_schema, input_schema)
     except (KeyError, ImportError):
         return (None, None)
 
 
 def get_input_schema(input_type: str) -> Optional[List]:
-    """Extract input_params_schema from an input builder.
+    """Get input_params_schema from input builder CLASS (not instance).
+    
+    Deduplicates schemas to handle common param overrides.
     
     Returns:
         input_params_schema or None if builder doesn't have schema attribute.
     """
     try:
-        builder = get_input_builder(input_type)
-        return getattr(builder, 'input_params_schema', None)
+        target = INPUT_BUILDERS.get(input_type)
+        if target is None:
+            return None
+        builder_class = _load_builder(target)  # Get class, don't instantiate
+        schema = getattr(builder_class, 'input_params_schema', None)
+        return _deduplicate_schema(schema)
     except (KeyError, ImportError):
         return None
 
@@ -84,9 +103,9 @@ JOB_BUILDERS: Dict[str, str] = {
 }
 
 INPUT_BUILDERS: Dict[str, str] = {
-    "hmc_xml": "MDWFutils.jobs.hmc:build_hmc_xml_context",
-    "glu_input": "MDWFutils.jobs.glu:build_glu_context",
-    "wit_input": "MDWFutils.jobs.wit:build_wit_context",
+    "hmc_xml": "MDWFutils.jobs.hmc:HMCXMLContextBuilder",
+    "glu_input": "MDWFutils.jobs.glu:GluContextBuilder",
+    "wit_input": "MDWFutils.jobs.wit:WitContextBuilder",
 }
 
 __all__ = [

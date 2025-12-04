@@ -152,8 +152,12 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                                     from ..jobs.registry import get_job_schema
                                     job_schema, input_schema = get_job_schema(variant_cmd.job_type)
                                     return (input_schema, job_schema)
-                                # Fall back to command attributes if no job_type
-                                return (variant_cmd.input_schema, variant_cmd.job_schema)
+                                elif variant_cmd.input_type:
+                                    # Input-only command
+                                    from ..jobs.registry import get_input_schema
+                                    input_schema = get_input_schema(variant_cmd.input_type)
+                                    return (input_schema, None)
+                                return (None, None)
                             return (None, None)
                     except Exception:
                         # Not instantiable or doesn't have commands, continue
@@ -175,8 +179,12 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                         from ..jobs.registry import get_job_schema
                         job_schema, input_schema = get_job_schema(cmd_instance.job_type)
                         return (input_schema, job_schema)
-                    # Fall back to command attributes if no job_type
-                    return (cmd_instance.input_schema, cmd_instance.job_schema)
+                    elif cmd_instance.input_type:
+                        # Input-only command
+                        from ..jobs.registry import get_input_schema
+                        input_schema = get_input_schema(cmd_instance.input_type)
+                        return (input_schema, None)
+                    return (None, None)
     except (ImportError, AttributeError, TypeError):
         pass
     

@@ -100,30 +100,25 @@ class BaseCommand:
             # Try to get schemas from context builder (new system)
             builder_job_schema = None
             builder_input_schema = None
+            
             if self.job_type:
+                # Job script command: has both job and input
                 from ..jobs.registry import get_job_schema
                 builder_job_schema, builder_input_schema = get_job_schema(self.job_type)
+            elif self.input_type:
+                # Input-only command: just input schema
+                from ..jobs.registry import get_input_schema
+                builder_input_schema = get_input_schema(self.input_type)
             
-            # Handle input params: use builder schema with defaults if available, else command schema without defaults
+            # Handle input params: use builder schema with defaults if available
             if builder_input_schema is not None:
-                # New system: apply defaults from context builder schema
                 typed_input = self.help_gen.apply_defaults_and_validate(merged_input, builder_input_schema, "input")
-            elif self.input_schema:
-                # Old system: validate only (no defaults from schema)
-                typed_input = self.help_gen.validate_and_cast(merged_input, self.input_schema, "input")
             else:
                 typed_input = merged_input
             
-            # Use builder job schema if available (applies defaults), otherwise fall back to command's job_schema (no defaults)
+            # Handle job params: use builder schema with defaults if available
             if builder_job_schema is not None:
-                # New system: apply defaults from context builder schema
                 typed_job = self.help_gen.apply_defaults_and_validate(merged_job, builder_job_schema, "job")
-                # Merge with original to preserve any extra params not in schema
-                typed_job = {**merged_job, **typed_job}
-            elif self.job_schema:
-                # Old system: no defaults, just validate and type-cast
-                validated_job = self.help_gen.validate_and_cast(merged_job, self.job_schema, "job")
-                typed_job = {**merged_job, **validated_job}
             else:
                 typed_job = merged_job
 
@@ -133,23 +128,14 @@ class BaseCommand:
             job_context = None
             if self.job_type:
                 from ..jobs.registry import get_job_builder
-                import inspect
-                
                 job_builder = get_job_builder(self.job_type)
-                # Check if it's a class (new system) or function (old system)
-                if inspect.isclass(job_builder):
-                    # New class-based builder: instantiate then call build()
-                    builder_instance = job_builder()
-                    job_context = builder_instance.build(backend, ensemble_id, typed_job, typed_input)
-                else:
-                    # Old function-based builder: call directly
-                    job_context = job_builder(backend, ensemble_id, typed_job, typed_input)
+                job_context = job_builder.build(backend, ensemble_id, typed_job, typed_input)
 
             # Generate input file if needed
             if self.input_type:
                 from ..jobs.registry import get_input_builder
                 input_builder = get_input_builder(self.input_type)
-                input_context = input_builder(backend, ensemble_id, typed_input)
+                input_context = input_builder.build(backend, ensemble_id, input_params=typed_input)
                 
                 # Override input location if job context specifies it
                 if job_context and "_input_output_dir" in job_context:

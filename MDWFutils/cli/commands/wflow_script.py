@@ -8,8 +8,7 @@ class WFlowCommand(BaseCommand):
     name = "wflow-script"
     help = "Generate gradient flow SLURM script"
     job_type = "wflow"
-    input_type = None
-    input_schema = []
+    input_type = "glu_input"
     default_variant = "default"
 
     def custom_validation(self, input_params, job_params, ensemble):

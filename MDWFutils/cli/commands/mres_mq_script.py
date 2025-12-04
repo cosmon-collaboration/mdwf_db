@@ -1,7 +1,6 @@
 """mres-mq script command built on BaseCommand."""
 
 from ..command import BaseCommand
-from ..param_schemas import WIT_INPUT_SCHEMA
 from ...exceptions import ValidationError
 
 
@@ -10,7 +9,6 @@ class MresMQCommand(BaseCommand):
     help = "Generate WIT mres single-mass script"
     job_type = "mres_mq"
     input_type = "wit_input"
-    input_schema = WIT_INPUT_SCHEMA
     default_variant = "charm"
 
     def custom_validation(self, input_params, job_params, ensemble):

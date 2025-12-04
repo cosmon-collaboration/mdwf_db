@@ -9,7 +9,7 @@ from typing import Dict, Iterable, List, MutableMapping, Optional
 
 from MDWFutils.exceptions import ValidationError
 
-from .utils import get_ensemble_doc, get_physics_params
+from .schema import ContextBuilder, ContextParam
 from ..templates.loader import TemplateLoader
 from ..templates.renderer import TemplateRenderer
 
@@ -35,22 +35,31 @@ def _unflatten_params(flat_params: Dict) -> Dict:
     return nested
 
 
-def build_wit_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
-    """Build template context for the WIT input command."""
-    ensemble = get_ensemble_doc(backend, ensemble_id)
-    physics = get_physics_params(ensemble)
-    unflattened = _unflatten_params(input_params or {})
-    params = _build_parameters(physics, unflattened)
-    sections = _ordered_dict_to_sections(params)
+class WitContextBuilder(ContextBuilder):
+    """WIT input file context builder."""
     
-    # Add output directory info for standalone WIT input generation
-    # Don't specify a subdirectory - let the user control via -o flag
-    ensemble_dir = Path(ensemble["directory"]).resolve()
-    return {
-        "sections": sections,
-        "_output_dir": str(ensemble_dir),
-        "_output_prefix": "DWF",
-    }
+    input_params_schema = [
+        ContextParam("Configurations.first", int, required=True, help="First configuration number"),
+        ContextParam("Configurations.last", int, required=True, help="Last configuration number"),
+        ContextParam("Configurations.step", int, default=4, help="Configuration step size"),
+        ContextParam("Run_name.name", str, default="ck", help="Run label"),
+        ContextParam("Directories.cnfg_dir", str, default="../cnfg_STOUT8/", help="Configuration directory"),
+    ]
+    
+    def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
+                      job_params: Dict, input_params: Dict) -> Dict:
+        """Build WIT input. Schema params auto-merged."""
+        # Extract for processing
+        unflattened = _unflatten_params(input_params)
+        params = _build_parameters(physics, unflattened)
+        sections = _ordered_dict_to_sections(params)
+        
+        ensemble_dir = Path(ensemble["directory"]).resolve()
+        return {
+            "sections": sections,  # computed from input_params
+            "_output_dir": str(ensemble_dir),
+            "_output_prefix": "DWF",
+        }
 
 
 def render_wit_input(
@@ -331,7 +340,7 @@ _DEFAULT_WIT_PARAMS = [
 
 
 __all__ = [
-    "build_wit_context",
+    "WitContextBuilder",
     "render_wit_input",
     "convert_cli_to_wit_format",
     "update_nested_dict",

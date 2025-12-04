@@ -10,16 +10,12 @@ from xml.dom import minidom
 
 from MDWFutils.exceptions import ValidationError
 
-from .schema import ContextParam
+from .schema import ContextBuilder, ContextParam, common_slurm_params, DEFAULT_CONDA_ENV
 from .utils import (
     compute_kappa,
     ensure_keys,
-    get_ensemble_doc,
-    get_physics_params,
     require_all,
 )
-
-DEFAULT_CONDA_ENV = "/global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf"
 DEFAULT_LOGFILE = "/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 DEFAULT_GPU_MPI = "4.4.4.8"
 DEFAULT_CPU_MPI = "4.4.4.8"
@@ -30,21 +26,22 @@ DEFAULT_CPU_CACHEBLOCKING = "2.2.2.2"
 # HMC GPU / CPU context builders
 # --------------------------------------------------------------------------- #
 
-class HMCGPUContextBuilder:
+class HMCGPUContextBuilder(ContextBuilder):
     """HMC GPU job context builder with declarative parameter schema."""
     
     job_params_schema = [
-        ContextParam("account", str, help="SLURM account"),
+        *common_slurm_params(),
+        # Override for GPU jobs
         ContextParam("constraint", str, default="gpu", help="Node constraint"),
-        ContextParam("queue", str, default="regular", help="SLURM queue/partition"),
         ContextParam("time_limit", str, default="06:00:00", help="SLURM time limit"),
-        ContextParam("nodes", int, default=1, help="Number of nodes"),
-        ContextParam("ntasks_per_node", int, default=1, help="Tasks per node"),
         ContextParam("cpus_per_task", int, default=32, help="CPUs per task"),
+        ContextParam("mail_type", str, default="BEGIN,END", help="Mail notification types"),
+        # GPU-specific params
+        ContextParam("ntasks_per_node", int, default=1, help="Tasks per node"),
         ContextParam("gpus_per_task", int, default=1, help="GPUs per task"),
         ContextParam("gpu_bind", str, default="none", help="GPU binding policy"),
         ContextParam("gres", str, help="GPU resource specification (auto-generated if not provided)"),
-        ContextParam("mail_user", str, default="", help="User email for notifications"),
+        # HMC-specific params
         ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
         ContextParam("exec_path", str, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
         ContextParam("bind_script", str, help="CPU binding script (or set via ensemble paths.hmc_bind_script_gpu)"),
@@ -63,10 +60,9 @@ class HMCGPUContextBuilder:
     
     input_params_schema = []  # HMC uses XML input, not parameter-based
     
-    def build(self, backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
+    def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
+                      job_params: Dict, input_params: Dict) -> Dict:
         """Return context for the GPU SLURM template."""
-        ensemble = get_ensemble_doc(backend, ensemble_id)
-        physics = get_physics_params(ensemble)
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
         paths = ensemble.get("paths", {})
@@ -84,85 +80,63 @@ class HMCGPUContextBuilder:
                 "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_gpu)"
             )
 
-        # Job params already have defaults applied and are type-cast from schema
+        # Extract values needed for computations
         n_trajec = job_params["n_trajec"]
         trajL = job_params["trajL"]
         lvl_sizes = job_params["lvl_sizes"]
 
-        work_root = Path(job_params.get("run_dir") or ensemble["directory"]).resolve()
+        work_root = self._resolve_run_dir(ensemble, job_params)
         log_dir = work_root / "cnfg" / "jlog"
         script_dir = work_root / "cnfg" / "slurm"
         script_dir.mkdir(parents=True, exist_ok=True)
         volume = _format_volume(physics)
         ens_name = _format_ensemble_name(physics)
-        mpi = job_params.get("mpi", DEFAULT_GPU_MPI)
+        
+        # Compute gres if not provided
+        ntasks_per_node = job_params["ntasks_per_node"]
+        gres = job_params.get("gres") or f"gpu:{ntasks_per_node}"
         cfg_max = job_params.get("cfg_max")
-        gres = job_params.get("gres")
-        ntasks_per_node = job_params.get("ntasks_per_node", 1)
-        if not gres:
-            gres = f"gpu:{ntasks_per_node}"
 
-        context = {
-            # Shared SBATCH header fields
-            "account": job_params.get("account"),
-            "constraint": job_params.get("constraint", "gpu"),
-            "queue": job_params.get("queue", "regular"),
-            "time_limit": job_params.get("time_limit", "06:00:00"),
-            "nodes": job_params.get("nodes", 1),
+        # Return ONLY computed/special values
+        return {
             "ntasks_per_node": ntasks_per_node,
-            "cpus_per_task": job_params.get("cpus_per_task", 32),
-            "gpus_per_task": job_params.get("gpus_per_task", 1),
-            "gpu_bind": job_params.get("gpu_bind", "none"),
             "gres": gres,
-            "mail_user": job_params.get("mail_user") or "",
             "mail_type": "BEGIN,END",
             "signal": "B:TERM@60",
             "log_dir": str(log_dir),
             "separate_error_log": True,
             "job_name": _resolve_job_name(job_params, ensemble_id),
-            # Script-specific values
             "ensemble_id": ensemble_id,
-            "mode": job_params.get("mode", "tepid"),
             "ensemble_name": ens_name,
-            "ensemble_relpath": job_params.get("ensemble_relpath", ""),
             "volume": volume,
             "exec_path": exec_path,
             "bind_script": bind_script,
             "n_trajec": int(n_trajec),
-            "mpi": mpi,
             "trajL": str(trajL),
             "lvl_sizes": str(lvl_sizes),
             "work_root": str(work_root),
             "ensemble_dir": str(Path(ensemble["directory"]).resolve()),
             "cfg_max": int(cfg_max) if cfg_max not in (None, "") else None,
             "logfile": DEFAULT_LOGFILE,
-            "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
-            "omp_num_threads": job_params.get("omp_num_threads", 16),
             "_output_dir": str(script_dir),
             "_output_prefix": f"hmc_gpu_{job_params.get('config_start', 0)}_{job_params.get('config_end', 100)}",
         }
-        return context
 
 
-# Backward compatibility: function wrapper
-def build_hmc_gpu_context(backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
-    """Legacy function wrapper for backward compatibility."""
-    builder = HMCGPUContextBuilder()
-    return builder.build(backend, ensemble_id, job_params, input_params)
-
-
-class HMCCPUContextBuilder:
+class HMCCPUContextBuilder(ContextBuilder):
     """HMC CPU job context builder with declarative parameter schema."""
     
     job_params_schema = [
-        ContextParam("account", str, help="SLURM account"),
+        *common_slurm_params(),
+        # Override for CPU jobs
         ContextParam("constraint", str, default="cpu", help="Node constraint"),
-        ContextParam("queue", str, default="regular", help="SLURM queue/partition"),
         ContextParam("time_limit", str, default="06:00:00", help="SLURM time limit"),
-        ContextParam("nodes", int, default=1, help="Number of nodes"),
-        ContextParam("ntasks_per_node", int, default=1, help="Tasks per node"),
         ContextParam("cpus_per_task", int, default=32, help="CPUs per task"),
-        ContextParam("mail_user", str, default="", help="User email for notifications"),
+        ContextParam("mail_type", str, default="BEGIN,END", help="Mail notification types"),
+        # CPU-specific params
+        ContextParam("ntasks_per_node", int, default=1, help="Tasks per node"),
+        ContextParam("cacheblocking", str, default=DEFAULT_CPU_CACHEBLOCKING, help="Cache blocking configuration"),
+        # HMC-specific params
         ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
         ContextParam("exec_path", str, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
         ContextParam("bind_script", str, help="CPU binding script (or set via ensemble paths.hmc_bind_script_cpu)"),
@@ -170,7 +144,6 @@ class HMCCPUContextBuilder:
         ContextParam("trajL", float, required=True, help="Trajectory length"),
         ContextParam("lvl_sizes", str, required=True, help="Level sizes (e.g., 9,1,1)"),
         ContextParam("mpi", str, default=DEFAULT_CPU_MPI, help="MPI configuration"),
-        ContextParam("cacheblocking", str, default=DEFAULT_CPU_CACHEBLOCKING, help="Cache blocking configuration"),
         ContextParam("cfg_max", int, help="Maximum configuration number"),
         ContextParam("mode", str, default="tepid", help="HMC mode (tepid/continue/reseed)"),
         ContextParam("ensemble_relpath", str, default="", help="Ensemble relative path"),
@@ -182,10 +155,9 @@ class HMCCPUContextBuilder:
     
     input_params_schema = []  # HMC uses XML input, not parameter-based
     
-    def build(self, backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
+    def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
+                      job_params: Dict, input_params: Dict) -> Dict:
         """Return context for the CPU SLURM template."""
-        ensemble = get_ensemble_doc(backend, ensemble_id)
-        physics = get_physics_params(ensemble)
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
         paths = ensemble.get("paths", {})
@@ -199,91 +171,79 @@ class HMCCPUContextBuilder:
                 "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_cpu)"
             )
 
-        # Job params already have defaults applied and are type-cast from schema
+        # Extract values needed for computations
         n_trajec = job_params["n_trajec"]
         trajL = job_params["trajL"]
         lvl_sizes = job_params["lvl_sizes"]
 
-        work_root = Path(job_params.get("run_dir") or ensemble["directory"]).resolve()
+        work_root = self._resolve_run_dir(ensemble, job_params)
         log_dir = work_root / "cnfg" / "jlog"
         script_dir = work_root / "cnfg" / "slurm"
         script_dir.mkdir(parents=True, exist_ok=True)
         volume = _format_volume(physics)
         ens_name = _format_ensemble_name(physics)
-        mpi = job_params.get("mpi", DEFAULT_CPU_MPI)
-        cacheblocking = job_params.get("cacheblocking", DEFAULT_CPU_CACHEBLOCKING)
         cfg_max = job_params.get("cfg_max")
 
-        context = {
-            "account": job_params.get("account"),
-            "constraint": job_params.get("constraint", "cpu"),
-            "queue": job_params.get("queue", "regular"),
-            "time_limit": job_params.get("time_limit", "06:00:00"),
-            "nodes": job_params.get("nodes", 1),
-            "ntasks_per_node": job_params.get("ntasks_per_node", 1),
-            "cpus_per_task": job_params.get("cpus_per_task", 32),
-            "mail_user": job_params.get("mail_user") or "",
+        # Return ONLY computed/special values
+        return {
             "mail_type": "BEGIN,END",
             "signal": "B:TERM@60",
             "log_dir": str(log_dir),
             "separate_error_log": True,
             "job_name": _resolve_job_name(job_params, ensemble_id),
             "ensemble_id": ensemble_id,
-            "mode": job_params.get("mode", "tepid"),
             "ensemble_name": ens_name,
-            "ensemble_relpath": job_params.get("ensemble_relpath", ""),
             "volume": volume,
             "exec_path": exec_path,
             "bind_script": bind_script,
             "n_trajec": int(n_trajec),
-            "mpi": mpi,
-            "cacheblocking": cacheblocking,
             "trajL": str(trajL),
             "lvl_sizes": str(lvl_sizes),
             "work_root": str(work_root),
             "ensemble_dir": str(Path(ensemble["directory"]).resolve()),
             "cfg_max": int(cfg_max) if cfg_max not in (None, "") else None,
             "logfile": DEFAULT_LOGFILE,
-            "conda_env": job_params.get("conda_env", DEFAULT_CONDA_ENV),
-            "omp_num_threads": job_params.get("omp_num_threads", 4),
             "_output_dir": str(script_dir),
             "_output_prefix": f"hmc_cpu_{job_params.get('config_start', 0)}_{job_params.get('config_end', 100)}",
         }
-        return context
-
-
-# Backward compatibility: function wrapper
-def build_hmc_cpu_context(backend, ensemble_id: int, job_params: Dict, input_params: Dict) -> Dict:
-    """Legacy function wrapper for backward compatibility."""
-    builder = HMCCPUContextBuilder()
-    return builder.build(backend, ensemble_id, job_params, input_params)
 
 
 # --------------------------------------------------------------------------- #
 # HMC XML support (will be used by input templates)
 # --------------------------------------------------------------------------- #
 
-def build_hmc_xml_context(backend, ensemble_id: int, input_params: Dict) -> Dict:
-    """Build context for rendering HMCparameters.xml."""
-    mode = input_params.get("mode", "tepid")
-    seed_override = input_params.get("Seed")
-    overrides = {k: v for k, v in input_params.items() if k not in {"mode", "Seed"}}
-
-    tree, root = _make_default_tree(mode, _maybe_int(seed_override))
-    _apply_xml_overrides(root, overrides)
-    xml_string = _tree_to_string(tree)
+class HMCXMLContextBuilder(ContextBuilder):
+    """HMC XML input file context builder."""
     
-    # Get ensemble directory for output placement
-    ensemble = get_ensemble_doc(backend, ensemble_id)
-    ensemble_dir = Path(ensemble["directory"]).resolve()
-    xml_dir = ensemble_dir / "cnfg"
-    xml_dir.mkdir(parents=True, exist_ok=True)
+    input_params_schema = [
+        ContextParam("mode", str, default="tepid", choices=["tepid", "cold", "hot"], help="HMC start mode"),
+        ContextParam("Seed", int, help="Random seed (optional)"),
+        ContextParam("Trajectories", int, required=True, help="Number of trajectories"),
+        ContextParam("trajL", float, required=True, help="Trajectory length"),
+    ]
     
-    return {
-        "xml": xml_string,
-        "_output_dir": str(xml_dir),
-        "_output_prefix": "HMCparameters",
-    }
+    def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
+                      job_params: Dict, input_params: Dict) -> Dict:
+        """Build HMC XML. Schema params auto-merged."""
+        # Extract for processing
+        mode = input_params["mode"]
+        seed_override = input_params.get("Seed")  # optional, no default
+        trajectories = input_params["Trajectories"]
+        traj_l = input_params["trajL"]
+        
+        tree, root = _make_default_tree(mode, _maybe_int(seed_override))
+        _apply_xml_overrides(root, {"Trajectories": trajectories, "trajL": traj_l})
+        xml_string = _tree_to_string(tree)
+        
+        ensemble_dir = Path(ensemble["directory"]).resolve()
+        xml_dir = ensemble_dir / "cnfg"
+        xml_dir.mkdir(parents=True, exist_ok=True)
+        
+        return {
+            "xml": xml_string,
+            "_output_dir": str(xml_dir),
+            "_output_prefix": "HMCparameters",
+        }
 
 
 # --------------------------------------------------------------------------- #

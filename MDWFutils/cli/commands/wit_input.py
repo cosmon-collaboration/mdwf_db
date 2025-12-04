@@ -1,7 +1,6 @@
 """Generate WIT input files via BaseCommand."""
 
 from ..command import BaseCommand
-from ..param_schemas import WIT_INPUT_SCHEMA
 from ...exceptions import ValidationError
 
 
@@ -10,7 +9,6 @@ class WitInputCommand(BaseCommand):
     help = "Generate WIT input file"
     job_type = None
     input_type = "wit_input"
-    input_schema = WIT_INPUT_SCHEMA
     job_schema = []
 
     def custom_validation(self, input_params, job_params, ensemble):

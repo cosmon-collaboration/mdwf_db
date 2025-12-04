@@ -1,7 +1,6 @@
 """Smear script command implemented via BaseCommand."""
 
 from ..command import BaseCommand
-from ..param_schemas import SMEAR_INPUT_SCHEMA
 from ...exceptions import ValidationError
 
 
@@ -10,7 +9,6 @@ class SmearCommand(BaseCommand):
     help = "Generate GLU smearing SLURM script"
     job_type = "smear"
     input_type = "glu_input"
-    input_schema = SMEAR_INPUT_SCHEMA
     default_variant = "stout8"
 
     def custom_validation(self, input_params, job_params, ensemble):

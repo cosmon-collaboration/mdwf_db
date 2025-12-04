@@ -1,7 +1,6 @@
 """Meson 2pt script command built on BaseCommand."""
 
 from ..command import BaseCommand
-from ..param_schemas import WIT_INPUT_SCHEMA
 from ...exceptions import ValidationError
 
 
@@ -10,7 +9,6 @@ class Meson2ptCommand(BaseCommand):
     help = "Generate WIT meson 2pt SLURM script"
     job_type = "meson2pt"
     input_type = "wit_input"
-    input_schema = WIT_INPUT_SCHEMA
     default_variant = "default"
 
     def custom_validation(self, input_params, job_params, ensemble):
