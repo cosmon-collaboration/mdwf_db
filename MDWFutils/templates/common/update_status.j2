@@ -10,7 +10,7 @@ else
     STATUS="FAILED"
 fi
 
-mdwf_db update -e {{ ensemble_id }} -o {{ operation_type }} -s FAILED \
+mdwf_db update -e {{ ensemble_id }} -o {{ operation_type }} -s $STATUS \
   -p "slurm_job_id=$SLURM_JOB_ID exit_code=$EXIT_CODE runtime=$SECONDS host=$(hostname)" \
   || true
 
