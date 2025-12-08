@@ -146,7 +146,7 @@ class BaseCommand:
                         input_context["_output_prefix"] = job_context["_input_output_prefix"]
                 
                 input_content = generator.generate_input(
-                    ensemble_id, self.input_type, typed_input
+                    ensemble_id, self.input_type, typed_input, job_params=typed_job
                 )
                 input_path = self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
                 

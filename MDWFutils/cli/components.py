@@ -98,9 +98,9 @@ class ScriptGenerator:
         self.backend = backend
         self.renderer = TemplateRenderer(TemplateLoader())
 
-    def generate_input(self, ensemble_id: int, input_type: str, params: Dict) -> str:
+    def generate_input(self, ensemble_id: int, input_type: str, params: Dict, job_params: Dict | None = None) -> str:
         builder = get_input_builder(input_type)
-        context = builder.build(self.backend, ensemble_id, input_params=params)
+        context = builder.build(self.backend, ensemble_id, job_params or {}, params)
         return self.renderer.render(f"input/{input_type}.j2", context)
 
     def generate_slurm(
