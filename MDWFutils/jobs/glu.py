@@ -64,12 +64,20 @@ class GluContextBuilder(ContextBuilder):
         # Return ONLY overrides and special values
         # (All input_params from schema auto-merged as strings)
         ensemble_dir = Path(ensemble["directory"]).resolve()
+        # Keep CONFNO aligned with the starting config for smear/wflow jobs
+        confno = job_params.get("config_start")
+        overrides = {}
+        if confno is not None:
+            overrides["CONFNO"] = str(confno)
+        
         return {
             # Override lattice dimensions (computed from ensemble)
             "DIM_0": str(physics["L"]),
             "DIM_1": str(physics["L"]),
             "DIM_2": str(physics["L"]),
             "DIM_3": str(physics["T"]),
+            # Override confno if provided
+            **overrides,
             # Template control
             "_output_dir": str(ensemble_dir),
             "_output_prefix": "glu_smear",
