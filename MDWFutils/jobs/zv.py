@@ -1,12 +1,7 @@
-"""Zv measurement job context builder."""
-
 from __future__ import annotations
-
 from pathlib import Path
 from typing import Dict
-
 from MDWFutils.exceptions import ValidationError
-
 from .schema import WitGPUContextBuilder, ContextParam, common_wit_gpu_params, DEFAULT_WIT_ENV
 from .utils import compute_kappa
 
@@ -14,7 +9,7 @@ DEFAULT_WIT_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit
 
 
 class ZvContextBuilder(WitGPUContextBuilder):
-    """Zv measurement job context builder with declarative parameter schema."""
+    """Zv measurement job context builder"""
     
     job_params_schema = [
         *common_wit_gpu_params(),

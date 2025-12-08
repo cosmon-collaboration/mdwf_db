@@ -18,7 +18,7 @@ from .args import (
 )
 from .components import EnsembleResolver, ParameterManager, ScriptGenerator
 from .help_generator import HelpGenerator
-from .param_schemas import ParamDef
+from ..jobs.schema import ContextParam
 
 
 def _load_default_backend():
@@ -36,8 +36,8 @@ class BaseCommand:
     aliases: list[str] = []
     job_type: Optional[str] = None
     input_type: Optional[str] = None
-    input_schema: List[ParamDef] = []
-    job_schema: List[ParamDef] = []
+    input_schema: List[ContextParam] = []
+    job_schema: List[ContextParam] = []
     default_variant: str = "default"
 
     def __init__(self, backend=None):
@@ -99,7 +99,7 @@ class BaseCommand:
             cli_job = param_manager.parse(args.job_params or "")
             merged_job = param_manager.merge(default_job, cli_job)
 
-            # Try to get schemas from context builder (new system)
+            # Try to get schemas from context builder
             builder_job_schema = None
             builder_input_schema = None
             

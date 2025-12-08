@@ -1,14 +1,9 @@
-"""WIT input context builder and legacy helpers."""
-
 from __future__ import annotations
-
 import copy
 from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, Iterable, List, MutableMapping, Optional
-
 from MDWFutils.exceptions import ValidationError
-
 from .schema import ContextBuilder, ContextParam
 from ..templates.loader import TemplateLoader
 from ..templates.renderer import TemplateRenderer

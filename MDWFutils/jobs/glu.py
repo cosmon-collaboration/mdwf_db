@@ -58,7 +58,7 @@ class GluContextBuilder(ContextBuilder):
 
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
                       job_params: Dict, input_params: Dict) -> Dict:
-        """Build GLU input. All 38 schema params auto-merged and stringified."""
+        """Build GLU input"""
         ensure_keys(physics, ["L", "T"])
         
         # Return ONLY overrides and special values

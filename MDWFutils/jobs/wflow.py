@@ -1,12 +1,7 @@
-"""Wilson flow job context builder."""
-
 from __future__ import annotations
-
 from pathlib import Path
 from typing import Dict
-
 from MDWFutils.exceptions import ValidationError
-
 from .schema import ContextBuilder, ContextParam, common_slurm_params, DEFAULT_CONDA_ENV, DEFAULT_GLU_EXEC, DEFAULT_CONFIG_PREFIX
 DEFAULT_OUTPUT_PREFIX = "t0"
 DEFAULT_SMEAR_TYPE = "ADAPTWFLOW_STOUT"
@@ -15,7 +10,7 @@ DEFAULT_NSIM = 4
 
 
 class WflowContextBuilder(ContextBuilder):
-    """Wilson flow job context builder with declarative parameter schema."""
+    """Wilson flow job context builder"""
     
     job_params_schema = [
         *common_slurm_params(),

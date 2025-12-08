@@ -19,19 +19,6 @@ class PhysicsParams(BaseModel):
     L: int = Field(gt=0, description="Spatial lattice size")
     T: int = Field(gt=0, description="Temporal lattice size")
 
-    @validator("Ls")
-    def ls_must_be_even(cls, value: int) -> int:
-        if value % 2 != 0:
-            raise ValueError("Ls should typically be even")
-        return value
-
-    @validator("T")
-    def t_must_be_greater_than_l(cls, value: int, values: dict) -> int:
-        lattice_size = values.get("L")
-        if lattice_size is not None and value < lattice_size:
-            raise ValueError("T should typically be >= L")
-        return value
-
 
 class EnsembleCreate(BaseModel):
     """Validate ensemble creation payloads."""

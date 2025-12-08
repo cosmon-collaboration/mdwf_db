@@ -27,7 +27,7 @@ DEFAULT_CPU_CACHEBLOCKING = "2.2.2.2"
 # --------------------------------------------------------------------------- #
 
 class HMCGPUContextBuilder(ContextBuilder):
-    """HMC GPU job context builder with declarative parameter schema."""
+    """HMC GPU job context builder"""
     
     job_params_schema = [
         *common_slurm_params(),
@@ -124,7 +124,7 @@ class HMCGPUContextBuilder(ContextBuilder):
 
 
 class HMCCPUContextBuilder(ContextBuilder):
-    """HMC CPU job context builder with declarative parameter schema."""
+    """HMC CPU job context builder"""
     
     job_params_schema = [
         *common_slurm_params(),
@@ -153,7 +153,7 @@ class HMCCPUContextBuilder(ContextBuilder):
         ContextParam("config_end", int, help="Last configuration (for output prefix)"),
     ]
     
-    input_params_schema = []  # HMC uses XML input, not parameter-based
+    input_params_schema = []
     
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
                       job_params: Dict, input_params: Dict) -> Dict:

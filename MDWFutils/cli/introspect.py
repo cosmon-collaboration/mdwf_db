@@ -8,7 +8,6 @@ import pkgutil
 from typing import Any, Dict, List
 
 from .command import BaseCommand
-from .param_schemas import ParamDef
 from ..jobs.schema import ContextParam
 
 

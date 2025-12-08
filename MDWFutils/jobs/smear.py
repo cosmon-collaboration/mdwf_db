@@ -13,7 +13,7 @@ DEFAULT_NSIM = 8
 
 
 class SmearContextBuilder(ContextBuilder):
-    """Smear job context builder with declarative parameter schema."""
+    """Smear job context builder"""
     
     job_params_schema = [
         *common_slurm_params(),

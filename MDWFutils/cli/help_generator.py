@@ -5,13 +5,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 from ..exceptions import ValidationError
-from .param_schemas import ParamDef
-# ContextParam has same structure as ParamDef, so we can use it interchangeably
-try:
-    from ..jobs.schema import ContextParam
-except ImportError:
-    # During migration, ContextParam might not exist yet
-    ContextParam = None
+from ..jobs.schema import ContextParam
 
 
 class HelpGenerator:
@@ -35,7 +29,7 @@ class HelpGenerator:
         return "\n".join(lines)
 
     @staticmethod
-    def validate_and_cast(params: Dict[str, str], schema: List[ParamDef], param_type: str = "parameter") -> Dict:
+    def validate_and_cast(params: Dict[str, str], schema: List, param_type: str = "parameter") -> Dict:
         """Validate and cast parameters.
         
         Args:
@@ -45,7 +39,7 @@ class HelpGenerator:
         """
         typed: Dict[str, object] = {}
         errors: List[str] = []
-        missing_required: List[ParamDef] = []
+        missing_required: List[ContextParam] = []
 
         for definition in schema:
             value = params.get(definition.name)

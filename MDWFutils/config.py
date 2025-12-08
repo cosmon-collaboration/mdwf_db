@@ -3,7 +3,7 @@
 MDWFutils/config.py
 
 Configuration file handling for ensemble operation parameters.
-Supports storing and retrieving "recipes" for HMC, smearing, and measurement operations.
+Supports storing and retrieving "recipes" for operations.
 """
 
 import yaml

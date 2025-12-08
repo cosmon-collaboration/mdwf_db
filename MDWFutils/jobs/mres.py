@@ -14,7 +14,7 @@ DEFAULT_WIT_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit
 
 
 class MresContextBuilder(WitGPUContextBuilder):
-    """Residual mass job context builder with declarative parameter schema."""
+    """Residual mass job context builder"""
     
     job_params_schema = [
         *common_wit_gpu_params(),
