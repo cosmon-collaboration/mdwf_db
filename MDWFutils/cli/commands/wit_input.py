@@ -6,6 +6,7 @@ from ...exceptions import ValidationError
 
 class WitInputCommand(BaseCommand):
     name = "wit-input"
+    aliases = ["wit"]
     help = "Generate WIT input file"
     job_type = None
     input_type = "wit_input"

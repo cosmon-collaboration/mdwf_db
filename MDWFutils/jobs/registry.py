@@ -1,119 +1,137 @@
-"""Registry for job and input context builders.
+"""Dynamic registry for job and input context builders.
 
-Builders are referenced lazily so that modules can be refactored incrementally
-without creating circular imports or requiring builder functions to exist
-before they are implemented.
+Builders are discovered automatically from MDWFutils.jobs.* modules so new
+builders are picked up without maintaining a static map.
 """
 
 from __future__ import annotations
 
+import inspect
+import pkgutil
+import re
 from functools import lru_cache
 from importlib import import_module
-from typing import Callable, Dict, List, Tuple, Optional
+from typing import Callable, Dict, List, Tuple, Optional, Type
 
-from .schema import _deduplicate_schema
+from .schema import ContextBuilder, _deduplicate_schema, WitGPUContextBuilder
 
 
-def _load_builder(path: str) -> Callable:
-    """Lazily import and return a builder function specified as module:attr."""
-    module_path, attr = path.split(":")
-    module = import_module(module_path, package=__package__)
-    try:
-        return getattr(module, attr)
-    except AttributeError as exc:  # pragma: no cover - defensive
-        raise ImportError(f"Builder '{attr}' not found in '{module_path}'") from exc
+# --------------------------------------------------------------------------- #
+# Discovery helpers
+# --------------------------------------------------------------------------- #
 
+# Modules to skip during discovery (non-builder or helper modules)
+_SKIP_MODULES = {
+    "registry",
+    "schema",
+    "utils",
+    "__init__",
+    "hmc_helpers",
+    "hmc_resubmit",
+}
+
+# Class-name overrides for type naming (handles consecutive capitals)
+_TYPE_OVERRIDES = {
+    "HMCGPUContextBuilder": "hmc_gpu",
+    "HMCCPUContextBuilder": "hmc_cpu",
+    "HMCXMLContextBuilder": "hmc_xml",
+    "MresMQContextBuilder": "mres_mq",
+}
+
+
+def _class_to_type_name(cls: Type[ContextBuilder]) -> str:
+    """Convert a ContextBuilder class name to a snake-case type name."""
+    name = cls.__name__
+    if name in _TYPE_OVERRIDES:
+        return _TYPE_OVERRIDES[name]
+    base = re.sub(r"ContextBuilder$", "", name)
+    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", base).lower()
+    return snake
+
+
+def _discover_builders() -> Tuple[Dict[str, Type[ContextBuilder]], Dict[str, Type[ContextBuilder]]]:
+    """Discover job and input builders dynamically from MDWFutils.jobs modules."""
+    import MDWFutils.jobs as jobs_pkg
+
+    job_builders: Dict[str, Type[ContextBuilder]] = {}
+    input_builders: Dict[str, Type[ContextBuilder]] = {}
+
+    for _, module_name, ispkg in pkgutil.iter_modules(jobs_pkg.__path__):
+        if ispkg or module_name in _SKIP_MODULES:
+            continue
+        module = import_module(f"{jobs_pkg.__name__}.{module_name}")
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if not issubclass(obj, ContextBuilder):
+                continue
+            if obj in (ContextBuilder, WitGPUContextBuilder):
+                continue  # skip bases
+
+            type_name = _class_to_type_name(obj)
+
+            # Heuristic: if job_params_schema has entries, treat as job builder; otherwise input.
+            job_schema = getattr(obj, "job_params_schema", None)
+            if job_schema:
+                job_builders[type_name] = obj
+            else:
+                input_builders[type_name] = obj
+
+    return job_builders, input_builders
+
+
+@lru_cache(maxsize=None)
+def _builder_maps():
+    return _discover_builders()
+
+
+# --------------------------------------------------------------------------- #
+# Public API
+# --------------------------------------------------------------------------- #
 
 @lru_cache(maxsize=None)
 def get_job_builder(job_type: str):
     """Return an INSTANCE of the job builder, ready to call .build()."""
-    target = JOB_BUILDERS.get(job_type)
-    if target is None:
+    job_builders, _ = _builder_maps()
+    cls = job_builders.get(job_type)
+    if cls is None:
         raise KeyError(f"Unknown job_type '{job_type}'")
-    builder_class = _load_builder(target)
-    return builder_class()  # Instantiate
+    return cls()
 
 
 @lru_cache(maxsize=None)
 def get_input_builder(input_type: str):
     """Return an INSTANCE of the input builder, ready to call .build()."""
-    target = INPUT_BUILDERS.get(input_type)
-    if target is None:
+    _, input_builders = _builder_maps()
+    cls = input_builders.get(input_type)
+    if cls is None:
         raise KeyError(f"Unknown input_type '{input_type}'")
-    builder_class = _load_builder(target)
-    return builder_class()  # Instantiate
+    return cls()
 
 
 def get_job_schema(job_type: str) -> Tuple[Optional[List], Optional[List]]:
-    """Get schemas from builder CLASS (not instance).
-    
-    Deduplicates schemas to handle common param overrides.
-    
-    Returns:
-        Tuple of (job_params_schema, input_params_schema) or (None, None) if builder
-        doesn't have schema attributes.
-    """
-    try:
-        target = JOB_BUILDERS.get(job_type)
-        if target is None:
-            return (None, None)
-        builder_class = _load_builder(target)  # Get class, don't instantiate
-        job_schema = getattr(builder_class, 'job_params_schema', None)
-        input_schema = getattr(builder_class, 'input_params_schema', None)
-        
-        # Deduplicate to handle common param overrides
-        job_schema = _deduplicate_schema(job_schema)
-        input_schema = _deduplicate_schema(input_schema)
-        
-        return (job_schema, input_schema)
-    except (KeyError, ImportError):
+    """Get schemas from builder CLASS (not instance), deduplicated."""
+    job_builders, _ = _builder_maps()
+    cls = job_builders.get(job_type)
+    if cls is None:
         return (None, None)
+    job_schema = getattr(cls, "job_params_schema", None)
+    input_schema = getattr(cls, "input_params_schema", None)
+    return _deduplicate_schema(job_schema), _deduplicate_schema(input_schema)
 
 
 def get_input_schema(input_type: str) -> Optional[List]:
-    """Get input_params_schema from input builder CLASS (not instance).
-    
-    Deduplicates schemas to handle common param overrides.
-    
-    Returns:
-        input_params_schema or None if builder doesn't have schema attribute.
-    """
-    try:
-        target = INPUT_BUILDERS.get(input_type)
-        if target is None:
-            return None
-        builder_class = _load_builder(target)  # Get class, don't instantiate
-        schema = getattr(builder_class, 'input_params_schema', None)
-        return _deduplicate_schema(schema)
-    except (KeyError, ImportError):
+    """Get input_params_schema from input builder CLASS (not instance), deduplicated."""
+    _, input_builders = _builder_maps()
+    cls = input_builders.get(input_type)
+    if cls is None:
         return None
+    schema = getattr(cls, "input_params_schema", None)
+    return _deduplicate_schema(schema)
 
-
-# Mapping of job_type/input_type to their builder import paths. Builders will be
-# implemented progressively in their respective job modules.
-JOB_BUILDERS: Dict[str, str] = {
-    "smear": "MDWFutils.jobs.smear:SmearContextBuilder",
-    "wflow": "MDWFutils.jobs.wflow:WflowContextBuilder",
-    "mres": "MDWFutils.jobs.mres:MresContextBuilder",
-    "mres_mq": "MDWFutils.jobs.mres_mq:MresMQContextBuilder",
-    "meson2pt": "MDWFutils.jobs.meson2pt:Meson2ptContextBuilder",
-    "zv": "MDWFutils.jobs.zv:ZvContextBuilder",
-    "hmc_gpu": "MDWFutils.jobs.hmc:HMCGPUContextBuilder",
-    "hmc_cpu": "MDWFutils.jobs.hmc:HMCCPUContextBuilder",
-}
-
-INPUT_BUILDERS: Dict[str, str] = {
-    "hmc_xml": "MDWFutils.jobs.hmc:HMCXMLContextBuilder",
-    "glu_input": "MDWFutils.jobs.glu:GluContextBuilder",
-    "wit_input": "MDWFutils.jobs.wit:WitContextBuilder",
-}
 
 __all__ = [
     "get_job_builder",
     "get_input_builder",
     "get_job_schema",
     "get_input_schema",
-    "JOB_BUILDERS",
-    "INPUT_BUILDERS",
 ]
 

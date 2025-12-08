@@ -5,6 +5,7 @@ from ..command import BaseCommand
 
 class GluInputCommand(BaseCommand):
     name = "glu-input"
+    aliases = ["glu"]
     help = "Generate GLU input file"
     job_type = None
     input_type = "glu_input"

@@ -37,7 +37,7 @@ class HMCGPUContextBuilder(ContextBuilder):
         ContextParam("cpus_per_task", int, default=32, help="CPUs per task"),
         ContextParam("mail_type", str, default="BEGIN,END", help="Mail notification types"),
         # GPU-specific params
-        ContextParam("ntasks_per_node", int, default=1, help="Tasks per node"),
+        ContextParam("ntasks_per_node", int, default=4, help="Tasks per node (legacy default 4)"),
         ContextParam("gpus_per_task", int, default=1, help="GPUs per task"),
         ContextParam("gpu_bind", str, default="none", help="GPU binding policy"),
         ContextParam("gres", str, help="GPU resource specification (auto-generated if not provided)"),
@@ -220,6 +220,14 @@ class HMCXMLContextBuilder(ContextBuilder):
         ContextParam("Seed", int, help="Random seed (optional)"),
         ContextParam("Trajectories", int, required=True, help="Number of trajectories"),
         ContextParam("trajL", float, required=True, help="Trajectory length"),
+        ContextParam("MDsteps", int, help="MD steps"),
+        ContextParam("md_name", str, help="MD integrator names (comma-separated)"),
+        ContextParam("MetropolisTest", str, help="Metropolis test (true/false)"),
+        ContextParam("NoMetropolisUntil", int, help="Trajectory to start Metropolis"),
+        ContextParam("PerformRandomShift", str, help="Perform random shift (true/false)"),
+        ContextParam("StartingType", str, help="Starting type override"),
+        ContextParam("StartTrajectory", int, help="Starting trajectory override"),
+        ContextParam("lvl_sizes", str, help="Level sizes override (comma-separated)"),
     ]
     
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
@@ -232,7 +240,22 @@ class HMCXMLContextBuilder(ContextBuilder):
         traj_l = input_params["trajL"]
         
         tree, root = _make_default_tree(mode, _maybe_int(seed_override))
-        _apply_xml_overrides(root, {"Trajectories": trajectories, "trajL": traj_l})
+        overrides = {"Trajectories": trajectories, "trajL": traj_l}
+        for key in (
+            "MDsteps",
+            "MetropolisTest",
+            "NoMetropolisUntil",
+            "PerformRandomShift",
+            "StartingType",
+            "StartTrajectory",
+            "lvl_sizes",
+        ):
+            if key in input_params and input_params[key] is not None:
+                overrides[key] = input_params[key]
+        if "md_name" in input_params and input_params["md_name"] is not None:
+            overrides["md_name"] = input_params["md_name"]
+
+        _apply_xml_overrides(root, overrides)
         xml_string = _tree_to_string(tree)
         
         ensemble_dir = Path(ensemble["directory"]).resolve()

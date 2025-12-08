@@ -63,21 +63,29 @@ def get_command_metadata() -> Dict[str, Any]:
                     "arguments": _extract_arguments(variant_parser),
                 }
                 # Try to get input/job schemas if this is a BaseCommand variant
-                input_schema, job_schema = _find_schemas_for_command(cmd_name, variant_name)
+                input_schema, job_schema, builder_class, builder_module = _find_schemas_for_command(cmd_name, variant_name)
                 if input_schema is not None:
                     variants[variant_name]["input_params"] = _serialize_schema(input_schema)
                     variants[variant_name]["job_params"] = _serialize_schema(job_schema)
+                    if builder_class:
+                        variants[variant_name]["builder_class"] = builder_class
+                    if builder_module:
+                        variants[variant_name]["builder_module"] = builder_module
             cmd_metadata["variants"] = variants
         else:
             cmd_metadata["type"] = "custom"
         
         # Try to get input/job schemas for single-variant BaseCommands
         if cmd_metadata["type"] == "custom":
-            input_schema, job_schema = _find_schemas_for_command(cmd_name)
+            input_schema, job_schema, builder_class, builder_module = _find_schemas_for_command(cmd_name)
             if input_schema is not None:
                 cmd_metadata["type"] = "base_command"
                 cmd_metadata["input_params"] = _serialize_schema(input_schema)
                 cmd_metadata["job_params"] = _serialize_schema(job_schema)
+                if builder_class:
+                    cmd_metadata["builder_class"] = builder_class
+                if builder_module:
+                    cmd_metadata["builder_module"] = builder_module
         
         commands[cmd_name] = cmd_metadata
     
@@ -124,7 +132,8 @@ def _extract_arguments(parser: argparse.ArgumentParser) -> List[Dict[str, Any]]:
 def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
     """
     Find input_schema and job_schema for a BaseCommand.
-    Returns (input_schema, job_schema) or (None, None) if not a BaseCommand.
+    Returns (input_schema, job_schema, builder_class, builder_module) or
+    (None, None, None, None) if not a BaseCommand.
     
     Schemas are now retrieved from context builders via the registry.
     """
@@ -151,14 +160,16 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                                 if variant_cmd.job_type:
                                     from ..jobs.registry import get_job_schema
                                     job_schema, input_schema = get_job_schema(variant_cmd.job_type)
-                                    return (input_schema, job_schema)
+                                    builder = variant_cmd.job_type
+                                    return (input_schema, job_schema, builder, f"job:{builder}")
                                 elif variant_cmd.input_type:
                                     # Input-only command
                                     from ..jobs.registry import get_input_schema
                                     input_schema = get_input_schema(variant_cmd.input_type)
-                                    return (input_schema, None)
-                                return (None, None)
-                            return (None, None)
+                                    builder = variant_cmd.input_type
+                                    return (input_schema, None, builder, f"input:{builder}")
+                                return (None, None, None, None)
+                            return (None, None, None, None)
                     except Exception:
                         # Not instantiable or doesn't have commands, continue
                         pass
@@ -178,17 +189,19 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                     if cmd_instance.job_type:
                         from ..jobs.registry import get_job_schema
                         job_schema, input_schema = get_job_schema(cmd_instance.job_type)
-                        return (input_schema, job_schema)
+                        builder = cmd_instance.job_type
+                        return (input_schema, job_schema, builder, f"job:{builder}")
                     elif cmd_instance.input_type:
                         # Input-only command
                         from ..jobs.registry import get_input_schema
                         input_schema = get_input_schema(cmd_instance.input_type)
-                        return (input_schema, None)
-                    return (None, None)
+                        builder = cmd_instance.input_type
+                        return (input_schema, None, builder, f"input:{builder}")
+                    return (None, None, None, None)
     except (ImportError, AttributeError, TypeError):
         pass
     
-    return (None, None)
+    return (None, None, None, None)
 
 
 def _serialize_schema(schema) -> List[Dict[str, Any]]:

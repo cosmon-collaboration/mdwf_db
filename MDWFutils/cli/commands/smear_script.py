@@ -6,6 +6,7 @@ from ...exceptions import ValidationError
 
 class SmearCommand(BaseCommand):
     name = "smear-script"
+    aliases = ["smear"]
     help = "Generate GLU smearing SLURM script"
     job_type = "smear"
     input_type = "glu_input"

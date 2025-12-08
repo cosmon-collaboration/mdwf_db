@@ -33,6 +33,7 @@ class BaseCommand:
 
     name: Optional[str] = None
     help: Optional[str] = None
+    aliases: list[str] = []
     job_type: Optional[str] = None
     input_type: Optional[str] = None
     input_schema: List[ParamDef] = []
@@ -51,6 +52,7 @@ class BaseCommand:
 
         parser = subparsers.add_parser(
             self.name,
+            aliases=getattr(self, "aliases", []),
             help=self.help,
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description=self._build_description(),

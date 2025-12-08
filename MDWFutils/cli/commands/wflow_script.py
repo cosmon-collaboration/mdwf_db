@@ -6,6 +6,7 @@ from ...exceptions import ValidationError
 
 class WFlowCommand(BaseCommand):
     name = "wflow-script"
+    aliases = ["wflow"]
     help = "Generate gradient flow SLURM script"
     job_type = "wflow"
     input_type = "glu_input"

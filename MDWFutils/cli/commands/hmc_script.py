@@ -19,6 +19,7 @@ class HMCCPUCommand(BaseCommand):
 
 class HMCCommand:
     name = "hmc-script"
+    aliases = ["hmc"]
     help = "Generate HMC SLURM scripts"
 
     def __init__(self):
@@ -32,6 +33,7 @@ class HMCCommand:
 
         parser = subparsers.add_parser(
             self.name,
+            aliases=getattr(self, "aliases", []),
             help=self.help,
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description="Select GPU or CPU subcommand",

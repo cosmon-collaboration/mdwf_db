@@ -6,6 +6,7 @@ from ...exceptions import ValidationError
 
 class MresMQCommand(BaseCommand):
     name = "mres-mq-script"
+    aliases = ["mres-mq"]
     help = "Generate WIT mres single-mass script"
     job_type = "mres_mq"
     input_type = "wit_input"
