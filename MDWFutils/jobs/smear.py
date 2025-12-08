@@ -76,6 +76,7 @@ class SmearContextBuilder(ContextBuilder):
             "config_dir": str(work_root / "cnfg"),
             "prefix_for_files": prefix_for_files,
             "glu_input_path": str(glu_input_path),
+            "glu_exec_path": job_params.get("glu_path"),
             # Dynamic default with fallback
             "job_name": job_params.get("job_name") or f"smear_{ensemble_id}",
             # Alias for template (ranks -> ntasks_per_node)
@@ -85,6 +86,8 @@ class SmearContextBuilder(ContextBuilder):
             "operation": "GLU_SMEAR",
             "run_dir": str(work_root),
             "params": f"smear_type={smear_type} smiters={smiters}",
+            "smear_type": smear_type,
+            "smiters": smiters,
             # Template control
             "_output_dir": str(smear_dir / "slurm"),
             "_output_prefix": f"smear_{config_start}_{config_end}",

@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from .base import DatabaseBackend
 from .mongodb import MongoDBBackend
-from .sqlite import SQLiteBackend
+from ..exceptions import ConnectionError
 
 
 def get_backend(connection_string: str) -> DatabaseBackend:
-    """Return the appropriate backend based on the connection string."""
-    if connection_string.startswith(("mongodb://", "mongodb+srv://")):
-        return MongoDBBackend(connection_string)
-    return SQLiteBackend(connection_string)
+    """Return a MongoDB backend; SQLite is no longer supported."""
+    if not connection_string.startswith(("mongodb://", "mongodb+srv://")):
+        raise ConnectionError(
+            "MongoDB connection required. Set MDWF_DB_URL environment variable.\n"
+            "Example: export MDWF_DB_URL=mongodb://host:port/database"
+        )
+    return MongoDBBackend(connection_string)
 
 
-__all__ = ["DatabaseBackend", "MongoDBBackend", "SQLiteBackend", "get_backend"]
+__all__ = ["DatabaseBackend", "MongoDBBackend", "get_backend"]
 
 

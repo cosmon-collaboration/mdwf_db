@@ -11,9 +11,6 @@ module load cray-fftw/3.3.10.8
 module load conda
 conda activate {{ conda_env }}
 
-# On many network filesystems WAL journal mode causes SQLite disk I/O errors.
-export MDWF_DB_JOURNAL="${MDWF_DB_JOURNAL:-DELETE}"
-
 # Record job start
 mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
   -p "slurm_job_id=$SLURM_JOB_ID config_start={{ config_start }} config_end={{ config_end }} config_increment={{ config_inc }} glu_input={{ glu_input_path }} workdir={{ wflow_dir }} nodes={{ nodes }} smear_type={{ smear_type|default('ADAPTWFLOW_STOUT') }} smiters={{ smiters }}" \

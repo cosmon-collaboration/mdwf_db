@@ -50,6 +50,20 @@ EXAMPLES:
     p.set_defaults(func=do_query)
 
 
+def _safe_float(val, default=999.0):
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(val, default=999):
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def do_query(args):
     backend = get_backend_for_args(args)
 
@@ -119,14 +133,14 @@ def do_query(args):
             # Sort by physics parameters
             def sort_key(row):
                 return (
-                    float(row['beta']) if row['beta'] else 999,
-                    float(row['b']) if row['b'] else 999,
-                    int(row['Ls']) if row['Ls'] else 999,
-                    float(row['mc']) if row['mc'] else 999,
-                    float(row['ms']) if row['ms'] else 999,
-                    float(row['ml']) if row['ml'] else 999,
-                    int(row['L']) if row['L'] else 999,
-                    int(row['T']) if row['T'] else 999,
+                    _safe_float(row['beta']),
+                    _safe_float(row['b']),
+                    _safe_int(row['Ls']),
+                    _safe_float(row['mc']),
+                    _safe_float(row['ms']),
+                    _safe_float(row['ml']),
+                    _safe_int(row['L']),
+                    _safe_int(row['T']),
                 )
             rows.sort(key=sort_key)
 

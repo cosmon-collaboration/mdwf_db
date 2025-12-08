@@ -65,7 +65,7 @@ class HMCGPUContextBuilder(ContextBuilder):
         """Return context for the GPU SLURM template."""
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
-        paths = ensemble.get("paths", {})
+        paths = ensemble.get("hmc_paths", {})
         exec_path = job_params.get("exec_path") or paths.get("hmc_exec_path")
         if not exec_path:
             raise ValidationError("exec_path is required (set via CLI or ensemble paths.hmc_exec_path)")
@@ -160,7 +160,7 @@ class HMCCPUContextBuilder(ContextBuilder):
         """Return context for the CPU SLURM template."""
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
-        paths = ensemble.get("paths", {})
+        paths = ensemble.get("hmc_paths", {})
         exec_path = job_params.get("exec_path") or paths.get("hmc_exec_path")
         if not exec_path:
             raise ValidationError("exec_path is required (set via CLI or ensemble paths.hmc_exec_path)")

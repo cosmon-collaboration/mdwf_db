@@ -127,12 +127,26 @@ def do_add(args):
         if not pdict:
             inferred = _parse_params_from_path(ens_dir)
             pdict.update(inferred)
+        missing = [k for k in REQUIRED if k not in pdict]
+        if missing:
+            print(
+                f"ERROR: missing required params: {missing}. Provide -p or use --directory with a standard path.",
+                file=sys.stderr,
+            )
+            return 1
     else:
         # Only create TUNING/ and ENSEMBLES/ roots when auto-generating the directory
         tuning_root= base / 'TUNING'
         prod_root  = base / 'ENSEMBLES'
         tuning_root.mkdir(parents=True, exist_ok=True)
         prod_root.mkdir(parents=True, exist_ok=True)
+        missing = [k for k in REQUIRED if k not in pdict]
+        if missing:
+            print(
+                f"ERROR: missing required params: {missing}. Provide -p or use --directory with a standard path.",
+                file=sys.stderr,
+            )
+            return 1
         rel = (
           f"b{pdict['beta']}/b{pdict['b']}Ls{pdict['Ls']}/"
           f"mc{pdict['mc']}/ms{pdict['ms']}/ml{pdict['ml']}/"
@@ -140,12 +154,6 @@ def do_add(args):
         )
         root = prod_root if args.status=='PRODUCTION' else tuning_root
         ens_dir = root / rel
-
-    # final required-keys check (either provided or inferred)
-    missing = [k for k in REQUIRED if k not in pdict]
-    if missing:
-        print(f"ERROR: missing required params: {missing}. Provide -p or use --directory with a standard path.", file=sys.stderr)
-        return 1
 
     #create folders
     ens_dir.mkdir(parents=True, exist_ok=True)

@@ -58,6 +58,7 @@ class WflowContextBuilder(ContextBuilder):
         smiters = input_params["SMITERS"]
         config_start = job_params["config_start"]
         config_end = job_params["config_end"]
+        config_inc = job_params.get("config_inc", 4)
         
         glu_input_path = wflow_dir / "glu_smear.in"
 
@@ -74,9 +75,14 @@ class WflowContextBuilder(ContextBuilder):
             "wflow_dir": str(wflow_dir),
             "config_dir": str(work_root / "cnfg"),
             "glu_input_path": str(glu_input_path),
+            "glu_exec_path": job_params.get("glu_path"),
             "smear_type": smear_type,
             "smiters": smiters,
             "ntasks_per_node": job_params["ranks"],
+            "config_start": config_start,
+            "config_end": config_end,
+            "config_inc": config_inc,
+            "output_prefix": job_params.get("output_prefix", DEFAULT_OUTPUT_PREFIX),
             "_output_dir": str(wflow_dir / "slurm"),
             "_output_prefix": f"wflow_{config_start}_{config_end}",
             "_input_output_dir": str(wflow_dir),

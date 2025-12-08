@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..backends import get_backend
-from ..exceptions import MDWFError
+from ..exceptions import ConnectionError, MDWFError
 from .args import (
     add_default_params_group,
     add_ensemble_arg,
@@ -24,7 +24,7 @@ from .param_schemas import ParamDef
 def _load_default_backend():
     connection = os.getenv("MDWF_DB_URL")
     if not connection:
-        connection = os.getenv("MDWF_DB", "mdwf_ensembles.db")
+        raise ConnectionError("MDWF_DB_URL environment variable not set")
     return get_backend(connection)
 
 

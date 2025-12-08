@@ -9,7 +9,7 @@ import os
 import sys
 
 from MDWFutils.backends import get_backend
-from MDWFutils.exceptions import EnsembleNotFoundError
+from MDWFutils.exceptions import ConnectionError, EnsembleNotFoundError
 from .components import EnsembleResolver
 
 
@@ -64,10 +64,10 @@ def migrate_ensemble_id_argument(parser):
 
 
 def get_backend_for_args(args):
-    """Resolve backend connection using environment variables only."""
+    """Resolve backend connection using environment variables only (MongoDB required)."""
     connection = os.getenv("MDWF_DB_URL")
     if not connection:
-        connection = os.getenv("MDWF_DB", "mdwf_ensembles.db")
+        raise ConnectionError("MDWF_DB_URL environment variable not set")
     return get_backend(connection)
 
 
