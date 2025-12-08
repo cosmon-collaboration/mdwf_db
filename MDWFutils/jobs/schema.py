@@ -189,6 +189,24 @@ class ContextBuilder(ABC):
         
         return list(reversed(result))
 
+    def _get_ensemble(self, backend: DatabaseBackend, ensemble_id: int) -> Dict:
+        """Get ensemble document."""
+        from ..exceptions import EnsembleNotFoundError
+        ensemble = backend.get_ensemble(ensemble_id)
+        if not ensemble:
+            raise EnsembleNotFoundError(ensemble_id)
+        return ensemble
+    
+    def _get_physics(self, ensemble: Dict) -> Dict:
+        """Extract physics parameters from ensemble."""
+        return ensemble.get("physics", {})
+    
+    def _resolve_run_dir(self, ensemble: Dict, job_params: Dict) -> Path:
+        """Get run directory from params or ensemble directory."""
+        ensemble_dir = Path(ensemble["directory"]).resolve()
+        run_dir = job_params.get("run_dir")
+        return Path(run_dir).resolve() if run_dir else ensemble_dir
+
 
 class WitGPUContextBuilder(ContextBuilder):
     """Base class for WIT GPU job builders with shared setup logic.
