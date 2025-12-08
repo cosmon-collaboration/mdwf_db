@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..backends.base import DatabaseBackend
+from ..exceptions import ValidationError
 
 # Common default paths used across job types
 DEFAULT_CONDA_ENV = "/global/cfs/cdirs/m2986/cosmon/mdwf/scripts/cosmon_mdwf"
@@ -133,34 +134,24 @@ class ContextBuilder(ABC):
         ensemble = self._get_ensemble(backend, ensemble_id)
         physics = self._get_physics(ensemble)
         
+        # Deduplicate schemas (last definition wins for overrides)
+        job_schema_deduped = _deduplicate_schema(self.job_params_schema)
+        input_schema_deduped = _deduplicate_schema(self.input_params_schema)
+
+        # Apply schema defaults + validation to job/input params
+        job_values = self._apply_schema(job_params or {}, job_schema_deduped, param_type="job", cast_to_str=False)
+        input_values = self._apply_schema(input_params or {}, input_schema_deduped, param_type="input", cast_to_str=True)
+        
         # Let subclass build computed/special values
         computed_context = self._build_context(
             backend, ensemble_id, ensemble, physics, 
             job_params or {}, input_params or {}
         )
         
-        # Auto-merge: start with all schema-defined params
+        # Merge with precedence: schema+defaults, then computed (computed wins)
         final_context = {}
-        
-        # Deduplicate schemas (last definition wins for overrides)
-        job_schema_deduped = _deduplicate_schema(self.job_params_schema)
-        input_schema_deduped = _deduplicate_schema(self.input_params_schema)
-        
-        # Add all job params from schema (keep original types)
-        if job_schema_deduped:
-            for param in job_schema_deduped:
-                if param.name in (job_params or {}):
-                    final_context[param.name] = (job_params or {})[param.name]
-        
-        # Add all input params from schema (convert to strings for input templates)
-        if input_schema_deduped:
-            for param in input_schema_deduped:
-                if param.name in (input_params or {}):
-                    value = (input_params or {})[param.name]
-                    # Convert to string for input file templates
-                    final_context[param.name] = str(value) if value is not None else None
-        
-        # Merge computed values (overrides auto-merged if there's a conflict)
+        final_context.update(job_values)
+        final_context.update(input_values)
         final_context.update(computed_context)
         
         return final_context
@@ -188,6 +179,51 @@ class ContextBuilder(ABC):
                 seen.add(param.name)
         
         return list(reversed(result))
+
+    def _apply_schema(self, params: Dict, schema: List[ContextParam], *, param_type: str, cast_to_str: bool) -> Dict:
+        """Apply defaults, validate required/choices, and type-cast."""
+        typed: Dict[str, Any] = {}
+        errors: List[str] = []
+        missing: List[ContextParam] = []
+
+        for definition in schema:
+            has_value = definition.name in params and params[definition.name] is not None
+            if has_value:
+                value = params[definition.name]
+            elif definition.default is not None:
+                value = definition.default
+            else:
+                if definition.required:
+                    missing.append(definition)
+                continue
+
+            # Type cast
+            try:
+                cast_value = definition.type(value)
+            except (TypeError, ValueError):
+                errors.append(f"{definition.name}: expected {definition.type.__name__}")
+                continue
+
+            # Choices check
+            if definition.choices and cast_value not in definition.choices:
+                errors.append(f"{definition.name} must be one of: {', '.join(map(str, definition.choices))}")
+                continue
+
+            typed[definition.name] = str(cast_value) if cast_to_str else cast_value
+
+        if missing:
+            flag = "-i" if param_type == "input" else "-j"
+            msg = f"\nMissing required {param_type} parameters (pass with {flag}):\n"
+            for param in missing:
+                msg += f"  • {param.name}: {param.help}\n"
+            examples = " ".join(f"{p.name}=<value>" for p in missing)
+            msg += f"\nExample: {flag} \"{examples}\""
+            errors.append(msg)
+
+        if errors:
+            raise ValidationError("\n".join(errors))
+
+        return typed
 
     def _get_ensemble(self, backend: DatabaseBackend, ensemble_id: int) -> Dict:
         """Get ensemble document."""
