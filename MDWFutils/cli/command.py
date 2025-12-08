@@ -135,7 +135,8 @@ class BaseCommand:
             if self.input_type:
                 from ..jobs.registry import get_input_builder
                 input_builder = get_input_builder(self.input_type)
-                input_context = input_builder.build(backend, ensemble_id, input_params=typed_input)
+                # Provide job_params as well so input builders can derive values like CONFNO
+                input_context = input_builder.build(backend, ensemble_id, typed_job, typed_input)
                 
                 # Override input location if job context specifies it
                 if job_context and "_input_output_dir" in job_context:
