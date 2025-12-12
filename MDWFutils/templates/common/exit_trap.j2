@@ -2,17 +2,26 @@ JOB_FAILED=${JOB_FAILED:-0}
 cleanup_and_update_status() {
     local exit_code=${EXIT_CODE:-$?}
     [ -n "${JOB_FAILED:-}" ] && [ "$JOB_FAILED" -ne 0 ] 2>/dev/null && exit_code=$JOB_FAILED
-    local slurm_state=""
-    [ -n "$SLURM_JOB_ID" ] && slurm_state=$(sacct -j "$SLURM_JOB_ID" -n -o State --parsable2 2>/dev/null | head -1)
-    [ -z "$slurm_state" ] && [ -n "$SLURM_JOB_ID" ] && slurm_state=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null | grep -o 'JobState=[^ ]*' | cut -d= -f2)
+    local job_id="${SLURM_JOB_ID:-${SLURM_JOBID}}"
+    local slurm_state="" slurm_exit_code="" slurm_signal=""
+    # Extract signal from SLURM_JOB_EXIT_CODE2 (format "exit:sig") or sacct ExitCode
+    [ -n "${SLURM_JOB_EXIT_CODE2:-}" ] && slurm_signal=$(echo "$SLURM_JOB_EXIT_CODE2" | cut -d: -f2)
+    if [ -n "$job_id" ]; then
+        local sacct_output=$(sacct -X -j ${job_id}.batch -n -o State,ExitCode --parsable2 2>/dev/null | head -1)
+        [ -z "$sacct_output" ] && sacct_output=$(sacct -X -j "$job_id" -n -o State,ExitCode --parsable2 2>/dev/null | head -1)
+        [ -n "$sacct_output" ] && slurm_state=$(echo "$sacct_output" | cut -d'|' -f1) && slurm_exit_code=$(echo "$sacct_output" | cut -d'|' -f2)
+        [ -z "$slurm_state" ] && slurm_state=$(scontrol show job "$job_id" 2>/dev/null | grep -o 'JobState=[^ ]*' | cut -d= -f2)
+        [ -z "$slurm_signal" ] && [ -n "$slurm_exit_code" ] && slurm_signal=$(echo "$slurm_exit_code" | cut -d: -f2)
+    fi
     local slurm_upper=$(echo "$slurm_state" | tr '[:lower:]' '[:upper:]' 2>/dev/null)
     local status="FAILED"
+    [ -n "$slurm_signal" ] && [ "$slurm_signal" != "0" ] && status="CANCELED"
     [[ "$slurm_upper" == *"CANCEL"* ]] || [[ "$slurm_upper" == *"PREEMPT"* ]] && status="CANCELED"
-    [[ "$slurm_upper" == *"COMPLETED"* ]] && [ $exit_code -eq 0 ] && status="COMPLETED"
-    [ "$status" = "FAILED" ] && [ $exit_code -eq 0 ] && status="COMPLETED"
-    [ "$status" = "FAILED" ] && ([ $exit_code -eq 130 ] || [ $exit_code -eq 137 ] || [ $exit_code -eq 143 ]) && status="CANCELED"
+    [[ "$slurm_upper" == *"COMPLETED"* ]] && [ $exit_code -eq 0 ] && ([ -z "$slurm_signal" ] || [ "$slurm_signal" = "0" ]) && [ "$status" != "CANCELED" ] && status="COMPLETED"
+    ([ $exit_code -eq 130 ] || [ $exit_code -eq 137 ] || [ $exit_code -eq 143 ] || [ $exit_code -eq 129 ]) && [ "$status" != "CANCELED" ] && status="CANCELED"
+    [ $exit_code -eq 0 ] && [ "$status" = "FAILED" ] && status="COMPLETED"
     mdwf_db update -e {{ ensemble_id }} -o {{ operation_type | default(operation) }} -s $status \
-      -p "slurm_job_id=$SLURM_JOB_ID exit_code=$exit_code runtime=$SECONDS host=$(hostname) slurm_state=${slurm_state:-unknown}" || true
+      -p "slurm_job_id=$job_id exit_code=$exit_code runtime=$SECONDS host=$(hostname) slurm_state=${slurm_state:-unknown} slurm_exit_code=${slurm_exit_code:-unknown} slurm_signal=${slurm_signal:-unknown}" || true
 }
 trap cleanup_and_update_status EXIT TERM INT
 
