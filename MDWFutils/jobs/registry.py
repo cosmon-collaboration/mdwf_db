@@ -36,6 +36,8 @@ _TYPE_OVERRIDES = {
     "HMCCPUContextBuilder": "hmc_cpu",
     "HMCXMLContextBuilder": "hmc_xml",
     "MresMQContextBuilder": "mres_mq",
+    "GluContextBuilder": "glu_input",
+    "WitContextBuilder": "wit_input",
 }
 
 
