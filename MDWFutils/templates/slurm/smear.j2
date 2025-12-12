@@ -18,14 +18,35 @@ mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
 
 SECONDS=0
 
+# Track if any job failed (initialize before trap)
+JOB_FAILED=0
+
+# Function to update status on exit (called by trap)
+cleanup_and_update_status() {
+    # Use JOB_FAILED to set exit code if it's been set (0 = success, 1 = failure)
+    # Otherwise $? will be correct for signal-based exits
+    if [ -n "${JOB_FAILED:-}" ]; then
+        [ $JOB_FAILED -eq 0 ]
+    fi
+    {% set operation_type = operation %}
+    {% include 'common/update_status.j2' %}
+}
+
+# Set trap to ensure status update runs on exit
+trap cleanup_and_update_status EXIT TERM INT
+
 GLU="{{ glu_exec_path }}"
 STEP={{ config_inc }}
 NSIM={{ nsim }}
 let 'Nth={{ cpus_per_task }} / NSIM'
 export OMP_NUM_THREADS=$Nth
 
+# Temporarily disable exit on error to handle background job failures gracefully
+set +e
+
 let 'mxcnf=STEP*NSIM'
 for((cnf={{ config_start }}; cnf<{{ config_end }}; cnf+=$mxcnf)); do
+    PIDS=()
     for((i=0;i<$NSIM;i++)); do
         let 'c=cnf+STEP*i'
         (( c>{{ config_end }} )) && break
@@ -41,10 +62,36 @@ for((cnf={{ config_start }}; cnf<{{ config_end }}; cnf+=$mxcnf)); do
 
         in_cfg="{{ config_dir }}/{{ config_prefix }}${c}"
         out_cfg="{{ smear_dir }}/{{ prefix_for_files }}n${c}"
-        "$GLU" -i "{{ glu_input_path }}" -c "$in_cfg" -o "$out_cfg" &
+        
+        # Check if input file exists
+        if [ ! -f "$in_cfg" ]; then
+            echo "ERROR: Input config file not found: $in_cfg" >&2
+            JOB_FAILED=1
+            continue
+        fi
+        
+        echo "Running GLU for config $c: $GLU -i {{ glu_input_path }} -c $in_cfg -o $out_cfg"
+        "$GLU" -i "{{ glu_input_path }}" -c "$in_cfg" -o "$out_cfg" 2>&1 &
+        PIDS+=($!)
     done
-    wait
+    
+    # Wait for all background jobs and check their exit codes
+    for pid in "${PIDS[@]}"; do
+        if ! wait $pid; then
+            echo "ERROR: GLU process failed for PID $pid (config may be corrupted or GLU error)" >&2
+            JOB_FAILED=1
+        fi
+    done
 done
+
+# Re-enable exit on error
+set -e
+
+# Set exit code: this command will set $? appropriately for the status update
+[ $JOB_FAILED -eq 0 ]
+
+# Disable trap since we're updating status normally (trap already handled cleanup if needed)
+trap - EXIT TERM INT
 
 {% set operation_type = operation %}
 {% include 'common/update_status.j2' %}

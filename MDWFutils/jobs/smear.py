@@ -79,8 +79,8 @@ class SmearContextBuilder(ContextBuilder):
             "glu_exec_path": job_params.get("glu_path"),
             # Dynamic default with fallback
             "job_name": job_params.get("job_name") or f"smear_{ensemble_id}",
-            # Alias for template (ranks -> ntasks_per_node)
-            "ntasks_per_node": job_params["ranks"],
+            # Don't set ntasks_per_node - old script didn't use --ntasks-per-node
+            # (ranks parameter exists but wasn't used in SBATCH header)
             # DB tracking
             "ensemble_id": ensemble_id,
             "operation": "GLU_SMEAR",
