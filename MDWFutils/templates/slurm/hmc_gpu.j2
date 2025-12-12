@@ -80,6 +80,9 @@ mdwf_db update -e {{ ensemble_id }} -o HMC_{{ mode }} -s RUNNING \
 
 SECONDS=0
 
+{% set operation_type = "HMC_" ~ mode %}
+{% include 'common/exit_trap.j2' %}
+
 cd cnfg
 
 export CRAY_ACCEL_TARGET=nvidia80
@@ -98,8 +101,7 @@ echo "START $(date)"
 srun $BIND $EXEC --mpi {{ mpi }} --grid {{ volume }} --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > log_hmc/log_{{ ensemble_name }}.$start
 echo "STOP $(date)"
 
-{% set operation_type = "HMC_" ~ mode %}
-{% include 'common/update_status.j2' %}
+{% include 'common/exit_status_update.j2' %}
 
 echo "Job completed in $SECONDS seconds"
 echo "Log file: cnfg/log_hmc/log_{{ ensemble_name }}.$start"

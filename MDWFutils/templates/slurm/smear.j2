@@ -18,22 +18,7 @@ mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
 
 SECONDS=0
 
-# Track if any job failed (initialize before trap)
-JOB_FAILED=0
-
-# Function to update status on exit (called by trap)
-cleanup_and_update_status() {
-    # Use JOB_FAILED to set exit code if it's been set (0 = success, 1 = failure)
-    # Otherwise $? will be correct for signal-based exits
-    if [ -n "${JOB_FAILED:-}" ]; then
-        [ $JOB_FAILED -eq 0 ]
-    fi
-    {% set operation_type = operation %}
-    {% include 'common/update_status.j2' %}
-}
-
-# Set trap to ensure status update runs on exit
-trap cleanup_and_update_status EXIT TERM INT
+{% include 'common/exit_trap.j2' %}
 
 GLU="{{ glu_exec_path }}"
 STEP={{ config_inc }}
@@ -90,10 +75,6 @@ set -e
 # Set exit code: this command will set $? appropriately for the status update
 [ $JOB_FAILED -eq 0 ]
 
-# Disable trap since we're updating status normally (trap already handled cleanup if needed)
-trap - EXIT TERM INT
-
-{% set operation_type = operation %}
-{% include 'common/update_status.j2' %}
+{% include 'common/exit_status_update.j2' %}
 
 echo "Done in $SECONDS s"

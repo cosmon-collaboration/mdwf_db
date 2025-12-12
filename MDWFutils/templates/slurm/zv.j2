@@ -13,6 +13,8 @@ mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
 
 SECONDS=0
 
+{% include 'common/exit_trap.j2' %}
+
 {{ env_setup }}
 export LD_LIBRARY_PATH=/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/quda/lib:$LD_LIBRARY_PATH
 
@@ -44,7 +46,6 @@ srun -n {{ ranks }} "$BIND" "$EXEC" -i "$WIT_INPUT" \
     -ogeom {{ ogeom }} \
     -lgeom {{ lgeom }}
 
-{% set operation_type = operation %}
-{% include 'common/update_status.j2' %}
+{% include 'common/exit_status_update.j2' %}
 
 echo "All done in $SECONDS seconds"

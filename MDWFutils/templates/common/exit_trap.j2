@@ -1,0 +1,33 @@
+# Track if any job failed (initialize before trap)
+# Jobs can set JOB_FAILED=1 to indicate failure
+JOB_FAILED=${JOB_FAILED:-0}
+
+# Function to update status on exit (called by trap)
+cleanup_and_update_status() {
+    # Capture exit code
+    local exit_code=${EXIT_CODE:-$?}
+    
+    # Use JOB_FAILED if set and non-zero, otherwise use exit_code
+    if [ -n "${JOB_FAILED:-}" ] && [ "$JOB_FAILED" -ne 0 ] 2>/dev/null; then
+        exit_code=$JOB_FAILED
+    fi
+    
+    # Determine status based on exit code
+    local status
+    if [ $exit_code -eq 0 ]; then
+        status="COMPLETED"
+    elif [ $exit_code -eq 130 ] || [ $exit_code -eq 137 ] || [ $exit_code -eq 143 ]; then
+        status="CANCELED"
+    else
+        status="FAILED"
+    fi
+    
+    # Update database status
+    mdwf_db update -e {{ ensemble_id }} -o {{ operation_type | default(operation) }} -s $status \
+      -p "slurm_job_id=$SLURM_JOB_ID exit_code=$exit_code runtime=$SECONDS host=$(hostname)" \
+      || true
+}
+
+# Set trap to ensure status update runs on exit
+trap cleanup_and_update_status EXIT TERM INT
+
