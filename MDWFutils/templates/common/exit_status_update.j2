@@ -1,14 +1,6 @@
-# Set EXIT_CODE if not already set (from previous command's $?)
 EXIT_CODE=${EXIT_CODE:-$?}
-
-# Use JOB_FAILED if set and non-zero, otherwise use EXIT_CODE
-if [ -n "${JOB_FAILED:-}" ] && [ "$JOB_FAILED" -ne 0 ] 2>/dev/null; then
-    EXIT_CODE=$JOB_FAILED
-fi
-
-# Disable trap and call cleanup function directly (avoids double-update)
+[ -n "${JOB_FAILED:-}" ] && [ "$JOB_FAILED" -ne 0 ] 2>/dev/null && EXIT_CODE=$JOB_FAILED
 trap - EXIT TERM INT
 cleanup_and_update_status
-
 exit $EXIT_CODE
 
