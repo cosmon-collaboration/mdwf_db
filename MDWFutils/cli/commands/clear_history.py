@@ -20,25 +20,8 @@ WHAT THIS DOES:
 • Preserves the ensemble record and its physics parameters
 • Useful for cleaning up failed runs or resetting workflow state
 
-WHAT IS PRESERVED:
-• Ensemble record (ID, directory, status, creation time)
-• Physics parameters (beta, masses, lattice dimensions)
-• Description and other ensemble metadata
-
-WHAT IS REMOVED:
-• All operation records (HMC, smearing, measurements, etc.)
-• Operation parameters (config ranges, job IDs, exit codes)
-• Operation timestamps and status information
-
 WARNING: This operation is irreversible. All job history and operation 
 status will be permanently deleted.
-
-FLEXIBLE ENSEMBLE IDENTIFICATION:
-The --ensemble parameter accepts multiple formats:
-  • Ensemble ID: -e 1
-  • Relative path: -e ./TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64
-  • Absolute path: -e /full/path/to/ensemble
-  • Current directory: -e . (when run from within ensemble directory)
 
 EXAMPLES:
   mdwf_db clear-history -e 1           # Clear history for ensemble 1

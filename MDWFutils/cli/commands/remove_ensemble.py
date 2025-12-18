@@ -31,13 +31,6 @@ Use --remove-directory to also delete the on-disk ensemble tree.
 WARNING: Database removal is irreversible. All ensemble and operation
 data will be permanently deleted from the database.
 
-FLEXIBLE ENSEMBLE IDENTIFICATION:
-The --ensemble parameter accepts multiple formats:
-  • Ensemble ID: -e 1
-  • Relative path: -e ./TUNING/b6.0/b1.8Ls24/mc0.85/ms0.07/ml0.02/L32/T64
-  • Absolute path: -e /full/path/to/ensemble
-  • Current directory: -e . (when run from within ensemble directory)
-
 EXAMPLES:
   # Remove from database only (preserve files)
   mdwf_db remove-ensemble -e 1

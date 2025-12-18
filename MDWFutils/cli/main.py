@@ -15,19 +15,6 @@ def get_default_db_connection():
     """
     return os.getenv('MDWF_DB_URL')
 
-def _generate_command_help(subparsers):
-    """Auto-generate command list from registered subparsers."""
-    commands = []
-    
-    for name in sorted(subparsers.choices.keys()):
-        parser = subparsers.choices[name]
-        help_text = parser.description or ''
-        commands.append(f"  {name:<20} {help_text}")
-    
-    lines = ["Available commands:", ""]
-    lines.extend(commands)
-    return "\n".join(lines)
-
 def main():
     # Create parser WITHOUT epilog initially
     parser = argparse.ArgumentParser(
@@ -36,7 +23,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    subs   = parser.add_subparsers(dest='cmd')
+    # Use metavar='<command>' to suppress verbose {cmd1,cmd2,...} display
+    subs = parser.add_subparsers(dest='cmd', metavar='<command>')
 
     # Dynamically import every module in cli/commands and call its register()
     pkg = importlib.import_module('MDWFutils.cli.commands')
@@ -46,23 +34,11 @@ def main():
         if hasattr(mod, 'register'):
             mod.register(subs)
 
-    # NOW generate and set epilog with registered commands
-    command_help = _generate_command_help(subs)
-    parser.epilog = f"""
-{command_help}
+    # Set epilog with usage hints (command list is shown by argparse automatically)
+    parser.epilog = """Use 'mdwf_db <command> --help' for detailed help on a specific command.
 
-FLEXIBLE IDENTIFIERS:
-Most commands accept either ensemble IDs (integers) or directory paths:
-  -e 1                    # Use ensemble ID
-  -e ./TUNING/b6.0/...    # Use relative path
-  -e /full/path/to/ens    # Use absolute path
-  -e .                    # Use current directory (when inside ensemble)
-
-DATABASE CONNECTION:
-Use MDWF_DB_URL environment variable:
-  export MDWF_DB_URL=mongodb://host:port/database?authSource=admin
-
-For detailed help: mdwf_db <command> --help
+Database connection: set MDWF_DB_URL environment variable
+Ensemble identifiers: use ID (-e 1), path (-e ./path), or current dir (-e .)
 """
 
     args = parser.parse_args()
