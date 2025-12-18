@@ -39,6 +39,6 @@ echo "MPICH_OFI_NIC_MAPPING=${MPICH_OFI_NIC_MAPPING}"
 EXEC="{{ wit_exec_path }}"
 BIND="{{ bind_script }}"
 echo "Running meson2pt range {{ config_start }}-{{ config_end }} step {{ config_inc }}"
-srun -n {{ ranks }} "$BIND" "$EXEC" -i {{ wit_input_path }} -ogeom {{ ogeom }} -lgeom {{ lgeom }}
+srun -n {{ ranks }} $BIND $EXEC -i {{ wit_input_path }} -ogeom {{ ogeom }} -lgeom {{ lgeom }}
 
 echo "All done in $SECONDS seconds"
