@@ -101,7 +101,5 @@ echo "START $(date)"
 srun $BIND $EXEC --mpi {{ mpi }} --grid {{ volume }} --accelerator-threads 32 --dslash-unroll --shm 2048 --comms-overlap -shm-mpi 0 > log_hmc/log_{{ ensemble_name }}.$start
 echo "STOP $(date)"
 
-{% include 'common/exit_status_update.j2' %}
-
 echo "Job completed in $SECONDS seconds"
 echo "Log file: cnfg/log_hmc/log_{{ ensemble_name }}.$start"

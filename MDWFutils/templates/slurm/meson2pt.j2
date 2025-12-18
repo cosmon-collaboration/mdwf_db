@@ -38,23 +38,7 @@ echo "MPICH_OFI_NIC_MAPPING=${MPICH_OFI_NIC_MAPPING}"
 
 EXEC="{{ wit_exec_path }}"
 BIND="{{ bind_script }}"
-WIT_INPUT="{{ wit_input_path }}"
-
-generate_seed() {
-    local cfg=$1
-    echo $(( (RANDOM + cfg) % 100000 ))
-}
-
 echo "Running meson2pt range {{ config_start }}-{{ config_end }} step {{ config_inc }}"
-for cfg in $(seq {{ config_start }} {{ config_inc }} {{ config_end }}); do
-    seed=$(generate_seed "$cfg")
-    mdwf_db wit-input -e {{ ensemble_id }} -o "$WIT_INPUT" -w "Configurations.first=$cfg Configurations.last=$cfg Random number generator.seed=$seed Propagator 0.Seed=$seed Propagator 1.Seed=$seed Propagator 2.Seed=$seed"
-    echo "Config $cfg seed $seed"
-    srun -n {{ ranks }} "$BIND" "$EXEC" -i "$WIT_INPUT" \
-        -ogeom {{ ogeom }} \
-        -lgeom {{ lgeom }}
-done
-
-{% include 'common/exit_status_update.j2' %}
+srun -n {{ ranks }} "$BIND" "$EXEC" -i {{ wit_input_path }} -ogeom {{ ogeom }} -lgeom {{ lgeom }}
 
 echo "All done in $SECONDS seconds"

@@ -45,6 +45,4 @@ srun -n {{ ranks }} $BIND $EXEC -i "$WIT_INPUT" \
     -ogeom {{ ogeom }} \
     -lgeom {{ lgeom }}
 
-{% include 'common/exit_status_update.j2' %}
-
 echo "All done in $SECONDS seconds"

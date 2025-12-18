@@ -47,6 +47,4 @@ for((cnf={{ config_start }};cnf<{{ config_end }};cnf+=$mxcnf)); do
     wait
 done
 
-{% include 'common/exit_status_update.j2' %}
-
 echo "Done in $SECONDS s"

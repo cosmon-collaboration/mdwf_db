@@ -104,7 +104,5 @@ echo "START $(date)"
 srun $BIND $EXEC --mpi {{ mpi }} --grid {{ volume }} --dslash-unroll --cacheblocking {{ cacheblocking }} > log_hmc/log_{{ ensemble_name }}.$start
 echo "STOP $(date)"
 
-{% include 'common/exit_status_update.j2' %}
-
 echo "All done in $SECONDS seconds"
 

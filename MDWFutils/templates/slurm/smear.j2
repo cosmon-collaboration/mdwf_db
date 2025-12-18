@@ -72,9 +72,5 @@ done
 # Re-enable exit on error
 set -e
 
-# Set exit code: this command will set $? appropriately for the status update
-[ $JOB_FAILED -eq 0 ]
-
-{% include 'common/exit_status_update.j2' %}
-
-echo "Done in $SECONDS s"
+# Exit with appropriate code for status tracking
+exit $JOB_FAILED
