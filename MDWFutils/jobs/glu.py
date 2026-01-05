@@ -13,8 +13,9 @@ class GluContextBuilder(ContextBuilder):
     """GLU smearing input file context builder."""
     
     input_params_schema = [
-        # Core smearing params (used by smear jobs)
-        ContextParam("SMEARTYPE", str, default="STOUT", choices=["STOUT", "APE", "HYP"], help="Smearing algorithm"),
+        # Core smearing params (used by both smear and wflow jobs)
+        # Note: choices validation happens at job builder level (SmearContextBuilder/WflowContextBuilder)
+        ContextParam("SMEARTYPE", str, default="STOUT", help="Smearing algorithm (STOUT/APE/HYP for smear, ADAPTWFLOW_STOUT for wflow)"),
         ContextParam("SMITERS", int, default=8, help="Smearing iterations"),
         ContextParam("ALPHA1", float, default=0.75, help="Alpha1 smearing parameter"),
         ContextParam("ALPHA2", float, default=0.4, help="Alpha2 smearing parameter"),

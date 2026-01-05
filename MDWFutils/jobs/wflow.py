@@ -7,6 +7,9 @@ DEFAULT_OUTPUT_PREFIX = "t0"
 DEFAULT_SMEAR_TYPE = "ADAPTWFLOW_STOUT"
 DEFAULT_SMITERS = 250
 DEFAULT_NSIM = 4
+DEFAULT_ALPHA1 = 0.02
+DEFAULT_ALPHA2 = 0.01
+DEFAULT_ALPHA3 = 0.005
 
 
 class WflowContextBuilder(ContextBuilder):
@@ -16,6 +19,8 @@ class WflowContextBuilder(ContextBuilder):
         *common_slurm_params(),
         # Override constraint for CPU jobs
         ContextParam("constraint", str, default="cpu", help="Node constraint"),
+        # Override ranks default (wflow uses 4, not 1)
+        ContextParam("ranks", int, default=4, help="MPI ranks"),
         # Wflow-specific params
         ContextParam("config_start", int, required=True, help="First configuration"),
         ContextParam("config_end", int, required=True, help="Last configuration"),
@@ -31,6 +36,9 @@ class WflowContextBuilder(ContextBuilder):
     input_params_schema = [
         ContextParam("SMEARTYPE", str, default=DEFAULT_SMEAR_TYPE, help="Smearing algorithm"),
         ContextParam("SMITERS", int, default=DEFAULT_SMITERS, help="Smearing iterations"),
+        ContextParam("ALPHA1", float, default=DEFAULT_ALPHA1, help="Alpha1 parameter for Wilson flow"),
+        ContextParam("ALPHA2", float, default=DEFAULT_ALPHA2, help="Alpha2 parameter for Wilson flow"),
+        ContextParam("ALPHA3", float, default=DEFAULT_ALPHA3, help="Alpha3 parameter for Wilson flow"),
     ]
     
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
