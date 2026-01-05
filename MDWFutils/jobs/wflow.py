@@ -81,7 +81,6 @@ class WflowContextBuilder(ContextBuilder):
             "glu_exec_path": job_params.get("glu_path"),
             "smear_type": smear_type,
             "smiters": smiters,
-            "ntasks_per_node": job_params["ranks"],
             "config_start": config_start,
             "config_end": config_end,
             "config_inc": config_inc,
