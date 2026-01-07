@@ -136,4 +136,26 @@ class DatabaseBackend(ABC):
     ) -> List[Dict]:
         """Query measurement documents for a range of configurations."""
 
+    @abstractmethod
+    def get_measured_configs(
+        self,
+        ensemble_id: int,
+        measurement_type: str,
+    ) -> List[int]:
+        """Return config numbers that have measurements of given type.
+        
+        Uses distinct() for efficiency - returns only config numbers, not documents.
+        """
+
+    @abstractmethod
+    def upsert_measurement(
+        self,
+        ensemble_id: int,
+        config_number: int,
+        measurement_type: str,
+        data: Dict,
+        metadata: Optional[Dict] = None,
+    ) -> str:
+        """Insert or replace a measurement document. Returns measurement ID."""
+
 

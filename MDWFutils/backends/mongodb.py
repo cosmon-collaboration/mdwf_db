@@ -428,4 +428,48 @@ class MongoDBBackend(DatabaseBackend):
             results.append(doc)
         return results
 
+    @retry_on_error()
+    def get_measured_configs(
+        self,
+        ensemble_id: int,
+        measurement_type: str,
+    ) -> List[int]:
+        """Return config numbers that have measurements of given type.
+        
+        Uses distinct() for efficiency - returns only config numbers, not documents.
+        """
+        query = {"ensemble_id": ensemble_id, "measurement_type": measurement_type}
+        configs = self.measurements.distinct("config_number", query)
+        return sorted(configs)
+
+    @retry_on_error()
+    def upsert_measurement(
+        self,
+        ensemble_id: int,
+        config_number: int,
+        measurement_type: str,
+        data: Dict,
+        metadata: Optional[Dict] = None,
+    ) -> str:
+        """Insert or replace a measurement document. Returns measurement ID."""
+        filter_query = {
+            "ensemble_id": ensemble_id,
+            "config_number": config_number,
+            "measurement_type": measurement_type,
+        }
+        document = {
+            "ensemble_id": ensemble_id,
+            "config_number": config_number,
+            "measurement_type": measurement_type,
+            "measurement_time": datetime.utcnow(),
+            "data": data,
+            "metadata": metadata or {},
+        }
+        result = self.measurements.replace_one(filter_query, document, upsert=True)
+        if result.upserted_id:
+            return str(result.upserted_id)
+        # If it was an update, find the existing document to return its ID
+        doc = self.measurements.find_one(filter_query)
+        return str(doc["_id"])
+
 

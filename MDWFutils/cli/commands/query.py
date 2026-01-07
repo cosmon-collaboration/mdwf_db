@@ -47,6 +47,8 @@ EXAMPLES:
     p.add_argument('--dir', action='store_true', help='Only print directory path in detail view')
     p.add_argument('--op', '--operation', type=int, metavar='OP_ID',
                    help='Show detailed information for a specific operation (requires -e)')
+    p.add_argument('--missing', metavar='TYPE',
+                   help='List config numbers missing measurements of TYPE (requires -e)')
     p.set_defaults(func=do_query)
 
 
@@ -70,6 +72,11 @@ def do_query(args):
     # Check if --op is used without -e
     if args.op and not args.ensemble:
         print("ERROR: --op requires -e/--ensemble")
+        return 1
+    
+    # Check if --missing is used without -e
+    if args.missing and not args.ensemble:
+        print("ERROR: --missing requires -e/--ensemble")
         return 1
 
     if not args.ensemble:
@@ -158,6 +165,23 @@ def do_query(args):
         print(ensemble['directory'])
         return 0
 
+    # Missing measurements mode - show configs missing a measurement type
+    if args.missing:
+        cfg = ensemble.get('configurations', {})
+        if not cfg.get('first') or not cfg.get('increment'):
+            print(f"ERROR: Ensemble {ensemble_id} has no configuration range defined")
+            return 1
+        
+        expected = set(range(cfg['first'], cfg['last'] + 1, cfg['increment']))
+        measured = set(backend.get_measured_configs(ensemble_id, args.missing))
+        missing = sorted(expected - measured)
+        
+        if missing:
+            print(f"Configs missing {args.missing} for ensemble {ensemble_id}: {', '.join(map(str, missing))}")
+        else:
+            print(f"All configs have {args.missing} measurements for ensemble {ensemble_id}")
+        return 0
+    
     # Operation detail mode - show specific operation
     if args.op:
         operation = backend.get_operation(ensemble_id, args.op)

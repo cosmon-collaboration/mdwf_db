@@ -13,19 +13,20 @@ from MDWFutils.exceptions import ConnectionError, EnsembleNotFoundError
 from .components import EnsembleResolver
 
 
-def add_ensemble_argument(parser, help_text=None):
+def add_ensemble_argument(parser, help_text=None, required=True):
     """
     Add ensemble identifier argument to a parser.
     
     Args:
         parser: ArgumentParser to add the argument to
         help_text: Custom help text (optional)
+        required: Whether the argument is required (default: True)
     """
     default_help = ('Ensemble identifier: either ensemble ID (integer) or path to ensemble directory')
     
     parser.add_argument(
         '-e', '--ensemble',
-        required=True,
+        required=required,
         help=help_text or default_help
     )
 
