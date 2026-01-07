@@ -12,7 +12,27 @@ def register(subparsers):
     p = subparsers.add_parser(
         'scan',
         help='Update configuration ranges based on cnfg/ files',
-        description='Walk each ensemble cnfg/ directory and store first/last/inc/total in the database.'
+        description="""
+Scan ensemble directories and update the database.
+
+WHAT THIS DOES:
+• Scans cnfg/ directory to update configuration counts (first/last/increment/total)
+• Scans t0/ directory to parse and store gauge observables (plaq, Q, t0, w0)
+• Reports missing gauge observable measurements
+
+GAUGE OBSERVABLES STORED:
+• plaq - Plaquette
+• Q - Topological charge  
+• sqrt_t0_clov, sqrt_t0_plaq - t0 scales (clover and plaquette)
+• w0_clov, w0_plaq - w0 scales (clover and plaquette)
+
+EXAMPLES:
+  mdwf_db scan                    # Scan all ensembles
+  mdwf_db scan -e 5               # Scan only ensemble 5
+  mdwf_db scan --force            # Re-update config counts even if unchanged
+  mdwf_db scan --overwrite        # Re-parse gauge observables already in DB
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     add_ensemble_argument(p, help_text='Optional: scan only this ensemble (ID, path, or nickname)', required=False)
     p.add_argument('--force', action='store_true', help='Update config counts even if unchanged')

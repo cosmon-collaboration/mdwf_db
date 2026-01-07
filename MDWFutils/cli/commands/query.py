@@ -2,6 +2,7 @@
 """List ensembles or show details using the new backend."""
 
 import argparse
+import math
 
 from ..ensemble_utils import resolve_ensemble_from_args, get_backend_for_args
 
@@ -13,7 +14,7 @@ def register(subparsers):
         description="""
 Query the MDWF database for ensemble information.
 
-THREE MODES:
+FIVE MODES:
 
 1. List mode (no --ensemble specified):
    Shows a spreadsheet-like table of all ensembles with columns:
@@ -31,6 +32,13 @@ THREE MODES:
    Shows complete information for a specific operation including all timing,
    SLURM details, execution context, chain information, and parameters.
 
+4. Missing measurements mode (with --ensemble and --missing specified):
+   Lists configuration numbers that are missing a specific measurement type.
+
+5. Measurements display mode (with --ensemble and --measurements specified):
+   Shows stored measurement data in a formatted table.
+   Use --cfg-range to filter to a specific configuration range.
+
 EXAMPLES:
   mdwf_db query                    # List all ensembles (sorted by parameters)
   mdwf_db query --sort-by-id       # List all ensembles sorted by EID
@@ -38,6 +46,9 @@ EXAMPLES:
   mdwf_db query -e .               # Show current ensemble
   mdwf_db query -e 1 --dir         # Show only the directory path
   mdwf_db query -e 21 --op 147     # Show details for operation 147
+  mdwf_db query -e 5 --missing gauge_obs              # List configs missing gauge_obs
+  mdwf_db query -e 5 --measurements gauge_obs         # Show all gauge_obs data
+  mdwf_db query -e 5 --measurements gauge_obs --cfg-range 100 200
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -49,6 +60,10 @@ EXAMPLES:
                    help='Show detailed information for a specific operation (requires -e)')
     p.add_argument('--missing', metavar='TYPE',
                    help='List config numbers missing measurements of TYPE (requires -e)')
+    p.add_argument('--measurements', metavar='TYPE',
+                   help='Show measurements of TYPE in table format (requires -e)')
+    p.add_argument('--cfg-range', nargs=2, type=int, metavar=('START', 'END'),
+                   help='Filter to config range (use with --measurements)')
     p.set_defaults(func=do_query)
 
 
@@ -77,6 +92,16 @@ def do_query(args):
     # Check if --missing is used without -e
     if args.missing and not args.ensemble:
         print("ERROR: --missing requires -e/--ensemble")
+        return 1
+    
+    # Check if --measurements is used without -e
+    if args.measurements and not args.ensemble:
+        print("ERROR: --measurements requires -e/--ensemble")
+        return 1
+    
+    # Check if --cfg-range is used without --measurements
+    if args.cfg_range and not args.measurements:
+        print("ERROR: --cfg-range requires --measurements")
         return 1
 
     if not args.ensemble:
@@ -182,6 +207,30 @@ def do_query(args):
             print(f"All configs have {args.missing} measurements for ensemble {ensemble_id}")
         return 0
     
+    # Measurements display mode - show stored measurements in table format
+    if args.measurements:
+        config_start = None
+        config_end = None
+        if args.cfg_range:
+            config_start, config_end = args.cfg_range
+        
+        measurements = backend.query_measurements(
+            ensemble_id,
+            args.measurements,
+            config_start=config_start,
+            config_end=config_end
+        )
+        
+        if not measurements:
+            print(f"No {args.measurements} measurements found for ensemble {ensemble_id}")
+            if args.cfg_range:
+                print(f"  (filtered to config range {config_start}-{config_end})")
+            return 0
+        
+        # Format measurements as table
+        _print_measurements_table(measurements, args.measurements, ensemble_id)
+        return 0
+    
     # Operation detail mode - show specific operation
     if args.op:
         operation = backend.get_operation(ensemble_id, args.op)
@@ -267,6 +316,70 @@ def do_query(args):
         _print_table(op_headers, op_rows)
 
     return 0
+
+
+def _print_measurements_table(measurements, measurement_type, ensemble_id):
+    """Print measurements in a formatted table."""
+    if not measurements:
+        return
+    
+    # Special formatting for gauge_obs
+    if measurement_type == 'gauge_obs':
+        headers = ['CFG', 'PLAQ', 'Q', 'T0_CLOV', 'T0_PLAQ', 'W0_CLOV', 'W0_PLAQ']
+        rows = []
+        for m in measurements:
+            data = m.get('data', {})
+            row = {
+                'CFG': m.get('config_number', ''),
+                'PLAQ': _format_float(data.get('plaq')),
+                'Q': _format_float(data.get('Q')),
+                'T0_CLOV': _format_float(data.get('sqrt_t0_clov')),
+                'T0_PLAQ': _format_float(data.get('sqrt_t0_plaq')),
+                'W0_CLOV': _format_float(data.get('w0_clov')),
+                'W0_PLAQ': _format_float(data.get('w0_plaq')),
+            }
+            rows.append(row)
+        
+        print(f"\nGauge observables for ensemble {ensemble_id} ({len(measurements)} configs)\n")
+        _print_table(headers, rows)
+    else:
+        # Generic formatting for other measurement types
+        # Extract all unique keys from data dicts
+        all_keys = set()
+        for m in measurements:
+            all_keys.update(m.get('data', {}).keys())
+        
+        if not all_keys:
+            print(f"No data fields found in {measurement_type} measurements")
+            return
+        
+        headers = ['CFG'] + sorted(all_keys)
+        rows = []
+        for m in measurements:
+            data = m.get('data', {})
+            row = {'CFG': m.get('config_number', '')}
+            for key in sorted(all_keys):
+                value = data.get(key)
+                if isinstance(value, float):
+                    row[key] = _format_float(value)
+                else:
+                    row[key] = str(value) if value is not None else ''
+            rows.append(row)
+        
+        print(f"\n{measurement_type} measurements for ensemble {ensemble_id} ({len(measurements)} configs)\n")
+        _print_table(headers, rows)
+
+
+def _format_float(value):
+    """Format a float value, handling NaN."""
+    if value is None:
+        return ''
+    try:
+        if math.isnan(value):
+            return 'NaN'
+        return f"{value:.5f}".rstrip('0').rstrip('.')
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _print_table(headers, rows):
