@@ -234,16 +234,25 @@ def _parse_gauge_obs(filepath: Path) -> dict:
 def _report_missing(backend, ensemble_id: int, ensemble: dict):
     """Report missing gauge observable measurements (DB-only comparison)."""
     cfg = ensemble.get('configurations', {})
-    if not cfg.get('first') or not cfg.get('increment'):
+    if not cfg.get('first'):
         return
     
     try:
-        expected = set(range(cfg['first'], cfg['last'] + 1, cfg['increment']))
+        nick = ensemble.get('nickname') or ensemble_id
         measured = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
+        
+        if not cfg.get('increment'):
+            # Non-uniform config spacing - can't compute expected set
+            # Just report what we have
+            total = cfg.get('total', '?')
+            if measured:
+                print(f"  {nick}: {len(measured)}/{total} configs have gauge_obs")
+            return
+        
+        expected = set(range(cfg['first'], cfg['last'] + 1, cfg['increment']))
         missing = sorted(expected - measured)
         
         if missing:
-            nick = ensemble.get('nickname') or ensemble_id
             if len(missing) <= 10:
                 print(f"  {nick}: {len(missing)} configs missing gauge_obs: {missing}")
             else:

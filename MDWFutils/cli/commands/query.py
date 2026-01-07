@@ -193,9 +193,21 @@ def do_query(args):
     # Missing measurements mode - show configs missing a measurement type
     if args.missing:
         cfg = ensemble.get('configurations', {})
-        if not cfg.get('first') or not cfg.get('increment'):
-            print(f"ERROR: Ensemble {ensemble_id} has no configuration range defined")
+        if not cfg.get('first'):
+            print(f"ERROR: Ensemble {ensemble_id} has no configuration range defined (run 'mdwf scan' first)")
             return 1
+        
+        if not cfg.get('increment'):
+            # Non-uniform config spacing - can't compute expected set automatically
+            # Just show what we have measured
+            measured = backend.get_measured_configs(ensemble_id, args.missing)
+            total = cfg.get('total', '?')
+            print(f"Ensemble {ensemble_id} has non-uniform config spacing (increment unknown)")
+            print(f"  Known configs: {cfg.get('first')}-{cfg.get('last')} ({total} total)")
+            print(f"  Measured {args.missing}: {len(measured)} configs")
+            if measured:
+                print(f"  Measured range: {min(measured)}-{max(measured)}")
+            return 0
         
         expected = set(range(cfg['first'], cfg['last'] + 1, cfg['increment']))
         measured = set(backend.get_measured_configs(ensemble_id, args.missing))
