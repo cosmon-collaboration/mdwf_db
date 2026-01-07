@@ -20,6 +20,7 @@ ENSEMBLE_SCHEMA = {
         "last": int | None,
         "increment": int | None,
         "total": int | None,
+        "config_list": list[int],
     },
     "hmc_paths": {
         "exec_path": str | None,

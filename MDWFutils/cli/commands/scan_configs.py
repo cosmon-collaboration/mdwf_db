@@ -77,6 +77,7 @@ def do_scan(args):
                     and cfg.get('last') == last
                     and cfg.get('increment') == increment
                     and cfg.get('total') == total
+                    and cfg.get('config_list') == values
                 ):
                     should_update = False
             
@@ -88,6 +89,7 @@ def do_scan(args):
                         'last': last,
                         'increment': increment,
                         'total': total,
+                        'config_list': values,
                     },
                 )
                 updated += 1
@@ -117,26 +119,26 @@ def do_scan(args):
                 print(f"  Parsed {parsed_count} gauge observable file(s) for ensemble {ens_id}")
         
         # Report missing (DB-only comparison)
-        _report_missing(backend, ens_id, ens)
+        # Use the config_list we just scanned, or fall back to what's in the DB
+        config_list = values if values else ens.get('configurations', {}).get('config_list', [])
+        _report_missing(backend, ens_id, ens, config_list)
 
     print(f"Scan complete: {updated} ensemble(s) updated")
     return 0
 
 
 def _extract_cfg_numbers(cnfg_dir: Path):
+    """Extract config numbers from ckpoint_EODWF_lat.{number} files."""
     if not cnfg_dir.exists():
         return []
+    pattern = re.compile(r'^ckpoint_EODWF_lat\.(\d+)$')
     numbers = []
     for child in cnfg_dir.iterdir():
         if not child.is_file():
             continue
-        m = list(re.finditer(r"(\d+)", child.name))
-        if not m:
-            continue
-        try:
-            numbers.append(int(m[-1].group(1)))
-        except ValueError:
-            pass
+        m = pattern.match(child.name)
+        if m:
+            numbers.append(int(m.group(1)))
     return sorted(set(numbers))
 
 
@@ -231,25 +233,15 @@ def _parse_gauge_obs(filepath: Path) -> dict:
     return data
 
 
-def _report_missing(backend, ensemble_id: int, ensemble: dict):
+def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list):
     """Report missing gauge observable measurements (DB-only comparison)."""
-    cfg = ensemble.get('configurations', {})
-    if not cfg.get('first'):
+    if not config_list:
         return
     
     try:
         nick = ensemble.get('nickname') or ensemble_id
+        expected = set(config_list)
         measured = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
-        
-        if not cfg.get('increment'):
-            # Non-uniform config spacing - can't compute expected set
-            # Just report what we have
-            total = cfg.get('total', '?')
-            if measured:
-                print(f"  {nick}: {len(measured)}/{total} configs have gauge_obs")
-            return
-        
-        expected = set(range(cfg['first'], cfg['last'] + 1, cfg['increment']))
         missing = sorted(expected - measured)
         
         if missing:
