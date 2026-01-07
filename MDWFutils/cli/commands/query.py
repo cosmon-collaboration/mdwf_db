@@ -284,25 +284,32 @@ def do_query(args):
             print(f"  bind_script_cpu = {hmc_paths['bind_script_cpu']}")
 
     # Gauge observables summary
-    gauge_configs = backend.get_measured_configs(ensemble_id, 'gauge_obs')
-    config_list = cfg.get('config_list', [])
+    gauge_configs = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
+    config_set = set(cfg.get('config_list', []))
     print("\nGauge observables:")
-    if gauge_configs:
-        measured_count = len(gauge_configs)
-        measured_range = f"{min(gauge_configs)}-{max(gauge_configs)}"
-        if config_list:
-            missing_count = len(set(config_list) - set(gauge_configs))
-            total_configs = len(config_list)
-            print(f"  Measured: {measured_count}/{total_configs} configs (range: {measured_range})")
-            if missing_count > 0:
-                print(f"  Missing:  {missing_count} configs")
+    if gauge_configs or config_set:
+        # Configs that exist AND have measurements
+        have_both = config_set & gauge_configs
+        # Configs that exist but are missing measurements
+        missing = config_set - gauge_configs
+        # Measurements for configs that no longer exist
+        orphaned = gauge_configs - config_set
+        
+        if config_set:
+            print(f"  Measured: {len(have_both)}/{len(config_set)} configs")
         else:
-            print(f"  Measured: {measured_count} configs (range: {measured_range})")
+            print(f"  Measured: {len(gauge_configs)} configs")
+        
+        if gauge_configs:
+            print(f"  Range:    {min(gauge_configs)}-{max(gauge_configs)}")
+        
+        if missing:
+            print(f"  Missing:  {len(missing)} configs")
+        
+        if orphaned:
+            print(f"  Orphaned: {len(orphaned)} measurements (configs no longer exist)")
     else:
-        if config_list:
-            print(f"  Measured: 0/{len(config_list)} configs")
-        else:
-            print("  (none)")
+        print("  (none)")
 
     # Operations summary table
     print('\nOperations:')
