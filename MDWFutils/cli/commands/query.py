@@ -325,7 +325,7 @@ def _print_measurements_table(measurements, measurement_type, ensemble_id):
     
     # Special formatting for gauge_obs
     if measurement_type == 'gauge_obs':
-        headers = ['CFG', 'PLAQ', 'Q', 'SQRT T0_CLOV', 'SQRT T0_PLAQ', 'W0_CLOV', 'W0_PLAQ']
+        headers = ['CFG', 'PLAQ', 'Q', 'SQRT(T0_CLOV)', 'SQRT(T0_PLAQ)', 'W0_CLOV', 'W0_PLAQ']
         rows = []
         for m in measurements:
             data = m.get('data', {})
@@ -333,8 +333,8 @@ def _print_measurements_table(measurements, measurement_type, ensemble_id):
                 'CFG': m.get('config_number', ''),
                 'PLAQ': _format_float(data.get('plaq')),
                 'Q': _format_float(data.get('Q')),
-                'T0_CLOV': _format_float(data.get('sqrt_t0_clov')),
-                'T0_PLAQ': _format_float(data.get('sqrt_t0_plaq')),
+                'SQRT(T0_CLOV)': _format_float(data.get('sqrt_t0_clov')),
+                'SQRT(T0_PLAQ)': _format_float(data.get('sqrt_t0_plaq')),
                 'W0_CLOV': _format_float(data.get('w0_clov')),
                 'W0_PLAQ': _format_float(data.get('w0_plaq')),
             }
