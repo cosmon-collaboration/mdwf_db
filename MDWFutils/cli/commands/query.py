@@ -283,6 +283,27 @@ def do_query(args):
         if hmc_paths.get('bind_script_cpu'):
             print(f"  bind_script_cpu = {hmc_paths['bind_script_cpu']}")
 
+    # Gauge observables summary
+    gauge_configs = backend.get_measured_configs(ensemble_id, 'gauge_obs')
+    config_list = cfg.get('config_list', [])
+    print("\nGauge observables:")
+    if gauge_configs:
+        measured_count = len(gauge_configs)
+        measured_range = f"{min(gauge_configs)}-{max(gauge_configs)}"
+        if config_list:
+            missing_count = len(set(config_list) - set(gauge_configs))
+            total_configs = len(config_list)
+            print(f"  Measured: {measured_count}/{total_configs} configs (range: {measured_range})")
+            if missing_count > 0:
+                print(f"  Missing:  {missing_count} configs")
+        else:
+            print(f"  Measured: {measured_count} configs (range: {measured_range})")
+    else:
+        if config_list:
+            print(f"  Measured: 0/{len(config_list)} configs")
+        else:
+            print("  (none)")
+
     # Operations summary table
     print('\nOperations:')
     ops = backend.list_operations(ensemble_id)
