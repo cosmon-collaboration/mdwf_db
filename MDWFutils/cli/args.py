@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
-def add_ensemble_arg(parser):
+
+def add_ensemble_arg(parser, required: bool = True):
+    """Add ensemble argument. Set required=False when --params flag is present."""
     parser.add_argument(
         "-e",
         "--ensemble",
-        required=True,
+        required=required,
         help="Ensemble ID, directory path, or nickname",
+    )
+
+
+def add_params_flag(parser):
+    """Add --params flag to show detailed parameter documentation."""
+    parser.add_argument(
+        "--params",
+        action="store_true",
+        help="Show detailed -i and -j parameter documentation and exit",
     )
 
 

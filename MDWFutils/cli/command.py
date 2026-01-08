@@ -15,6 +15,7 @@ from .args import (
     add_input_params_arg,
     add_job_params_arg,
     add_output_file_arg,
+    add_params_flag,
 )
 from .components import EnsembleResolver, ParameterManager, ScriptGenerator
 from .help_generator import HelpGenerator
@@ -126,17 +127,29 @@ class BaseCommand:
         return description
 
     def _add_arguments(self, parser):
-        add_ensemble_arg(parser)
+        # -e is not required when --params is used (validated in execute)
+        add_ensemble_arg(parser, required=False)
         add_input_params_arg(parser)
         add_job_params_arg(parser)
         add_output_file_arg(parser)
         add_default_params_group(parser)
+        add_params_flag(parser)
         self.add_custom_args(parser)
 
     # ------------------------------------------------------------------
     # Execution workflow
     # ------------------------------------------------------------------
     def execute(self, args):
+        # Handle --params flag early (doesn't require ensemble or DB)
+        if getattr(args, 'params', False):
+            return self._print_params()
+        
+        # Validate that -e is provided for normal execution
+        if not args.ensemble:
+            print("ERROR: -e/--ensemble is required", file=sys.stderr)
+            print("Hint: Use --params to see parameter documentation without an ensemble", file=sys.stderr)
+            return 1
+        
         try:
             backend = self._resolve_backend(args)
             resolver = EnsembleResolver(backend)
@@ -274,6 +287,31 @@ class BaseCommand:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _print_params(self) -> int:
+        """Print detailed parameter documentation and exit."""
+        input_schema = None
+        job_schema = None
+        
+        if self.job_builder_class is not None:
+            input_schema = _deduplicate_schema(self.job_builder_class.input_params_schema)
+            job_schema = _deduplicate_schema(self.job_builder_class.job_params_schema)
+        elif self.input_builder_class is not None:
+            input_schema = _deduplicate_schema(self.input_builder_class.input_params_schema)
+        elif self.job_type:
+            from ..jobs.registry import get_job_schema
+            job_schema, input_schema = get_job_schema(self.job_type)
+        elif self.input_type:
+            from ..jobs.registry import get_input_schema
+            input_schema = get_input_schema(self.input_type)
+        
+        output = self.help_gen.format_params_detailed(
+            input_schema or [],
+            job_schema or [],
+            command_name=self.name or ""
+        )
+        print(output)
+        return 0
+
     def _resolve_backend(self, args):
         if self._backend_override is not None:
             return self._backend_override

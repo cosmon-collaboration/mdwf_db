@@ -135,4 +135,86 @@ class HelpGenerator:
 
         return typed
 
+    @staticmethod
+    def format_params_detailed(input_schema: List, job_schema: List, command_name: str = "") -> str:
+        """Format parameter schemas for --params output.
+        
+        Produces a detailed, tabular view of all -i and -j parameters.
+        """
+        lines = []
+        
+        if command_name:
+            lines.append(f"Parameters for: {command_name}")
+            lines.append("")
+        
+        if input_schema:
+            lines.append("Input parameters (-i \"KEY=VALUE ...\"):")
+            lines.append("-" * 70)
+            lines.extend(HelpGenerator._format_param_table(input_schema))
+            lines.append("")
+        
+        if job_schema:
+            lines.append("Job parameters (-j \"KEY=VALUE ...\"):")
+            lines.append("-" * 70)
+            lines.extend(HelpGenerator._format_param_table(job_schema))
+            lines.append("")
+        
+        if not input_schema and not job_schema:
+            lines.append("No parameters defined for this command.")
+        
+        lines.append("Usage example:")
+        if input_schema:
+            required_input = [p for p in input_schema if p.required]
+            if required_input:
+                example_input = " ".join(f"{p.name}=<value>" for p in required_input[:2])
+                lines.append(f'  -i "{example_input}"')
+        if job_schema:
+            required_job = [p for p in job_schema if p.required]
+            if required_job:
+                example_job = " ".join(f"{p.name}=<value>" for p in required_job[:2])
+                lines.append(f'  -j "{example_job}"')
+        
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_param_table(schema: List) -> List[str]:
+        """Format a single schema as aligned table rows."""
+        if not schema:
+            return []
+        
+        # Calculate column widths
+        name_width = max(len(p.name) for p in schema)
+        type_width = max(len(p.type.__name__) for p in schema)
+        
+        lines = []
+        for param in schema:
+            # Build status column (required or default)
+            if param.required:
+                status = "(required)"
+            elif param.default is not None:
+                default_str = str(param.default)
+                if len(default_str) > 25:
+                    default_str = default_str[:22] + "..."
+                status = f"[default: {default_str}]"
+            else:
+                status = "(optional)"
+            
+            # Add choices if present
+            if param.choices:
+                choices_str = ", ".join(map(str, param.choices))
+                if len(choices_str) > 30:
+                    choices_str = choices_str[:27] + "..."
+                status += f" [choices: {choices_str}]"
+            
+            # Format the line
+            name_col = param.name.ljust(name_width)
+            type_col = param.type.__name__.ljust(type_width)
+            lines.append(f"  {name_col}  {type_col}  {status}")
+            
+            # Add help text on next line if present
+            if param.help:
+                lines.append(f"      {param.help}")
+        
+        return lines
+
 

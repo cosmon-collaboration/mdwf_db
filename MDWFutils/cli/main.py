@@ -48,7 +48,8 @@ Ensemble identifiers: use ID (-e 1), path (-e ./path), or current dir (-e .)
 
     # Validate DB presence for commands that require an existing DB
     # Allow init-db to create a new database
-    if args.cmd != 'init-db':
+    # Allow --params to work without database (just shows documentation)
+    if args.cmd != 'init-db' and not getattr(args, 'params', False):
         db_conn = get_default_db_connection()
         if not db_conn:
             print("ERROR: No database connection configured.")
