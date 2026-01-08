@@ -15,6 +15,8 @@ DEFAULT_ALPHA3 = 0.005
 class WflowContextBuilder(ContextBuilder):
     """Wilson flow job context builder"""
     
+    type_name = "wflow"
+    
     job_params_schema = [
         *common_slurm_params(),
         # Override constraint for CPU jobs

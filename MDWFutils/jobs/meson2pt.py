@@ -16,6 +16,8 @@ DEFAULT_WIT_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit
 class Meson2ptContextBuilder(WitGPUContextBuilder):
     """Meson two-point job context builder"""
     
+    type_name = "meson2pt"
+    
     job_params_schema = [
         *common_wit_gpu_params(),
         # Meson2pt-specific params

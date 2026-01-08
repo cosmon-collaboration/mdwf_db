@@ -105,6 +105,9 @@ class ContextBuilder(ABC):
     - Schemas are class attributes (job_params_schema, input_params_schema)
     """
     
+    # Subclasses MUST set type_name for registry discovery
+    type_name: Optional[str] = None
+    
     # Subclasses should override these
     job_params_schema: Optional[List[ContextParam]] = None
     input_params_schema: Optional[List[ContextParam]] = None

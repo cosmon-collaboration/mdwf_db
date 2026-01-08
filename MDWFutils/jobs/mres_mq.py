@@ -16,6 +16,8 @@ DEFAULT_WIT_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit
 class MresMQContextBuilder(WitGPUContextBuilder):
     """Residual mass with modified heavy quark mass context builder."""
     
+    type_name = "mres_mq"
+    
     job_params_schema = [
         *common_wit_gpu_params(),
         # Mres_mq-specific params

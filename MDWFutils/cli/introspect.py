@@ -8,7 +8,7 @@ import pkgutil
 from typing import Any, Dict, List
 
 from .command import BaseCommand
-from ..jobs.schema import ContextParam
+from ..jobs.schema import ContextParam, _deduplicate_schema
 
 
 def get_command_metadata() -> Dict[str, Any]:
@@ -134,7 +134,8 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
     Returns (input_schema, job_schema, builder_class, builder_module) or
     (None, None, None, None) if not a BaseCommand.
     
-    Schemas are now retrieved from context builders via the registry.
+    Schemas are retrieved directly from builder classes when available,
+    or via registry for legacy commands.
     """
     try:
         # Convert cmd_name to module name (hmc-script -> hmc_script)
@@ -155,19 +156,7 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                             # This is a multi-variant wrapper
                             if variant and variant in wrapper_instance.commands:
                                 variant_cmd = wrapper_instance.commands[variant]
-                                # Get schemas from context builder via registry
-                                if variant_cmd.job_type:
-                                    from ..jobs.registry import get_job_schema
-                                    job_schema, input_schema = get_job_schema(variant_cmd.job_type)
-                                    builder = variant_cmd.job_type
-                                    return (input_schema, job_schema, builder, f"job:{builder}")
-                                elif variant_cmd.input_type:
-                                    # Input-only command
-                                    from ..jobs.registry import get_input_schema
-                                    input_schema = get_input_schema(variant_cmd.input_type)
-                                    builder = variant_cmd.input_type
-                                    return (input_schema, None, builder, f"input:{builder}")
-                                return (None, None, None, None)
+                                return _get_schemas_from_command(variant_cmd)
                             return (None, None, None, None)
                     except Exception:
                         # Not instantiable or doesn't have commands, continue
@@ -184,21 +173,37 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
                 
                 # Single variant command
                 if hasattr(cmd_instance, 'name') and cmd_instance.name == cmd_name:
-                    # Get schemas from context builder via registry
-                    if cmd_instance.job_type:
-                        from ..jobs.registry import get_job_schema
-                        job_schema, input_schema = get_job_schema(cmd_instance.job_type)
-                        builder = cmd_instance.job_type
-                        return (input_schema, job_schema, builder, f"job:{builder}")
-                    elif cmd_instance.input_type:
-                        # Input-only command
-                        from ..jobs.registry import get_input_schema
-                        input_schema = get_input_schema(cmd_instance.input_type)
-                        builder = cmd_instance.input_type
-                        return (input_schema, None, builder, f"input:{builder}")
-                    return (None, None, None, None)
+                    return _get_schemas_from_command(cmd_instance)
     except (ImportError, AttributeError, TypeError):
         pass
+    
+    return (None, None, None, None)
+
+
+def _get_schemas_from_command(cmd) -> tuple:
+    """Get schemas from a command instance, preferring direct builder class references."""
+    # Prefer direct builder class references (new style)
+    if cmd.job_builder_class is not None:
+        job_schema = _deduplicate_schema(cmd.job_builder_class.job_params_schema)
+        input_schema = _deduplicate_schema(cmd.job_builder_class.input_params_schema)
+        builder = cmd.job_builder_class.type_name
+        return (input_schema, job_schema, builder, f"job:{builder}")
+    elif cmd.input_builder_class is not None:
+        input_schema = _deduplicate_schema(cmd.input_builder_class.input_params_schema)
+        builder = cmd.input_builder_class.type_name
+        return (input_schema, None, builder, f"input:{builder}")
+    
+    # Fall back to legacy string-based lookup via registry
+    if cmd.job_type:
+        from ..jobs.registry import get_job_schema
+        job_schema, input_schema = get_job_schema(cmd.job_type)
+        builder = cmd.job_type
+        return (input_schema, job_schema, builder, f"job:{builder}")
+    elif cmd.input_type:
+        from ..jobs.registry import get_input_schema
+        input_schema = get_input_schema(cmd.input_type)
+        builder = cmd.input_type
+        return (input_schema, None, builder, f"input:{builder}")
     
     return (None, None, None, None)
 

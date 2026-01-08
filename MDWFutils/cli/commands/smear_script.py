@@ -2,14 +2,16 @@
 
 from ..command import BaseCommand
 from ...exceptions import ValidationError
+from ...jobs.smear import SmearContextBuilder
+from ...jobs.glu import GluContextBuilder
 
 
 class SmearCommand(BaseCommand):
     name = "smear-script"
     aliases = ["smear"]
     help = "Generate GLU smearing SLURM script"
-    job_type = "smear"
-    input_type = "glu_input"
+    job_builder_class = SmearContextBuilder
+    input_builder_class = GluContextBuilder
     default_variant = "stout8"
 
     def custom_validation(self, input_params, job_params, ensemble):

@@ -33,6 +33,8 @@ def _unflatten_params(flat_params: Dict) -> Dict:
 class WitContextBuilder(ContextBuilder):
     """WIT input file context builder."""
     
+    type_name = "wit_input"
+    
     input_params_schema = [
         ContextParam("Configurations.first", int, required=True, help="First configuration number"),
         ContextParam("Configurations.last", int, required=True, help="Last configuration number"),

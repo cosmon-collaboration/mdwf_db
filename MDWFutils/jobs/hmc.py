@@ -29,6 +29,8 @@ DEFAULT_CPU_CACHEBLOCKING = "2.2.2.2"
 class HMCGPUContextBuilder(ContextBuilder):
     """HMC GPU job context builder"""
     
+    type_name = "hmc_gpu"
+    
     job_params_schema = [
         *common_slurm_params(),
         # Override for GPU jobs
@@ -126,6 +128,8 @@ class HMCGPUContextBuilder(ContextBuilder):
 class HMCCPUContextBuilder(ContextBuilder):
     """HMC CPU job context builder"""
     
+    type_name = "hmc_cpu"
+    
     job_params_schema = [
         *common_slurm_params(),
         # Override for CPU jobs
@@ -214,6 +218,8 @@ class HMCCPUContextBuilder(ContextBuilder):
 
 class HMCXMLContextBuilder(ContextBuilder):
     """HMC XML input file context builder."""
+    
+    type_name = "hmc_xml"
     
     input_params_schema = [
         ContextParam("mode", str, default="tepid", choices=["tepid", "cold", "hot"], help="HMC start mode"),

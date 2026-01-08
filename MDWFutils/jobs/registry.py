@@ -2,16 +2,17 @@
 
 Builders are discovered automatically from MDWFutils.jobs.* modules so new
 builders are picked up without maintaining a static map.
+
+Each builder must declare an explicit `type_name` class attribute.
 """
 
 from __future__ import annotations
 
 import inspect
 import pkgutil
-import re
 from functools import lru_cache
 from importlib import import_module
-from typing import Callable, Dict, List, Tuple, Optional, Type
+from typing import Dict, List, Tuple, Optional, Type
 
 from .schema import ContextBuilder, _deduplicate_schema, WitGPUContextBuilder
 
@@ -30,29 +31,13 @@ _SKIP_MODULES = {
     "hmc_resubmit",
 }
 
-# Class-name overrides for type naming (handles consecutive capitals)
-_TYPE_OVERRIDES = {
-    "HMCGPUContextBuilder": "hmc_gpu",
-    "HMCCPUContextBuilder": "hmc_cpu",
-    "HMCXMLContextBuilder": "hmc_xml",
-    "MresMQContextBuilder": "mres_mq",
-    "GluContextBuilder": "glu_input",
-    "WitContextBuilder": "wit_input",
-}
-
-
-def _class_to_type_name(cls: Type[ContextBuilder]) -> str:
-    """Convert a ContextBuilder class name to a snake-case type name."""
-    name = cls.__name__
-    if name in _TYPE_OVERRIDES:
-        return _TYPE_OVERRIDES[name]
-    base = re.sub(r"ContextBuilder$", "", name)
-    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", base).lower()
-    return snake
-
 
 def _discover_builders() -> Tuple[Dict[str, Type[ContextBuilder]], Dict[str, Type[ContextBuilder]]]:
-    """Discover job and input builders dynamically from MDWFutils.jobs modules."""
+    """Discover job and input builders dynamically from MDWFutils.jobs modules.
+    
+    Each builder must have an explicit `type_name` class attribute.
+    Builders without type_name are skipped.
+    """
     import MDWFutils.jobs as jobs_pkg
 
     job_builders: Dict[str, Type[ContextBuilder]] = {}
@@ -68,7 +53,10 @@ def _discover_builders() -> Tuple[Dict[str, Type[ContextBuilder]], Dict[str, Typ
             if obj in (ContextBuilder, WitGPUContextBuilder):
                 continue  # skip bases
 
-            type_name = _class_to_type_name(obj)
+            # Use explicit type_name attribute (no magic naming)
+            type_name = getattr(obj, "type_name", None)
+            if type_name is None:
+                continue  # Skip builders without explicit type_name
 
             # Heuristic: if job_params_schema has entries, treat as job builder; otherwise input.
             job_schema = getattr(obj, "job_params_schema", None)

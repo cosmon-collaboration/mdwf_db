@@ -11,6 +11,8 @@ DEFAULT_WIT_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit
 class ZvContextBuilder(WitGPUContextBuilder):
     """Zv measurement job context builder"""
     
+    type_name = "zv"
+    
     job_params_schema = [
         *common_wit_gpu_params(),
         # Override time_limit for Zv (shorter jobs)

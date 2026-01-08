@@ -1,15 +1,16 @@
 """Wilson flow script command implemented via BaseCommand."""
 
 from ..command import BaseCommand
-from ...exceptions import ValidationError
+from ...jobs.wflow import WflowContextBuilder
+from ...jobs.glu import GluContextBuilder
 
 
 class WFlowCommand(BaseCommand):
     name = "wflow-script"
     aliases = ["wflow"]
     help = "Generate gradient flow SLURM script"
-    job_type = "wflow"
-    input_type = "glu_input"
+    job_builder_class = WflowContextBuilder
+    input_builder_class = GluContextBuilder
     default_variant = "default"
 
 

@@ -1,15 +1,16 @@
 """Zv script command built on BaseCommand."""
 
 from ..command import BaseCommand
-from ...exceptions import ValidationError
+from ...jobs.zv import ZvContextBuilder
+from ...jobs.wit import WitContextBuilder
 
 
 class ZvCommand(BaseCommand):
     name = "zv-script"
     aliases = ["zv"]
     help = "Generate Zv measurement script"
-    job_type = "zv"
-    input_type = "wit_input"
+    job_builder_class = ZvContextBuilder
+    input_builder_class = WitContextBuilder
     default_variant = "default"
 
 

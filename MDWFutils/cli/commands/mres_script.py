@@ -1,15 +1,16 @@
 """Residual mass script implemented via BaseCommand."""
 
 from ..command import BaseCommand
-from ...exceptions import ValidationError
+from ...jobs.mres import MresContextBuilder
+from ...jobs.wit import WitContextBuilder
 
 
 class MresCommand(BaseCommand):
     name = "mres-script"
     aliases = ["mres"]
     help = "Generate WIT mres measurement script"
-    job_type = "mres"
-    input_type = "wit_input"
+    job_builder_class = MresContextBuilder
+    input_builder_class = WitContextBuilder
     default_variant = "default"
 
 

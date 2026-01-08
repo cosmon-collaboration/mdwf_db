@@ -12,6 +12,8 @@ from .utils import ensure_keys
 class GluContextBuilder(ContextBuilder):
     """GLU smearing input file context builder."""
     
+    type_name = "glu_input"
+    
     input_params_schema = [
         # Core smearing params (used by both smear and wflow jobs)
         # Note: choices validation happens at job builder level (SmearContextBuilder/WflowContextBuilder)

@@ -1,15 +1,14 @@
 """Generate GLU input files via BaseCommand."""
 
 from ..command import BaseCommand
+from ...jobs.glu import GluContextBuilder
 
 
 class GluInputCommand(BaseCommand):
     name = "glu-input"
     aliases = ["glu"]
     help = "Generate GLU input file"
-    job_type = None
-    input_type = "glu_input"
-    job_schema = []
+    input_builder_class = GluContextBuilder
 
 
 def register(subparsers):

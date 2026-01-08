@@ -2,15 +2,14 @@
 
 from ..command import BaseCommand
 from ...exceptions import ValidationError
+from ...jobs.wit import WitContextBuilder
 
 
 class WitInputCommand(BaseCommand):
     name = "wit-input"
     aliases = ["wit"]
     help = "Generate WIT input file"
-    job_type = None
-    input_type = "wit_input"
-    job_schema = []
+    input_builder_class = WitContextBuilder
 
     def custom_validation(self, input_params, job_params, ensemble):
         if input_params.get("Configurations.first") is None:

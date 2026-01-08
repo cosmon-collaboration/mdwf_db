@@ -15,6 +15,8 @@ DEFAULT_NSIM = 8
 class SmearContextBuilder(ContextBuilder):
     """Smear job context builder"""
     
+    type_name = "smear"
+    
     job_params_schema = [
         *common_slurm_params(),
         # Override constraint for CPU jobs
