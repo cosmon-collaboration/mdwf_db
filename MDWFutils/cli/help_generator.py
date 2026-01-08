@@ -193,8 +193,8 @@ class HelpGenerator:
                 status = "(required)"
             elif param.default is not None:
                 default_str = str(param.default)
-                if len(default_str) > 25:
-                    default_str = default_str[:22] + "..."
+                if len(default_str) > 30:
+                    default_str = default_str[:27] + "..."
                 status = f"[default: {default_str}]"
             else:
                 status = "(optional)"
@@ -206,14 +206,11 @@ class HelpGenerator:
                     choices_str = choices_str[:27] + "..."
                 status += f" [choices: {choices_str}]"
             
-            # Format the line
+            # Format: NAME  TYPE  STATUS  - HELP
             name_col = param.name.ljust(name_width)
             type_col = param.type.__name__.ljust(type_width)
-            lines.append(f"  {name_col}  {type_col}  {status}")
-            
-            # Add help text on next line if present
-            if param.help:
-                lines.append(f"      {param.help}")
+            help_text = f" - {param.help}" if param.help else ""
+            lines.append(f"  {name_col}  {type_col}  {status}{help_text}")
         
         return lines
 
