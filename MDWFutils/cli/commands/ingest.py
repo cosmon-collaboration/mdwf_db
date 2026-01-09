@@ -195,11 +195,16 @@ class IngestMeson2ptCommand:
 class IngestAllCommand:
     """Command to ingest all available measurement types."""
     
-    help = "Ingest all available measurement types"
+    help = "Ingest all available measurement types (for one or all ensembles)"
     
     def register(self, parser: argparse.ArgumentParser):
         """Register arguments for this command."""
-        add_ensemble_argument(parser)
+        add_ensemble_argument(parser, required=False, 
+                              help_text='Ensemble to ingest (omit to ingest all ensembles)')
+        parser.add_argument(
+            '--creader',
+            help='Path to creader binary (or set MDWF_CREADER_PATH env var)',
+        )
         parser.add_argument(
             '--overwrite',
             action='store_true',
@@ -219,60 +224,87 @@ class IngestAllCommand:
     def execute(self, args):
         """Execute the ingest all command."""
         backend = get_backend_for_args(args)
-        ensemble_id, ensemble = backend.resolve_ensemble_identifier(args.ensemble)
-        if ensemble_id is None:
-            return 1
         
-        ensemble_path = Path(ensemble['directory'])
-        
-        # Register all ingestors (lazily, to handle missing dependencies)
-        ensemble_physics = ensemble.get('physics', {})
-        
-        def get_ingestors():
-            yield ("gauge_obs", GaugeObsScanner(), GaugeObsParser())
-            # mres and meson2pt require creader - skip if not available
-            try:
-                yield ("mres", MresScanner(), MresParser(ensemble_physics=ensemble_physics))
-            except ValueError as e:
-                print(f"Skipping mres: {e}")
-            try:
-                yield ("meson2pt", Meson2ptScanner(), Meson2ptParser())
-            except ValueError as e:
-                print(f"Skipping meson2pt: {e}")
-        
-        total_ingested = 0
-        total_skipped = 0
-        total_errors = 0
-        total_would_ingest = 0
-        
-        for measurement_type, scanner, parser in get_ingestors():
-            ingestor = MeasurementIngestor(backend, scanner, parser, measurement_type)
-            result = ingestor.ingest(
-                ensemble_id,
-                ensemble_path,
-                overwrite=args.overwrite,
-                clear=args.clear,
-                dry_run=args.dry_run,
-            )
-            
-            if args.dry_run:
-                print(f"{measurement_type}: would ingest {result.would_ingest}, skip {result.skipped}")
-                total_would_ingest += result.would_ingest
-            else:
-                print(f"{measurement_type}: ingested {result.ingested}, skipped {result.skipped}")
-                if result.errors:
-                    error_configs = [str(cfg) for cfg, _ in result.errors]
-                    print(f"  Errors on {len(result.errors)} configs: {', '.join(error_configs[:10])}")
-                total_ingested += result.ingested
-                total_skipped += result.skipped
-                total_errors += len(result.errors)
-        
-        if args.dry_run:
-            print(f"\nTotal: would ingest {total_would_ingest}")
+        # Get list of ensembles to process
+        if args.ensemble:
+            ensemble_id, ensemble = backend.resolve_ensemble_identifier(args.ensemble)
+            if ensemble_id is None:
+                return 1
+            ensembles = [(ensemble_id, ensemble)]
         else:
-            print(f"\nTotal: ingested {total_ingested}, skipped {total_skipped}, errors {total_errors}")
+            # Process all ensembles
+            all_ensembles = backend.list_ensembles(detailed=True)
+            if not all_ensembles:
+                print("No ensembles found")
+                return 0
+            ensembles = [(e.get('ensemble_id') or e.get('id'), e) for e in all_ensembles]
+        
+        grand_total_ingested = 0
+        grand_total_skipped = 0
+        grand_total_errors = 0
+        grand_total_would_ingest = 0
+        
+        for ensemble_id, ensemble in ensembles:
+            nick = ensemble.get('nickname')
+            print(f"\n{'='*60}")
+            print(f"Ensemble {ensemble_id}" + (f" ({nick})" if nick else ""))
+            print(f"{'='*60}")
+            
+            ensemble_path = Path(ensemble['directory'])
+            ensemble_physics = ensemble.get('physics', {})
+            
+            total_ingested = 0
+            total_skipped = 0
+            total_errors = 0
+            total_would_ingest = 0
+            
+            for measurement_type, scanner, parser in self._get_ingestors(ensemble_physics, getattr(args, 'creader', None)):
+                ingestor = MeasurementIngestor(backend, scanner, parser, measurement_type)
+                result = ingestor.ingest(
+                    ensemble_id,
+                    ensemble_path,
+                    overwrite=args.overwrite,
+                    clear=args.clear,
+                    dry_run=args.dry_run,
+                )
+                
+                if args.dry_run:
+                    print(f"  {measurement_type}: would ingest {result.would_ingest}, skip {result.skipped}")
+                    total_would_ingest += result.would_ingest
+                else:
+                    print(f"  {measurement_type}: ingested {result.ingested}, skipped {result.skipped}")
+                    if result.errors:
+                        error_configs = [str(cfg) for cfg, _ in result.errors]
+                        print(f"    Errors on {len(result.errors)} configs: {', '.join(error_configs[:10])}")
+                    total_ingested += result.ingested
+                    total_skipped += result.skipped
+                    total_errors += len(result.errors)
+            
+            grand_total_ingested += total_ingested
+            grand_total_skipped += total_skipped
+            grand_total_errors += total_errors
+            grand_total_would_ingest += total_would_ingest
+        
+        print(f"\n{'='*60}")
+        if args.dry_run:
+            print(f"Grand total: would ingest {grand_total_would_ingest}")
+        else:
+            print(f"Grand total: ingested {grand_total_ingested}, skipped {grand_total_skipped}, errors {grand_total_errors}")
         
         return 0
+    
+    def _get_ingestors(self, ensemble_physics, creader_path=None):
+        """Generate ingestors, skipping those with missing dependencies."""
+        yield ("gauge_obs", GaugeObsScanner(), GaugeObsParser())
+        # mres and meson2pt require creader - skip if not available
+        try:
+            yield ("mres", MresScanner(), MresParser(creader_path=creader_path, ensemble_physics=ensemble_physics))
+        except ValueError as e:
+            print(f"  Skipping mres: {e}")
+        try:
+            yield ("meson2pt", Meson2ptScanner(), Meson2ptParser(creader_path=creader_path))
+        except ValueError as e:
+            print(f"  Skipping meson2pt: {e}")
 
 
 class IngestCommand:
@@ -295,7 +327,23 @@ class IngestCommand:
             self.name,
             help=self.help,
             formatter_class=argparse.RawDescriptionHelpFormatter,
-            description="Ingest measurement data from files into the database",
+            description="""Ingest measurement data from files into the database.
+
+SUBCOMMANDS:
+  gauge_obs   Ingest gauge observables (plaquette, Q, t0, w0)
+  mres        Ingest mres correlators (requires creader)
+  meson2pt    Ingest meson 2pt correlators (requires creader)
+  all         Ingest all available measurement types
+
+EXAMPLES:
+  mdwf_db ingest gauge_obs -e 5          # Ingest gauge_obs for ensemble 5
+  mdwf_db ingest mres -e 5               # Ingest mres for ensemble 5
+  mdwf_db ingest all -e 5                # Ingest all types for ensemble 5
+  mdwf_db ingest all                     # Ingest all types for ALL ensembles
+  mdwf_db ingest all --dry-run           # Preview what would be ingested
+  mdwf_db ingest all --overwrite         # Re-parse existing measurements
+  mdwf_db ingest all --clear             # Delete existing before ingesting
+""",
         )
         variants = parser.add_subparsers(dest="variant", required=True)
         

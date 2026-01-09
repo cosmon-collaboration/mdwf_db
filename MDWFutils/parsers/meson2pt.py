@@ -16,13 +16,21 @@ class Meson2ptParser(BaseParser):
     Uses external creader binary to extract PP and AP correlator data.
     """
     
+    # Default creader path for NERSC
+    NERSC_CREADER = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/build/wit_cpu/devel/extractor/Creader'
+    
     def __init__(self, creader_path: Optional[str] = None):
         """Initialize parser.
         
         Args:
-            creader_path: Path to creader binary (or use MDWF_CREADER_PATH env var)
+            creader_path: Path to creader binary (or use MDWF_CREADER_PATH env var, or NERSC default)
         """
         self.creader_path = creader_path or os.getenv('MDWF_CREADER_PATH')
+        
+        # Fall back to NERSC default if it exists
+        if not self.creader_path and Path(self.NERSC_CREADER).exists():
+            self.creader_path = self.NERSC_CREADER
+        
         if not self.creader_path:
             raise ValueError("creader path not specified. Set MDWF_CREADER_PATH environment variable.")
     
