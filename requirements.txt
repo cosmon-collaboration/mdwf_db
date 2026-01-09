@@ -1,0 +1,13 @@
+# MDWFutils dependencies
+
+# Database
+pymongo>=4.6
+
+# Templating
+Jinja2>=3.1
+
+# Configuration
+PyYAML>=6.0
+
+# Data validation
+pydantic>=2.0

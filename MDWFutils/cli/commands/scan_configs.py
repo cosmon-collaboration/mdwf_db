@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from ...scanners.gauge_obs import GaugeObsScanner
+from ...scanners.meson2pt import Meson2ptScanner
 from ...scanners.mres import MresScanner
 from ..ensemble_utils import add_ensemble_argument, get_backend_for_args
 
@@ -128,11 +129,29 @@ def do_scan(args):
             else:
                 print(f"  mres: {ingested} ingested, 0 pending")
         
+        # Meson 2pt (unitary)
+        meson2pt_scanner = Meson2ptScanner()
+        meson2pt_files = meson2pt_scanner.scan(ensemble_path)
+        if meson2pt_files:
+            existing_meson2pt = set(backend.get_measured_configs(ens_id, 'meson2pt'))
+            found_configs = {r.config_number for r in meson2pt_files}
+            ingested = len(found_configs & existing_meson2pt)
+            pending = len(found_configs - existing_meson2pt)
+            
+            if pending > 0:
+                pending_list = sorted(found_configs - existing_meson2pt)
+                if len(pending_list) <= 10:
+                    print(f"  meson2pt: {ingested} ingested, {pending} pending (configs {pending_list})")
+                else:
+                    print(f"  meson2pt: {ingested} ingested, {pending} pending")
+            else:
+                print(f"  meson2pt: {ingested} ingested, 0 pending")
+        
         # Report missing (DB-only comparison)
         # Use the config_list we just scanned, or fall back to what's in the DB
         config_list = values if values else ens.get('configurations', {}).get('config_list', [])
         if config_list:
-            _report_missing(backend, ens_id, ens, config_list, gauge_files, mres_files)
+            _report_missing(backend, ens_id, ens, config_list, gauge_files, mres_files, meson2pt_files)
 
     print(f"Scan complete: {updated} ensemble(s) updated")
     return 0
@@ -165,7 +184,7 @@ def _infer_increment(values):
     return inc
 
 
-def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list, gauge_files: list, mres_files: list):
+def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list, gauge_files: list, mres_files: list, meson2pt_files: list):
     """Report missing measurements (DB-only comparison).
     
     Only reports "missing" for measurement types that have SOME files present,
@@ -201,6 +220,18 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
                     print(f"  {nick}: {len(missing_mres)} configs missing mres (no files): {missing_mres}")
                 else:
                     print(f"  {nick}: {len(missing_mres)} configs missing mres (no files)")
+        
+        # Meson2pt missing (only if we found some meson2pt files)
+        if meson2pt_files:
+            measured_meson2pt = set(backend.get_measured_configs(ensemble_id, 'meson2pt'))
+            found_meson2pt = {r.config_number for r in meson2pt_files}
+            missing_meson2pt = sorted(expected - measured_meson2pt - found_meson2pt)
+            
+            if missing_meson2pt:
+                if len(missing_meson2pt) <= 10:
+                    print(f"  {nick}: {len(missing_meson2pt)} configs missing meson2pt (no files): {missing_meson2pt}")
+                else:
+                    print(f"  {nick}: {len(missing_meson2pt)} configs missing meson2pt (no files)")
     except Exception:
         # Silently skip if reporting fails
         pass

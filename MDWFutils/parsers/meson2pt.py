@@ -1,4 +1,4 @@
-"""Parser for mres measurement files."""
+"""Parser for meson 2pt measurement files."""
 
 from __future__ import annotations
 
@@ -10,70 +10,54 @@ from typing import Any, Dict, List, Optional
 from .base import BaseParser
 
 
-class MresParser(BaseParser):
-    """Parser for unitary mres measurement files.
+class Meson2ptParser(BaseParser):
+    """Parser for unitary meson 2pt measurement files.
     
-    Uses external creader binary to extract correlator data.
+    Uses external creader binary to extract PP and AP correlator data.
     """
     
-    def __init__(self, creader_path: Optional[str] = None, ensemble_physics: Optional[Dict[str, float]] = None):
+    def __init__(self, creader_path: Optional[str] = None):
         """Initialize parser.
         
         Args:
             creader_path: Path to creader binary (or use MDWF_CREADER_PATH env var)
-            ensemble_physics: Physics parameters dict with ml, ms, mc keys
         """
         self.creader_path = creader_path or os.getenv('MDWF_CREADER_PATH')
         if not self.creader_path:
             raise ValueError("creader path not specified. Set MDWF_CREADER_PATH environment variable.")
-        
-        self.ensemble_physics = ensemble_physics or {}
     
     def parse(self, file_path: Path, metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """Parse mres files for a config.
+        """Parse meson2pt files for a config.
         
         Args:
             file_path: Primary file path (not used directly, metadata has all paths)
-            metadata: Must contain 'files' dict with PP and MP file paths.
+            metadata: Must contain 'files' dict mapping meson names to file paths.
                      This dict is modified in place to add source_files.
             
         Returns:
-            Dictionary with quarks dict containing PP/MP arrays per quark
+            Dictionary with mesons dict containing PP/AP arrays per meson
         """
         files = metadata.get('files', {})
-        pp_files = files.get('PP', {})
-        mp_files = files.get('MP', {})
         
-        # Map quark indices to labels and masses
-        quark_map = {
-            0: ('light', self.ensemble_physics.get('ml', '0.0')),
-            1: ('strange', self.ensemble_physics.get('ms', '0.0')),
-            2: ('charm', self.ensemble_physics.get('mc', '0.0')),
-        }
-        
-        quarks = {}
+        mesons = {}
         source_files = []
         
-        # Process each quark
-        for quark_idx in [0, 1, 2]:
-            label, mass = quark_map[quark_idx]
+        # Process each available meson
+        for meson_name, meson_path in files.items():
+            meson_path = Path(meson_path)
             
-            # Parse PP file
-            pp_path = Path(pp_files[quark_idx])
-            pp_data = self._parse_creader_output(pp_path)
+            # PP correlator: gamma indices 15,15
+            pp_data = self._parse_creader_output(meson_path, '15,15,0,0,0')
             
-            # Parse MP file
-            mp_path = Path(mp_files[quark_idx])
-            mp_data = self._parse_creader_output(mp_path)
+            # AP correlator: gamma indices 7,15
+            ap_data = self._parse_creader_output(meson_path, '7,15,0,0,0')
             
-            quarks[label] = {
-                'mass': str(mass),
+            mesons[meson_name] = {
                 'PP': pp_data,
-                'MP': mp_data,
+                'AP': ap_data,
             }
             
-            source_files.append(pp_path.name)
-            source_files.append(mp_path.name)
+            source_files.append(meson_path.name)
         
         # Add source_files to metadata (modifies in place)
         if 'metadata' not in metadata:
@@ -81,20 +65,20 @@ class MresParser(BaseParser):
         metadata['metadata']['source_files'] = source_files
         
         return {
-            'quarks': quarks,
+            'mesons': mesons,
         }
     
-    def _parse_creader_output(self, file_path: Path) -> List[float]:
+    def _parse_creader_output(self, file_path: Path, gamma_indices: str) -> List[float]:
         """Run creader and parse CORR lines.
         
         Args:
             file_path: Path to binary file
+            gamma_indices: Gamma matrix indices string (e.g., '15,15,0,0,0' or '7,15,0,0,0')
             
         Returns:
             List of correlator values (one per time slice)
         """
-        # Run: creader {file} 15,15,0,0,0 | grep CORR
-        cmd = [self.creader_path, str(file_path), '15,15,0,0,0']
+        cmd = [self.creader_path, str(file_path), gamma_indices]
         try:
             result = subprocess.run(
                 cmd,
