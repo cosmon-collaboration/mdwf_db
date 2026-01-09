@@ -214,12 +214,6 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
         print(f"Nickname  = {ensemble['nickname']}")
     if ensemble.get('description'):
         print(f"Description = {ensemble['description']}")
-    
-    # Thermalization info
-    cfg = ensemble.get('configurations', {})
-    therm_cfg = cfg.get('thermalized')
-    if therm_cfg is not None:
-        print(f"Thermalized = config >= {therm_cfg}")
 
     # Physics parameters
     physics = ensemble.get('physics', {})
@@ -255,20 +249,30 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
 
     # Measurements summary
     config_set = set(cfg.get('config_list', []))
+    therm_cfg = cfg.get('thermalized')
+    
+    print("\nMeasurements:")
+    if therm_cfg is not None:
+        print(f"  Thermalized config: {therm_cfg}")
+    else:
+        print(f"  Thermalized config: UNKNOWN")
+    if config_set:
+        print(f"  Total configs: {len(config_set)}")
+    print()
     
     # Gauge observables
     gauge_configs = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
-    print("\nGauge observables:")
+    print("  gauge_obs:")
     _print_measurement_summary(gauge_configs, config_set)
     
     # Mres
     mres_configs = set(backend.get_measured_configs(ensemble_id, 'mres'))
-    print("\nMres (residual mass):")
+    print("  mres:")
     _print_measurement_summary(mres_configs, config_set)
     
     # Meson 2pt
     meson2pt_configs = set(backend.get_measured_configs(ensemble_id, 'meson2pt'))
-    print("\nMeson 2pt correlators:")
+    print("  meson2pt:")
     _print_measurement_summary(meson2pt_configs, config_set)
 
     # Operations summary table
@@ -318,20 +322,20 @@ def _print_measurement_summary(measured_configs, config_set):
         orphaned = measured_configs - config_set
         
         if config_set:
-            print(f"  Measured: {len(have_both)}/{len(config_set)} configs")
+            print(f"    Measured: {len(have_both)}/{len(config_set)} configs")
         else:
-            print(f"  Measured: {len(measured_configs)} configs")
+            print(f"    Measured: {len(measured_configs)} configs")
         
         if measured_configs:
-            print(f"  Range:    {min(measured_configs)}-{max(measured_configs)}")
+            print(f"    Range:    {min(measured_configs)}-{max(measured_configs)}")
         
         if missing:
-            print(f"  Missing:  {len(missing)} configs")
+            print(f"    Missing:  {len(missing)} configs")
         
         if orphaned:
-            print(f"  Orphaned: {len(orphaned)} measurements (configs no longer exist)")
+            print(f"    Orphaned: {len(orphaned)} (configs no longer exist)")
     else:
-        print("  (none)")
+        print("    (none)")
 
 
 def _print_operation_details(operation):
