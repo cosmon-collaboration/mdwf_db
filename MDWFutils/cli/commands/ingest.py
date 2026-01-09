@@ -331,8 +331,8 @@ class IngestCommand:
 
 SUBCOMMANDS:
   gauge_obs   Ingest gauge observables (plaquette, Q, t0, w0)
-  mres        Ingest mres correlators (requires creader)
-  meson2pt    Ingest meson 2pt correlators (requires creader)
+  mres        Ingest mres correlators 
+  meson2pt    Ingest meson 2pt correlators 
   all         Ingest all available measurement types
 
 EXAMPLES:

@@ -21,6 +21,7 @@ ENSEMBLE_SCHEMA = {
         "increment": int | None,
         "total": int | None,
         "config_list": list[int],
+        "thermalized": int | None,
     },
     "hmc_paths": {
         "exec_path": str | None,
