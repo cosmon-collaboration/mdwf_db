@@ -5,6 +5,8 @@ import argparse
 import re
 from pathlib import Path
 
+from ...scanners.gauge_obs import GaugeObsScanner
+from ...scanners.mres import MresScanner
 from ..ensemble_utils import add_ensemble_argument, get_backend_for_args
 
 
@@ -17,26 +19,18 @@ Scan ensemble directories and update the database.
 
 WHAT THIS DOES:
 • Scans cnfg/ directory to update configuration counts (first/last/increment/total)
-• Scans t0/ directory to parse and store gauge observables (plaq, Q, t0, w0)
-• Reports missing gauge observable measurements
-
-GAUGE OBSERVABLES STORED:
-• plaq - Plaquette
-• Q - Topological charge  
-• sqrt_t0_clov, sqrt_t0_plaq - t0 scales (clover and plaquette)
-• w0_clov, w0_plaq - w0 scales (clover and plaquette)
+• Discovers available measurement files and reports ingestion status
+• Reports missing measurements (files exist but not in database)
 
 EXAMPLES:
   mdwf_db scan                    # Scan all ensembles
   mdwf_db scan -e 5               # Scan only ensemble 5
   mdwf_db scan --force            # Re-update config counts even if unchanged
-  mdwf_db scan --overwrite        # Re-parse gauge observables already in DB
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     add_ensemble_argument(p, help_text='Optional: scan only this ensemble (ID, path, or nickname)', required=False)
     p.add_argument('--force', action='store_true', help='Update config counts even if unchanged')
-    p.add_argument('--overwrite', action='store_true', help='Re-parse gauge observables even if already in DB')
     p.set_defaults(func=do_scan)
 
 
@@ -95,33 +89,50 @@ def do_scan(args):
                 updated += 1
                 print(f"Updated ensemble {ens_id}: first={first} last={last} inc={increment} total={total}")
         
-        # Gauge observable scanning
-        t0_dir = Path(ens['directory']) / 't0'  # Always 't0'
-        if t0_dir.exists():
-            # Efficient: get all existing measurements in one query
-            existing = set(backend.get_measured_configs(ens_id, 'gauge_obs'))
-            parsed_count = 0
+        # Discover measurement files and report status
+        ensemble_path = Path(ens['directory'])
+        
+        # Gauge observables
+        gauge_scanner = GaugeObsScanner()
+        gauge_files = gauge_scanner.scan(ensemble_path)
+        if gauge_files:
+            existing_gauge = set(backend.get_measured_configs(ens_id, 'gauge_obs'))
+            found_configs = {r.config_number for r in gauge_files}
+            ingested = len(found_configs & existing_gauge)
+            pending = len(found_configs - existing_gauge)
             
-            for t0_file in sorted(t0_dir.glob('t0.*.out')):
-                try:
-                    # Extract config number from filename (t0.{cfg}.out)
-                    cfg_num = int(t0_file.stem.split('.')[-1])
-                    if cfg_num in existing and not args.overwrite:
-                        continue
-                    data = _parse_gauge_obs(t0_file)
-                    backend.upsert_measurement(ens_id, cfg_num, 'gauge_obs', data)
-                    parsed_count += 1
-                except Exception:
-                    # Skip files that can't be parsed
-                    continue
+            if pending > 0:
+                pending_list = sorted(found_configs - existing_gauge)
+                if len(pending_list) <= 10:
+                    print(f"  gauge_obs: {ingested} ingested, {pending} pending (configs {pending_list})")
+                else:
+                    print(f"  gauge_obs: {ingested} ingested, {pending} pending")
+            else:
+                print(f"  gauge_obs: {ingested} ingested, 0 pending")
+        
+        # Mres (unitary)
+        mres_scanner = MresScanner()
+        mres_files = mres_scanner.scan(ensemble_path)
+        if mres_files:
+            existing_mres = set(backend.get_measured_configs(ens_id, 'mres'))
+            found_configs = {r.config_number for r in mres_files}
+            ingested = len(found_configs & existing_mres)
+            pending = len(found_configs - existing_mres)
             
-            if parsed_count > 0:
-                print(f"  Parsed {parsed_count} gauge observable file(s) for ensemble {ens_id}")
+            if pending > 0:
+                pending_list = sorted(found_configs - existing_mres)
+                if len(pending_list) <= 10:
+                    print(f"  mres: {ingested} ingested, {pending} pending (configs {pending_list})")
+                else:
+                    print(f"  mres: {ingested} ingested, {pending} pending")
+            else:
+                print(f"  mres: {ingested} ingested, 0 pending")
         
         # Report missing (DB-only comparison)
         # Use the config_list we just scanned, or fall back to what's in the DB
         config_list = values if values else ens.get('configurations', {}).get('config_list', [])
-        _report_missing(backend, ens_id, ens, config_list)
+        if config_list:
+            _report_missing(backend, ens_id, ens, config_list, gauge_files, mres_files)
 
     print(f"Scan complete: {updated} ensemble(s) updated")
     return 0
@@ -154,101 +165,42 @@ def _infer_increment(values):
     return inc
 
 
-def _parse_gauge_obs(filepath: Path) -> dict:
-    """Parse gauge observables from a t0.{cfg}.out file.
+def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list, gauge_files: list, mres_files: list):
+    """Report missing measurements (DB-only comparison).
     
-    Returns dict with keys: plaq, Q, sqrt_t0_clov, sqrt_t0_plaq, w0_clov, w0_plaq
-    Missing values stored as float('nan').
+    Only reports "missing" for measurement types that have SOME files present,
+    to avoid confusing output when a measurement type doesn't apply to the ensemble.
     """
-    data = {
-        'plaq': float('nan'),
-        'Q': float('nan'),
-        'sqrt_t0_clov': float('nan'),
-        'sqrt_t0_plaq': float('nan'),
-        'w0_clov': float('nan'),
-        'w0_plaq': float('nan'),
-    }
-    
-    try:
-        content = filepath.read_text()
-        lines = content.split('\n')
-        
-        # Parse plaquette from "Calculated Trace" line
-        for line in lines:
-            if 'Calculated Trace' in line:
-                parts = line.split()
-                if parts:
-                    try:
-                        data['plaq'] = float(parts[-1])
-                    except (ValueError, IndexError):
-                        pass
-                break
-        
-        # Parse Q from last WFLOW line (5th-to-last word)
-        wflow_lines = [line for line in lines if 'WFLOW' in line]
-        if wflow_lines:
-            last_wflow = wflow_lines[-1]
-            parts = last_wflow.split()
-            if len(parts) >= 5:
-                try:
-                    data['Q'] = float(parts[-5])
-                except (ValueError, IndexError):
-                    pass
-        
-        # Parse t0 and w0 scales (look for lines with "0.3")
-        for line in lines:
-            if 'GT-scale Clover' in line and '0.3' in line:
-                parts = line.split()
-                if parts:
-                    try:
-                        data['sqrt_t0_clov'] = float(parts[-1])
-                    except (ValueError, IndexError):
-                        pass
-            elif 'GT-scale Plaq' in line and '0.3' in line:
-                parts = line.split()
-                if parts:
-                    try:
-                        data['sqrt_t0_plaq'] = float(parts[-1])
-                    except (ValueError, IndexError):
-                        pass
-            elif 'WT-scale Clover' in line and '0.3' in line:
-                parts = line.split()
-                if parts:
-                    try:
-                        data['w0_clov'] = float(parts[-1])
-                    except (ValueError, IndexError):
-                        pass
-            elif 'WT-scale Plaq' in line and '0.3' in line:
-                parts = line.split()
-                if parts:
-                    try:
-                        data['w0_plaq'] = float(parts[-1])
-                    except (ValueError, IndexError):
-                        pass
-    
-    except Exception:
-        # Return data with NaN values if parsing fails
-        pass
-    
-    return data
-
-
-def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list):
-    """Report missing gauge observable measurements (DB-only comparison)."""
     if not config_list:
         return
     
     try:
         nick = ensemble.get('nickname') or ensemble_id
         expected = set(config_list)
-        measured = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
-        missing = sorted(expected - measured)
         
-        if missing:
-            if len(missing) <= 10:
-                print(f"  {nick}: {len(missing)} configs missing gauge_obs: {missing}")
-            else:
-                print(f"  {nick}: {len(missing)} configs missing gauge_obs")
+        # Gauge obs missing (only if we found some gauge files)
+        if gauge_files:
+            measured_gauge = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
+            found_gauge = {r.config_number for r in gauge_files}
+            missing_gauge = sorted(expected - measured_gauge - found_gauge)
+            
+            if missing_gauge:
+                if len(missing_gauge) <= 10:
+                    print(f"  {nick}: {len(missing_gauge)} configs missing gauge_obs (no files): {missing_gauge}")
+                else:
+                    print(f"  {nick}: {len(missing_gauge)} configs missing gauge_obs (no files)")
+        
+        # Mres missing (only if we found some mres files)
+        if mres_files:
+            measured_mres = set(backend.get_measured_configs(ensemble_id, 'mres'))
+            found_mres = {r.config_number for r in mres_files}
+            missing_mres = sorted(expected - measured_mres - found_mres)
+            
+            if missing_mres:
+                if len(missing_mres) <= 10:
+                    print(f"  {nick}: {len(missing_mres)} configs missing mres (no files): {missing_mres}")
+                else:
+                    print(f"  {nick}: {len(missing_mres)} configs missing mres (no files)")
     except Exception:
         # Silently skip if reporting fails
         pass

@@ -472,4 +472,22 @@ class MongoDBBackend(DatabaseBackend):
         doc = self.measurements.find_one(filter_query)
         return str(doc["_id"])
 
+    @retry_on_error()
+    def delete_measurements(
+        self,
+        ensemble_id: int,
+        measurement_type: str,
+    ) -> int:
+        """Delete all measurements of given type for an ensemble.
+        
+        Returns:
+            Number of documents deleted
+        """
+        query = {
+            "ensemble_id": ensemble_id,
+            "measurement_type": measurement_type,
+        }
+        result = self.measurements.delete_many(query)
+        return result.deleted_count
+
 

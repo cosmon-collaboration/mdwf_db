@@ -158,4 +158,16 @@ class DatabaseBackend(ABC):
     ) -> str:
         """Insert or replace a measurement document. Returns measurement ID."""
 
+    @abstractmethod
+    def delete_measurements(
+        self,
+        ensemble_id: int,
+        measurement_type: str,
+    ) -> int:
+        """Delete all measurements of given type for an ensemble.
+        
+        Returns:
+            Number of documents deleted
+        """
+
 
