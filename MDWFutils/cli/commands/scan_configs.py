@@ -56,6 +56,14 @@ def do_scan(args):
     updated = 0
     for ens in ensembles:
         ens_id = ens.get('ensemble_id') or ens.get('id')
+        nick = ens.get('nickname')
+        
+        # Print ensemble header
+        if nick:
+            print(f"\nEnsemble {ens_id} ({nick})")
+        else:
+            print(f"\nEnsemble {ens_id}")
+        print("-" * 50)
         
         # Existing cnfg/ scanning
         cnfg_dir = Path(ens['directory']) / 'cnfg'
@@ -76,6 +84,10 @@ def do_scan(args):
                 ):
                     should_update = False
             
+            # Print config info
+            inc_str = f", inc={increment}" if increment else ""
+            print(f"  Configurations: {total} total ({first}-{last}{inc_str})")
+            
             if should_update:
                 backend.update_ensemble(
                     ens_id,
@@ -88,10 +100,16 @@ def do_scan(args):
                     },
                 )
                 updated += 1
-                print(f"Updated ensemble {ens_id}: first={first} last={last} inc={increment} total={total}")
+                print(f"    [updated in database]")
+        else:
+            print("  Configurations: none found")
         
         # Discover measurement files and report status
         ensemble_path = Path(ens['directory'])
+        measurements_found = False
+        
+        # Collect measurement stats
+        measurement_stats = []
         
         # Gauge observables
         gauge_scanner = GaugeObsScanner()
@@ -101,15 +119,9 @@ def do_scan(args):
             found_configs = {r.config_number for r in gauge_files}
             ingested = len(found_configs & existing_gauge)
             pending = len(found_configs - existing_gauge)
-            
-            if pending > 0:
-                pending_list = sorted(found_configs - existing_gauge)
-                if len(pending_list) <= 10:
-                    print(f"  gauge_obs: {ingested} ingested, {pending} pending (configs {pending_list})")
-                else:
-                    print(f"  gauge_obs: {ingested} ingested, {pending} pending")
-            else:
-                print(f"  gauge_obs: {ingested} ingested, 0 pending")
+            pending_list = sorted(found_configs - existing_gauge) if pending > 0 else []
+            measurement_stats.append(('gauge_obs', ingested, pending, pending_list))
+            measurements_found = True
         
         # Mres (unitary)
         mres_scanner = MresScanner()
@@ -119,15 +131,9 @@ def do_scan(args):
             found_configs = {r.config_number for r in mres_files}
             ingested = len(found_configs & existing_mres)
             pending = len(found_configs - existing_mres)
-            
-            if pending > 0:
-                pending_list = sorted(found_configs - existing_mres)
-                if len(pending_list) <= 10:
-                    print(f"  mres: {ingested} ingested, {pending} pending (configs {pending_list})")
-                else:
-                    print(f"  mres: {ingested} ingested, {pending} pending")
-            else:
-                print(f"  mres: {ingested} ingested, 0 pending")
+            pending_list = sorted(found_configs - existing_mres) if pending > 0 else []
+            measurement_stats.append(('mres', ingested, pending, pending_list))
+            measurements_found = True
         
         # Meson 2pt (unitary)
         meson2pt_scanner = Meson2ptScanner()
@@ -137,22 +143,33 @@ def do_scan(args):
             found_configs = {r.config_number for r in meson2pt_files}
             ingested = len(found_configs & existing_meson2pt)
             pending = len(found_configs - existing_meson2pt)
-            
-            if pending > 0:
-                pending_list = sorted(found_configs - existing_meson2pt)
-                if len(pending_list) <= 10:
-                    print(f"  meson2pt: {ingested} ingested, {pending} pending (configs {pending_list})")
+            pending_list = sorted(found_configs - existing_meson2pt) if pending > 0 else []
+            measurement_stats.append(('meson2pt', ingested, pending, pending_list))
+            measurements_found = True
+        
+        # Print measurements section
+        if measurements_found:
+            print("  Measurements:")
+            # Calculate max width for alignment
+            max_name_len = max(len(name) for name, _, _, _ in measurement_stats)
+            for name, ingested, pending, pending_list in measurement_stats:
+                name_padded = name.ljust(max_name_len)
+                if pending > 0:
+                    if len(pending_list) <= 5:
+                        print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending  {pending_list}")
+                    else:
+                        print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending")
                 else:
-                    print(f"  meson2pt: {ingested} ingested, {pending} pending")
-            else:
-                print(f"  meson2pt: {ingested} ingested, 0 pending")
+                    print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending")
+        else:
+            print("  Measurements: no data files found")
         
         # Report missing (DB-only comparison)
-        # Use the config_list we just scanned, or fall back to what's in the DB
         config_list = values if values else ens.get('configurations', {}).get('config_list', [])
         if config_list:
             _report_missing(backend, ens_id, ens, config_list, gauge_files, mres_files, meson2pt_files)
 
+    print(f"\n{'=' * 50}")
     print(f"Scan complete: {updated} ensemble(s) updated")
     return 0
 
@@ -194,8 +211,8 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
         return
     
     try:
-        nick = ensemble.get('nickname') or ensemble_id
         expected = set(config_list)
+        warnings = []
         
         # Gauge obs missing (only if we found some gauge files)
         if gauge_files:
@@ -204,10 +221,10 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
             missing_gauge = sorted(expected - measured_gauge - found_gauge)
             
             if missing_gauge:
-                if len(missing_gauge) <= 10:
-                    print(f"  {nick}: {len(missing_gauge)} configs missing gauge_obs (no files): {missing_gauge}")
+                if len(missing_gauge) <= 8:
+                    warnings.append(f"gauge_obs: {len(missing_gauge)} configs have no files: {missing_gauge}")
                 else:
-                    print(f"  {nick}: {len(missing_gauge)} configs missing gauge_obs (no files)")
+                    warnings.append(f"gauge_obs: {len(missing_gauge)} configs have no files")
         
         # Mres missing (only if we found some mres files)
         if mres_files:
@@ -216,10 +233,10 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
             missing_mres = sorted(expected - measured_mres - found_mres)
             
             if missing_mres:
-                if len(missing_mres) <= 10:
-                    print(f"  {nick}: {len(missing_mres)} configs missing mres (no files): {missing_mres}")
+                if len(missing_mres) <= 8:
+                    warnings.append(f"mres: {len(missing_mres)} configs have no files: {missing_mres}")
                 else:
-                    print(f"  {nick}: {len(missing_mres)} configs missing mres (no files)")
+                    warnings.append(f"mres: {len(missing_mres)} configs have no files")
         
         # Meson2pt missing (only if we found some meson2pt files)
         if meson2pt_files:
@@ -228,10 +245,16 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
             missing_meson2pt = sorted(expected - measured_meson2pt - found_meson2pt)
             
             if missing_meson2pt:
-                if len(missing_meson2pt) <= 10:
-                    print(f"  {nick}: {len(missing_meson2pt)} configs missing meson2pt (no files): {missing_meson2pt}")
+                if len(missing_meson2pt) <= 8:
+                    warnings.append(f"meson2pt: {len(missing_meson2pt)} configs have no files: {missing_meson2pt}")
                 else:
-                    print(f"  {nick}: {len(missing_meson2pt)} configs missing meson2pt (no files)")
+                    warnings.append(f"meson2pt: {len(missing_meson2pt)} configs have no files")
+        
+        # Print warnings section if any
+        if warnings:
+            print("  Warnings:")
+            for warning in warnings:
+                print(f"    {warning}")
     except Exception:
         # Silently skip if reporting fails
         pass
