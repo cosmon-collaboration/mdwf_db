@@ -345,7 +345,10 @@ EXAMPLES:
   mdwf_db ingest all --clear             # Delete existing before ingesting
 """,
         )
-        variants = parser.add_subparsers(dest="variant", required=True)
+        # Add dummy -e argument at parent level so argparse doesn't confuse it with subcommand
+        parser.add_argument('-e', '--ensemble', nargs='*', help=argparse.SUPPRESS)
+        parser.set_defaults(func=self._no_subcommand)
+        variants = parser.add_subparsers(dest="variant")
         
         for variant, command in self.commands.items():
             variant_parser = variants.add_parser(
@@ -354,6 +357,18 @@ EXAMPLES:
             )
             command.register(variant_parser)
             variant_parser.set_defaults(func=command.execute)
+    
+    def _no_subcommand(self, args) -> int:
+        """Called when no subcommand is specified."""
+        print("ERROR: ingest requires a subcommand: gauge_obs, mres, meson2pt, or all")
+        print()
+        print("Examples:")
+        print("  mdwf_db ingest gauge_obs -e 5")
+        print("  mdwf_db ingest mres -e 5")
+        print("  mdwf_db ingest all -e 5")
+        print()
+        print("Run 'mdwf_db ingest --help' for more information.")
+        return 1
 
 
 def register(subparsers):

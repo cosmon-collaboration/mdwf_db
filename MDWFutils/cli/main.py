@@ -49,10 +49,12 @@ Ensemble identifiers: use ID (-e 1), path (-e ./path), or current dir (-e .)
     # Validate DB presence for commands that require an existing DB
     # Allow init-db to create a new database
     # Allow --params and --list-fields to work without database (just shows documentation)
+    # Allow query/ingest without variant to show helpful error message
     skip_db_check = (
         args.cmd == 'init-db' or
         getattr(args, 'params', False) or
-        getattr(args, 'list_fields', False)
+        getattr(args, 'list_fields', False) or
+        (args.cmd in ('query', 'ingest') and not getattr(args, 'variant', None))
     )
     if not skip_db_check:
         db_conn = get_default_db_connection()
