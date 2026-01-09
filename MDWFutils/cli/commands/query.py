@@ -14,7 +14,7 @@ def register(subparsers):
         description="""
 Query the MDWF database for ensemble information.
 
-FIVE MODES:
+MODES:
 
 1. List mode (no --ensemble specified):
    Shows a spreadsheet-like table of all ensembles with columns:
@@ -26,7 +26,7 @@ FIVE MODES:
 
 2. Detail mode (with --ensemble specified):
    Shows complete information for one ensemble including physics parameters,
-   configuration details, HMC paths, and operation history.
+   configuration details, HMC paths, measurement summaries, and operation history.
 
 3. Operation detail mode (with --ensemble and --op specified):
    Shows complete information for a specific operation including all timing,
@@ -36,19 +36,48 @@ FIVE MODES:
    Lists configuration numbers that are missing a specific measurement type.
 
 5. Measurements display mode (with --ensemble and --measurements specified):
-   Shows stored measurement data in a formatted table.
-   Use --cfg-range to filter to a specific configuration range.
+   Shows stored measurement data. Behavior varies by measurement type:
+   
+   gauge_obs: Shows table with plaquette, Q, t0, w0 for all configs
+              Use --cfg-range START END to filter config range
+   
+   mres/meson2pt: Without --cfg, lists available configs
+                  With --cfg CFG_NUM, shows full correlator data for that config
+                  With --cfg CFG_NUM -t T1 T2 ..., shows specific timeslices only
+
+MEASUREMENT TYPES:
+  gauge_obs  - Gauge observables (plaquette, Q, t0, w0)
+  mres       - Residual mass correlators (PP, MP for light/strange/charm)
+  meson2pt   - Meson 2pt correlators (PP, AP for pion/kaon/eta_s/D/Ds/eta_c)
 
 EXAMPLES:
-  mdwf_db query                    # List all ensembles (sorted by parameters)
-  mdwf_db query --sort-by-id       # List all ensembles sorted by EID
-  mdwf_db query -e 1               # Show ensemble 1 details
-  mdwf_db query -e .               # Show current ensemble
-  mdwf_db query -e 1 --dir         # Show only the directory path
-  mdwf_db query -e 21 --op 147     # Show details for operation 147
-  mdwf_db query -e 5 --missing gauge_obs              # List configs missing gauge_obs
-  mdwf_db query -e 5 --measurements gauge_obs         # Show all gauge_obs data
+  # List ensembles
+  mdwf_db query                              # List all (sorted by parameters)
+  mdwf_db query --sort-by-id                 # List all (sorted by EID)
+  
+  # Ensemble details
+  mdwf_db query -e 1                         # Show ensemble 1 details
+  mdwf_db query -e .                         # Show current directory's ensemble
+  mdwf_db query -e 1 --dir                   # Print only the directory path
+  mdwf_db query -e 21 --op 147               # Show operation 147 details
+  
+  # Missing measurements
+  mdwf_db query -e 5 --missing gauge_obs     # Configs missing gauge_obs
+  mdwf_db query -e 5 --missing mres          # Configs missing mres
+  
+  # Gauge observables (scalar values per config)
+  mdwf_db query -e 5 --measurements gauge_obs                    # All configs
   mdwf_db query -e 5 --measurements gauge_obs --cfg-range 100 200
+  
+  # Mres correlators (arrays per config)
+  mdwf_db query -e 5 --measurements mres                 # List available configs
+  mdwf_db query -e 5 --measurements mres --cfg 124       # Full correlators for cfg 124
+  mdwf_db query -e 5 --measurements mres --cfg 124 -t 0 16 32 48  # Specific timeslices
+  
+  # Meson 2pt correlators (arrays per config)
+  mdwf_db query -e 5 --measurements meson2pt             # List available configs
+  mdwf_db query -e 5 --measurements meson2pt --cfg 124   # Full correlators for cfg 124
+  mdwf_db query -e 5 --measurements meson2pt --cfg 124 -t 0 16 32  # Specific timeslices
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -61,9 +90,13 @@ EXAMPLES:
     p.add_argument('--missing', metavar='TYPE',
                    help='List config numbers missing measurements of TYPE (requires -e)')
     p.add_argument('--measurements', metavar='TYPE',
-                   help='Show measurements of TYPE in table format (requires -e)')
+                   help='Show measurements of TYPE: gauge_obs, mres, or meson2pt (requires -e)')
     p.add_argument('--cfg-range', nargs=2, type=int, metavar=('START', 'END'),
-                   help='Filter to config range (use with --measurements)')
+                   help='Filter to config range START-END inclusive (use with --measurements gauge_obs)')
+    p.add_argument('--cfg', type=int, metavar='CFG_NUM',
+                   help='Show full correlator arrays for a single config (use with --measurements mres/meson2pt)')
+    p.add_argument('-t', '--timeslices', nargs='+', type=int, metavar='T',
+                   help='Show only specific timeslices, e.g. -t 0 16 32 48 (use with --cfg)')
     p.set_defaults(func=do_query)
 
 
@@ -102,6 +135,16 @@ def do_query(args):
     # Check if --cfg-range is used without --measurements
     if args.cfg_range and not args.measurements:
         print("ERROR: --cfg-range requires --measurements")
+        return 1
+    
+    # Check if --cfg is used without --measurements
+    if args.cfg and not args.measurements:
+        print("ERROR: --cfg requires --measurements")
+        return 1
+    
+    # Check if --timeslices is used without --cfg
+    if args.timeslices and not args.cfg:
+        print("ERROR: --timeslices (-t) requires --cfg")
         return 1
 
     if not args.ensemble:
@@ -215,6 +258,11 @@ def do_query(args):
         if args.cfg_range:
             config_start, config_end = args.cfg_range
         
+        # If --cfg is specified, filter to just that config
+        if args.cfg:
+            config_start = args.cfg
+            config_end = args.cfg
+        
         measurements = backend.query_measurements(
             ensemble_id,
             args.measurements,
@@ -224,12 +272,20 @@ def do_query(args):
         
         if not measurements:
             print(f"No {args.measurements} measurements found for ensemble {ensemble_id}")
-            if args.cfg_range:
+            if args.cfg:
+                print(f"  (no data for config {args.cfg})")
+            elif args.cfg_range:
                 print(f"  (filtered to config range {config_start}-{config_end})")
             return 0
         
         # Format measurements as table
-        _print_measurements_table(measurements, args.measurements, ensemble_id)
+        _print_measurements_table(
+            measurements,
+            args.measurements,
+            ensemble_id,
+            single_cfg=args.cfg,
+            timeslices=args.timeslices,
+        )
         return 0
     
     # Operation detail mode - show specific operation
@@ -283,33 +339,23 @@ def do_query(args):
         if hmc_paths.get('bind_script_cpu'):
             print(f"  bind_script_cpu = {hmc_paths['bind_script_cpu']}")
 
-    # Gauge observables summary
-    gauge_configs = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
+    # Measurements summary
     config_set = set(cfg.get('config_list', []))
+    
+    # Gauge observables
+    gauge_configs = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
     print("\nGauge observables:")
-    if gauge_configs or config_set:
-        # Configs that exist AND have measurements
-        have_both = config_set & gauge_configs
-        # Configs that exist but are missing measurements
-        missing = config_set - gauge_configs
-        # Measurements for configs that no longer exist
-        orphaned = gauge_configs - config_set
-        
-        if config_set:
-            print(f"  Measured: {len(have_both)}/{len(config_set)} configs")
-        else:
-            print(f"  Measured: {len(gauge_configs)} configs")
-        
-        if gauge_configs:
-            print(f"  Range:    {min(gauge_configs)}-{max(gauge_configs)}")
-        
-        if missing:
-            print(f"  Missing:  {len(missing)} configs")
-        
-        if orphaned:
-            print(f"  Orphaned: {len(orphaned)} measurements (configs no longer exist)")
-    else:
-        print("  (none)")
+    _print_measurement_summary(gauge_configs, config_set)
+    
+    # Mres
+    mres_configs = set(backend.get_measured_configs(ensemble_id, 'mres'))
+    print("\nMres (residual mass):")
+    _print_measurement_summary(mres_configs, config_set)
+    
+    # Meson 2pt
+    meson2pt_configs = set(backend.get_measured_configs(ensemble_id, 'meson2pt'))
+    print("\nMeson 2pt correlators:")
+    _print_measurement_summary(meson2pt_configs, config_set)
 
     # Operations summary table
     print('\nOperations:')
@@ -347,7 +393,34 @@ def do_query(args):
     return 0
 
 
-def _print_measurements_table(measurements, measurement_type, ensemble_id):
+def _print_measurement_summary(measured_configs, config_set):
+    """Print summary for a measurement type."""
+    if measured_configs or config_set:
+        # Configs that exist AND have measurements
+        have_both = config_set & measured_configs
+        # Configs that exist but are missing measurements
+        missing = config_set - measured_configs
+        # Measurements for configs that no longer exist
+        orphaned = measured_configs - config_set
+        
+        if config_set:
+            print(f"  Measured: {len(have_both)}/{len(config_set)} configs")
+        else:
+            print(f"  Measured: {len(measured_configs)} configs")
+        
+        if measured_configs:
+            print(f"  Range:    {min(measured_configs)}-{max(measured_configs)}")
+        
+        if missing:
+            print(f"  Missing:  {len(missing)} configs")
+        
+        if orphaned:
+            print(f"  Orphaned: {len(orphaned)} measurements (configs no longer exist)")
+    else:
+        print("  (none)")
+
+
+def _print_measurements_table(measurements, measurement_type, ensemble_id, single_cfg=None, timeslices=None):
     """Print measurements in a formatted table."""
     if not measurements:
         return
@@ -371,6 +444,25 @@ def _print_measurements_table(measurements, measurement_type, ensemble_id):
         
         print(f"\nGauge observables for ensemble {ensemble_id} ({len(measurements)} configs)\n")
         _print_table(headers, rows)
+    
+    # Special formatting for mres
+    elif measurement_type == 'mres':
+        if single_cfg is not None:
+            # Show full correlator data for a specific config
+            _print_mres_correlators(measurements[0], ensemble_id, timeslices)
+        else:
+            # Summary mode: list available configs
+            _print_mres_summary(measurements, ensemble_id)
+    
+    # Special formatting for meson2pt
+    elif measurement_type == 'meson2pt':
+        if single_cfg is not None:
+            # Show full correlator data for a specific config
+            _print_meson2pt_correlators(measurements[0], ensemble_id, timeslices)
+        else:
+            # Summary mode: list available configs
+            _print_meson2pt_summary(measurements, ensemble_id)
+    
     else:
         # Generic formatting for other measurement types
         # Extract all unique keys from data dicts
@@ -409,6 +501,185 @@ def _format_float(value):
         return f"{value:.5f}".rstrip('0').rstrip('.')
     except (TypeError, ValueError):
         return str(value)
+
+
+def _format_sci(value):
+    """Format a float in scientific notation for correlator values."""
+    if value is None:
+        return ''
+    try:
+        if math.isnan(value):
+            return 'NaN'
+        # Use scientific notation for very small/large values
+        if abs(value) < 1e-3 or abs(value) > 1e5:
+            return f"{value:.4e}"
+        return f"{value:.6f}".rstrip('0').rstrip('.')
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _print_mres_summary(measurements, ensemble_id):
+    """Print summary of available mres configs."""
+    configs = sorted([m.get('config_number') for m in measurements])
+    print(f"\nMres measurements for ensemble {ensemble_id}: {len(configs)} configs available\n")
+    
+    # Show config range
+    if configs:
+        print(f"Config range: {min(configs)} - {max(configs)}")
+        
+        # Show in groups of 10 per line
+        print("\nAvailable configs:")
+        for i in range(0, len(configs), 15):
+            chunk = configs[i:i+15]
+            print("  " + ", ".join(str(c) for c in chunk))
+    
+    print("\nTo view full correlator data for a config:")
+    print(f"  mdwf_db query -e {ensemble_id} --measurements mres --cfg <CFG_NUM>")
+    print(f"  mdwf_db query -e {ensemble_id} --measurements mres --cfg <CFG_NUM> -t 0 16 32  # specific timeslices")
+
+
+def _print_mres_correlators(measurement, ensemble_id, timeslices=None):
+    """Print full mres correlator data for a single config."""
+    cfg_num = measurement.get('config_number')
+    data = measurement.get('data', {})
+    quarks = data.get('quarks', {})
+    
+    print(f"\nMres correlators for ensemble {ensemble_id}, config {cfg_num}\n")
+    
+    # Determine timeslices to show
+    sample_quark = quarks.get('light', quarks.get('strange', quarks.get('charm', {})))
+    t_extent = len(sample_quark.get('PP', []))
+    
+    if timeslices:
+        t_indices = [t for t in timeslices if 0 <= t < t_extent]
+        if not t_indices:
+            print(f"ERROR: No valid timeslices in range 0-{t_extent-1}")
+            return
+    else:
+        t_indices = list(range(t_extent))
+    
+    # Print quark masses
+    print("Quark masses:")
+    for quark in ['light', 'strange', 'charm']:
+        q_data = quarks.get(quark, {})
+        mass = q_data.get('mass', 'N/A')
+        print(f"  {quark}: {mass}")
+    print()
+    
+    # Build table: T, then PP and MP for each quark
+    headers = ['T', 'PP_L', 'MP_L', 'PP_S', 'MP_S', 'PP_C', 'MP_C', 'MRES_L', 'MRES_S', 'MRES_C']
+    rows = []
+    
+    for t in t_indices:
+        row = {'T': t}
+        for quark, label in [('light', 'L'), ('strange', 'S'), ('charm', 'C')]:
+            q_data = quarks.get(quark, {})
+            pp = q_data.get('PP', [])
+            mp = q_data.get('MP', [])
+            
+            pp_val = pp[t] if t < len(pp) else None
+            mp_val = mp[t] if t < len(mp) else None
+            
+            row[f'PP_{label}'] = _format_sci(pp_val) if pp_val is not None else ''
+            row[f'MP_{label}'] = _format_sci(mp_val) if mp_val is not None else ''
+            
+            # Compute mres = MP/PP
+            if pp_val and pp_val != 0 and mp_val is not None:
+                row[f'MRES_{label}'] = _format_float(mp_val / pp_val)
+            else:
+                row[f'MRES_{label}'] = ''
+        
+        rows.append(row)
+    
+    _print_table(headers, rows)
+
+
+def _print_meson2pt_summary(measurements, ensemble_id):
+    """Print summary of available meson2pt configs."""
+    configs = sorted([m.get('config_number') for m in measurements])
+    
+    # Collect which mesons are present
+    all_mesons = set()
+    for m in measurements:
+        data = m.get('data', {})
+        mesons = data.get('mesons', {})
+        all_mesons.update(mesons.keys())
+    
+    meson_order = ['pion', 'kaon', 'eta_s', 'D', 'Ds', 'eta_c']
+    present_mesons = [m for m in meson_order if m in all_mesons]
+    
+    print(f"\nMeson 2pt measurements for ensemble {ensemble_id}: {len(configs)} configs available\n")
+    print(f"Mesons: {', '.join(present_mesons)}")
+    
+    # Show config range
+    if configs:
+        print(f"Config range: {min(configs)} - {max(configs)}")
+        
+        # Show in groups per line
+        print("\nAvailable configs:")
+        for i in range(0, len(configs), 15):
+            chunk = configs[i:i+15]
+            print("  " + ", ".join(str(c) for c in chunk))
+    
+    print("\nTo view full correlator data for a config:")
+    print(f"  mdwf_db query -e {ensemble_id} --measurements meson2pt --cfg <CFG_NUM>")
+    print(f"  mdwf_db query -e {ensemble_id} --measurements meson2pt --cfg <CFG_NUM> -t 0 16 32  # specific timeslices")
+
+
+def _print_meson2pt_correlators(measurement, ensemble_id, timeslices=None):
+    """Print full meson2pt correlator data for a single config."""
+    cfg_num = measurement.get('config_number')
+    data = measurement.get('data', {})
+    mesons = data.get('mesons', {})
+    
+    print(f"\nMeson 2pt correlators for ensemble {ensemble_id}, config {cfg_num}\n")
+    
+    meson_order = ['pion', 'kaon', 'eta_s', 'D', 'Ds', 'eta_c']
+    present_mesons = [m for m in meson_order if m in mesons]
+    
+    if not present_mesons:
+        print("No meson data found")
+        return
+    
+    # Determine timeslices to show
+    sample_meson = mesons.get(present_mesons[0], {})
+    t_extent = len(sample_meson.get('PP', []))
+    
+    if timeslices:
+        t_indices = [t for t in timeslices if 0 <= t < t_extent]
+        if not t_indices:
+            print(f"ERROR: No valid timeslices in range 0-{t_extent-1}")
+            return
+    else:
+        t_indices = list(range(t_extent))
+    
+    print(f"Mesons: {', '.join(present_mesons)}")
+    print(f"T extent: {t_extent}")
+    print()
+    
+    # Build table: T, then PP and AP for each meson
+    headers = ['T']
+    for meson in present_mesons:
+        headers.append(f'{meson.upper()}_PP')
+        headers.append(f'{meson.upper()}_AP')
+    
+    rows = []
+    for t in t_indices:
+        row = {'T': t}
+        for meson in present_mesons:
+            meson_data = mesons.get(meson, {})
+            pp = meson_data.get('PP', [])
+            ap = meson_data.get('AP', [])
+            
+            pp_val = pp[t] if t < len(pp) else None
+            ap_val = ap[t] if t < len(ap) else None
+            
+            row[f'{meson.upper()}_PP'] = _format_sci(pp_val) if pp_val is not None else ''
+            row[f'{meson.upper()}_AP'] = _format_sci(ap_val) if ap_val is not None else ''
+        
+        rows.append(row)
+    
+    _print_table(headers, rows)
 
 
 def _print_table(headers, rows):
