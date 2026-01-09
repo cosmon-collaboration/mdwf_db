@@ -559,7 +559,7 @@ class QueryCommand:
 EXAMPLES:
   mdwf_db query gauge_obs -e 5              # Export to stdout
   mdwf_db query gauge_obs -e 5 -o data.h5   # Export to HDF5
-  mdwf_db query mres -e 5 --fields light    # Light quark only
+  mdwf_db query meson2pt -e 5 --fields pion # Pion correlators only
   mdwf_db query all -e 5 -o ensemble5.h5    # All data for ensemble 5
   mdwf_db query gauge_obs --list-fields     # Show available fields
 """,
