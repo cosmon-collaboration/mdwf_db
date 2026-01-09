@@ -329,12 +329,6 @@ class IngestCommand:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description="""Ingest measurement data from files into the database.
 
-SUBCOMMANDS:
-  gauge_obs   Ingest gauge observables (plaquette, Q, t0, w0)
-  mres        Ingest mres correlators 
-  meson2pt    Ingest meson 2pt correlators 
-  all         Ingest all available measurement types
-
 EXAMPLES:
   mdwf_db ingest gauge_obs -e 5          # Ingest gauge_obs for ensemble 5
   mdwf_db ingest mres -e 5               # Ingest mres for ensemble 5

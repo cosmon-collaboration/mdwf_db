@@ -556,12 +556,6 @@ class QueryCommand:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description="""Export measurement data from the database.
 
-SUBCOMMANDS:
-  gauge_obs   Export gauge observables (plaq, Q, t0, w0)
-  mres        Export mres correlators (PP, MP)
-  meson2pt    Export meson 2pt correlators (PP, AP)
-  all         Export all measurement types to a single file
-
 EXAMPLES:
   mdwf_db query gauge_obs -e 5              # Export to stdout
   mdwf_db query gauge_obs -e 5 -o data.h5   # Export to HDF5
