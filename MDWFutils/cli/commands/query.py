@@ -169,7 +169,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         '-e', '--ensemble',
         nargs='+',
         metavar='ENSEMBLE',
-        help='Ensemble(s) to export (required unless using --list-fields)',
+        help='Ensemble(s) to export, or "all" for all ensembles (required unless using --list-fields)',
     )
     parser.add_argument(
         '-o', '--output',
@@ -183,6 +183,12 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         type=int,
         metavar=('START', 'END'),
         help='Filter to config range START-END inclusive (overrides thermalization)',
+    )
+    parser.add_argument(
+        '--cfg-inc',
+        type=int,
+        metavar='N',
+        help='Use every Nth config (applied after range/thermalization filter)',
     )
     parser.add_argument(
         '--fields',
@@ -203,8 +209,19 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _resolve_ensembles(backend, ensemble_args: List[str]) -> List[Dict[str, Any]]:
-    """Resolve ensemble arguments to list of (ensemble_id, ensemble_doc) tuples."""
+    """Resolve ensemble arguments to list of (ensemble_id, ensemble_doc) tuples.
+    
+    Special case: if ensemble_args is ["all"], returns all ensembles in the database.
+    """
     results = []
+    
+    # Handle "all" keyword
+    if len(ensemble_args) == 1 and ensemble_args[0].lower() == 'all':
+        all_ensembles = backend.list_ensembles(detailed=True)
+        for ens in all_ensembles:
+            results.append((ens['ensemble_id'], ens))
+        return results
+    
     for identifier in ensemble_args:
         try:
             ens_id, ens = backend.resolve_ensemble_identifier(identifier)
@@ -234,6 +251,19 @@ def _get_config_filter(
                   file=sys.stderr)
     
     return None, None
+
+
+def _apply_stride(measurements: List[Dict], stride: Optional[int]) -> List[Dict]:
+    """Apply stride filter to measurements, keeping every Nth config.
+    
+    The stride is applied relative to the first config in the sorted list,
+    so if configs are [100, 110, 120, 130, ...] and stride=2, you get [100, 120, ...].
+    """
+    if not stride or stride <= 1 or not measurements:
+        return measurements
+    
+    # Measurements should already be sorted by config_number from the query
+    return measurements[::stride]
 
 
 # =============================================================================
@@ -285,6 +315,7 @@ Export {self.measurement_type} data.
             return 1
         
         fields = expand_fields(args.fields, self.measurement_type) if args.fields else None
+        stride = getattr(args, 'cfg_inc', None)
         output_data = {}
         
         for ens_id, ensemble in ensembles:
@@ -297,6 +328,7 @@ Export {self.measurement_type} data.
                 config_start=config_start,
                 config_end=config_end,
             )
+            measurements = _apply_stride(measurements, stride)
             
             if not measurements:
                 continue
@@ -426,7 +458,7 @@ class QueryAllCommand:
             '-e', '--ensemble',
             nargs='+',
             metavar='ENSEMBLE',
-            help='Ensemble(s) to export (required unless using --list-fields)',
+            help='Ensemble(s) to export, or "all" for all ensembles (required unless using --list-fields)',
         )
         parser.add_argument(
             '-o', '--output',
@@ -440,6 +472,12 @@ class QueryAllCommand:
             type=int,
             metavar=('START', 'END'),
             help='Filter to config range START-END inclusive',
+        )
+        parser.add_argument(
+            '--cfg-inc',
+            type=int,
+            metavar='N',
+            help='Use every Nth config (applied after range/thermalization filter)',
         )
         parser.add_argument(
             '--include-pretherm',
@@ -459,6 +497,8 @@ Use --list-fields to see available fields for each measurement type.
 EXAMPLES:
   mdwf_db query all -e 5 -o ensemble5.h5           # Single ensemble
   mdwf_db query all -e 1 3 5 -o subset.h5          # Multiple ensembles
+  mdwf_db query all -e all -o everything.h5        # All ensembles
+  mdwf_db query all -e 5 --cfg-inc 10 -o s.h5   # Every 10th config
   mdwf_db query all --list-fields                  # Show all available fields
 """
     
@@ -483,6 +523,7 @@ EXAMPLES:
             print("No ensembles found", file=sys.stderr)
             return 1
         
+        stride = getattr(args, 'cfg_inc', None)
         output_data = {}
         
         for ens_id, ensemble in ensembles:
@@ -499,6 +540,7 @@ EXAMPLES:
                 config_start=config_start,
                 config_end=config_end,
             )
+            measurements = _apply_stride(measurements, stride)
             if measurements:
                 ens_data['gauge_obs'] = prepare_gauge_obs_data(measurements)
             
@@ -507,6 +549,7 @@ EXAMPLES:
                 config_start=config_start,
                 config_end=config_end,
             )
+            measurements = _apply_stride(measurements, stride)
             if measurements:
                 ens_data['mres'] = prepare_mres_data(measurements, physics)
             
@@ -515,6 +558,7 @@ EXAMPLES:
                 config_start=config_start,
                 config_end=config_end,
             )
+            measurements = _apply_stride(measurements, stride)
             if measurements:
                 ens_data['meson2pt'] = prepare_meson2pt_data(measurements, physics)
             
@@ -561,6 +605,8 @@ EXAMPLES:
   mdwf_db query gauge_obs -e 5 -o data.h5   # Export to HDF5
   mdwf_db query meson2pt -e 5 --fields pion # Pion correlators only
   mdwf_db query all -e 5 -o ensemble5.h5    # All data for ensemble 5
+  mdwf_db query all -e all -o all.h5        # All ensembles
+  mdwf_db query gauge_obs -e 5 --cfg-inc 10  # Every 10th config
   mdwf_db query gauge_obs --list-fields     # Show available fields
 """,
         )
