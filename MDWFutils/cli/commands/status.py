@@ -253,9 +253,9 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
     
     print("\nMeasurements:")
     if therm_cfg is not None:
-        print(f"  Thermalized config: {therm_cfg}")
+        print(f"  c_therm: {therm_cfg}")
     else:
-        print(f"  Thermalized config: UNKNOWN")
+        print(f"  c_therm: UNKNOWN")
     if config_set:
         print(f"  Total configs: {len(config_set)}")
     print()

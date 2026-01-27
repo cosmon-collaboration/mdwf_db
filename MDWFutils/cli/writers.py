@@ -24,6 +24,48 @@ MESON_ORDER = ['pion', 'kaon', 'eta_s', 'D', 'Ds', 'eta_c']
 MESON_CORRELATORS = ['PP', 'AP']
 
 
+def _get_int_dtype(values):
+    """Determine the smallest appropriate integer dtype for a list of values.
+    
+    Returns the smallest dtype that can hold all values:
+    - uint8: 0-255
+    - uint16: 0-65535
+    - uint32: 0-4294967295
+    - int8: -128 to 127
+    - int16: -32768 to 32767
+    - int32: -2147483648 to 2147483647
+    """
+    if not values:
+        return np.int16
+    
+    # Filter out None values and convert to list if needed
+    try:
+        clean_values = [v for v in values if v is not None]
+        if not clean_values:
+            return np.int16
+        
+        max_val = max(clean_values)
+        min_val = min(clean_values)
+    except (TypeError, ValueError):
+        # If values aren't comparable (e.g., mixed types), default to int16
+        return np.int16
+    
+    if min_val >= 0:
+        if max_val <= 255:
+            return np.uint8
+        elif max_val <= 65535:
+            return np.uint16
+        else:
+            return np.uint32
+    else:
+        if min_val >= -128 and max_val <= 127:
+            return np.int8
+        elif min_val >= -32768 and max_val <= 32767:
+            return np.int16
+        else:
+            return np.int32
+
+
 def get_ensemble_name(ensemble: Dict[str, Any]) -> str:
     """Derive HDF5 path key from ensemble.
     
@@ -185,8 +227,9 @@ def _write_gauge_obs_hdf5(f5: 'h5py.File', ensemble_name: str, data: Dict[str, A
         if path in f5:
             del f5[path]
     
-    # Write config numbers as uint16
-    f5.create_dataset(f"{ensemble_name}/cfgs", data=np.array(cfgs, dtype=np.uint16))
+    # Write config numbers with appropriate dtype
+    cfg_dtype = _get_int_dtype(cfgs)
+    f5.create_dataset(f"{ensemble_name}/cfgs", data=np.array(cfgs, dtype=cfg_dtype))
     
     # Write each field
     for field in GAUGE_OBS_FIELDS:
@@ -198,6 +241,7 @@ def _write_meson2pt_hdf5(f5: 'h5py.File', ensemble_name: str, data: Dict[str, An
     """Write meson 2pt correlators to HDF5.
     
     Format: /{ensemble}/unitary/cfgs, pion_PP, pion_AP, kaon_PP, ...
+    Also writes ensemble_config_list if available at /{ensemble}/unitary/config_list
     """
     base_path = f"{ensemble_name}/unitary"
     cfgs = data.get('cfgs', [])
@@ -206,8 +250,18 @@ def _write_meson2pt_hdf5(f5: 'h5py.File', ensemble_name: str, data: Dict[str, An
     if f"{base_path}/cfgs" in f5:
         del f5[f"{base_path}/cfgs"]
     
-    # Write config numbers
-    f5.create_dataset(f"{base_path}/cfgs", data=np.array(cfgs, dtype=np.uint16))
+    # Write config numbers with appropriate dtype
+    cfg_dtype = _get_int_dtype(cfgs)
+    f5.create_dataset(f"{base_path}/cfgs", data=np.array(cfgs, dtype=cfg_dtype))
+    
+    # Write ensemble config_list if available
+    if 'ensemble_config_list' in data:
+        config_list = data['ensemble_config_list']
+        list_path = f"{base_path}/config_list"
+        if list_path in f5:
+            del f5[list_path]
+        list_dtype = _get_int_dtype(config_list)
+        f5.create_dataset(list_path, data=np.array(config_list, dtype=list_dtype))
     
     # Write each meson correlator
     for meson in MESON_ORDER:
@@ -238,7 +292,8 @@ def _write_mres_hdf5(f5: 'h5py.File', ensemble_name: str, data: Dict[str, Any]) 
         # Delete and recreate
         if f"{quark_path}/cfgs" in f5:
             del f5[f"{quark_path}/cfgs"]
-        f5.create_dataset(f"{quark_path}/cfgs", data=np.array(cfgs, dtype=np.uint16))
+        cfg_dtype = _get_int_dtype(cfgs)
+        f5.create_dataset(f"{quark_path}/cfgs", data=np.array(cfgs, dtype=cfg_dtype))
         
         for corr in MRES_CORRELATORS:
             if corr in quark_data:
@@ -276,13 +331,15 @@ def write_csv(
             meson_data = ensemble_data.get('meson2pt', {})
             if meson_data:
                 cfgs = meson_data.get('cfgs', [])
-                # Determine T extent
+                # Determine T extent (skip cfgs and ensemble_config_list)
                 t_extent = 0
                 for key in meson_data:
-                    if key != 'cfgs' and isinstance(meson_data[key], (list, np.ndarray)):
+                    if key not in ('cfgs', 'ensemble_config_list') and isinstance(meson_data[key], (list, np.ndarray)):
                         if len(meson_data[key]) > 0:
-                            t_extent = len(meson_data[key][0])
-                            break
+                            # Check if it's a 2D array (list of lists)
+                            if isinstance(meson_data[key][0], (list, np.ndarray)):
+                                t_extent = len(meson_data[key][0])
+                                break
                 
                 for i, cfg in enumerate(cfgs):
                     for t in range(t_extent):

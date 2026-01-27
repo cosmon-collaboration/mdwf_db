@@ -336,6 +336,10 @@ Export {self.measurement_type} data.
             ens_name = get_ensemble_name(ensemble)
             physics = ensemble.get('physics', {})
             data = self.prepare_data(measurements, physics, fields)
+            # Include ensemble config_list if available
+            config_list = ensemble.get('configurations', {}).get('config_list')
+            if config_list:
+                data['ensemble_config_list'] = config_list
             output_data[ens_name] = {self.measurement_type: data}
         
         if not output_data:
@@ -560,7 +564,12 @@ EXAMPLES:
             )
             measurements = _apply_stride(measurements, stride)
             if measurements:
-                ens_data['meson2pt'] = prepare_meson2pt_data(measurements, physics)
+                meson_data = prepare_meson2pt_data(measurements, physics)
+                # Include ensemble config_list if available
+                config_list = ensemble.get('configurations', {}).get('config_list')
+                if config_list:
+                    meson_data['ensemble_config_list'] = config_list
+                ens_data['meson2pt'] = meson_data
             
             if ens_data:
                 output_data[ens_name] = ens_data
