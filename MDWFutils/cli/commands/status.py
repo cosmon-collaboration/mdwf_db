@@ -18,7 +18,7 @@ MODES:
 
 1. List mode (no --ensemble specified):
    Shows a table of all ensembles with columns:
-   EID, NICK, beta, b, Ls, mc, ms, ml, L, T, N_CFG, LAST_OP, LAST_USER, STATUS
+   EID, NICK, beta, b, Ls, mc, ms, ml, L, T, N_CFG, C_therm, LAST_OP, LAST_USER, STATUS
    
    Sorting options:
    • Default: Ensembles are sorted numerically by physics parameters
@@ -149,6 +149,11 @@ def _list_ensembles(backend, args):
             except:
                 pass
         
+        # Get thermalized config
+        c_therm = ''
+        if cfg.get('thermalized') is not None:
+            c_therm = str(cfg['thermalized'])
+        
         # Get last operation info
         last_op = ''
         last_user = ''
@@ -174,6 +179,7 @@ def _list_ensembles(backend, args):
             'L': physics.get('L', ''),
             'T': physics.get('T', ''),
             'N_CFG': n_cfg,
+            'C_therm': c_therm,
             'LAST_OP': last_op,
             'LAST_USER': last_user,
             'STATUS': ens.get('status', ''),
@@ -199,7 +205,7 @@ def _list_ensembles(backend, args):
         rows.sort(key=sort_key)
 
     # Print table
-    headers = ['EID', 'NICK', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'N_CFG', 'LAST_OP', 'LAST_USER', 'STATUS']
+    headers = ['EID', 'NICK', 'beta', 'b', 'Ls', 'mc', 'ms', 'ml', 'L', 'T', 'N_CFG', 'C_therm', 'LAST_OP', 'LAST_USER', 'STATUS']
     print_table(headers, rows)
     return 0
 
@@ -253,9 +259,9 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
     
     print("\nMeasurements:")
     if therm_cfg is not None:
-        print(f"  c_therm: {therm_cfg}")
+        print(f"  C_therm: {therm_cfg}")
     else:
-        print(f"  c_therm: UNKNOWN")
+        print(f"  C_therm: UNKNOWN")
     if config_set:
         print(f"  Total configs: {len(config_set)}")
     print()
