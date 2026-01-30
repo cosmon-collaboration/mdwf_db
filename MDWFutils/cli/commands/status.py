@@ -561,6 +561,7 @@ def _show_measurements_table(backend, args):
         row = {
             'EID': ensemble_id,
             'NICK': nickname,
+            'N_CFG': len(config_set),
         }
         
         # Add columns for each measurement type
