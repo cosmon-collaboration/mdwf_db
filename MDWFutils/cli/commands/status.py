@@ -175,6 +175,7 @@ def _list_ensembles(backend, args):
             c_therm = therm_cfg
         else:
             thermalized_config_set = config_set
+            c_therm = ''
         n_cfg = len(thermalized_config_set)
 
 
