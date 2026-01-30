@@ -574,7 +574,7 @@ def _show_measurements_table(backend, args):
         rows.append(row)
     
     # Build headers dynamically based on measurement types
-    headers = ['EID', 'NICK']
+    headers = ['EID', 'NICK', 'N_CFG']
     for mtype in measurement_types:
         headers.append(f'{mtype}_MEASURED')
     
