@@ -2,6 +2,7 @@
 """Display ensemble status and details."""
 
 import argparse
+import sys
 
 from ..ensemble_utils import add_ensemble_argument, resolve_ensemble_from_args, get_backend_for_args
 from ..formatting import print_table, format_float, safe_float, safe_int
@@ -35,6 +36,10 @@ MODES:
 4. Missing measurements mode (with --ensemble and --missing specified):
    Lists configuration numbers missing a specific measurement type.
 
+5. Measurements table mode (with --measurements specified):
+   Shows a table of measurement counts for ensembles.
+   Use "all" to show all measurement types, or specify: gauge_obs mres meson2pt
+
 EXAMPLES:
   mdwf_db status                    # List all ensembles
   mdwf_db status --sort-by-id       # List sorted by EID
@@ -43,10 +48,16 @@ EXAMPLES:
   mdwf_db status -e 5 --dir         # Print only the directory path
   mdwf_db status -e 5 --op 147      # Show operation 147 details
   mdwf_db status -e 5 --missing gauge_obs  # Configs missing gauge_obs
+  mdwf_db status --measurements all  # Show all measurement types for all ensembles
+  mdwf_db status --measurements gauge_obs mres  # Show only gauge_obs and mres
+  mdwf_db status -e 5 7 --measurements all  # Show measurements for ensembles 5 and 7
+  mdwf_db status -e PRODUCTION --measurements all  # Show measurements for all PRODUCTION ensembles
+  mdwf_db status -e TUNING --measurements all  # Show measurements for all TUNING ensembles
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    add_ensemble_argument(p, required=False)
+    p.add_argument('-e', '--ensemble', nargs='*', metavar='ENSEMBLE',
+                   help='Ensemble identifier(s): ID, path, ".", "all", "PRODUCTION", or "TUNING". Can specify multiple.')
     p.add_argument('--sort-by-id', action='store_true', help='Sort list output by ensemble ID')
     p.add_argument('--dir', action='store_true', help='Only print directory path in detail view')
     p.add_argument('--op', '--operation', type=int, metavar='OP_ID',
@@ -54,11 +65,18 @@ EXAMPLES:
     p.add_argument('--missing', metavar='TYPE',
                    choices=['gauge_obs', 'mres', 'meson2pt'],
                    help='List config numbers missing measurements of TYPE (requires -e)')
+    p.add_argument('--measurements', nargs='*', metavar='TYPE',
+                   choices=['all', 'gauge_obs', 'mres', 'meson2pt'],
+                   help='Show measurement counts table. Use "all" for all types, or specify: gauge_obs mres meson2pt. Use with -e to filter by ensemble(s).')
     p.set_defaults(func=do_status)
 
 
 def do_status(args):
     backend = get_backend_for_args(args)
+
+    # Measurements mode - show measurement counts table (supports multiple ensembles)
+    if args.measurements is not None:
+        return _show_measurements_table(backend, args)
 
     # Check if --op is used without -e
     if args.op and not args.ensemble:
@@ -73,8 +91,19 @@ def do_status(args):
     if not args.ensemble:
         return _list_ensembles(backend, args)
 
-    # Detail mode - show specific ensemble
-    ensemble_id, ensemble = resolve_ensemble_from_args(args)
+    # Detail/missing/op modes - require single ensemble
+    # If multiple provided, use first one
+    ensemble_arg = args.ensemble[0] if isinstance(args.ensemble, list) else args.ensemble
+    if isinstance(args.ensemble, list) and len(args.ensemble) > 1:
+        print(f"WARNING: Multiple ensembles specified. Using first: {ensemble_arg}", file=sys.stderr)
+    
+    # Create a temporary args-like object with single ensemble for resolve_ensemble_from_args
+    class SingleEnsembleArgs:
+        def __init__(self, ensemble_value):
+            self.ensemble = ensemble_value
+    
+    temp_args = SingleEnsembleArgs(ensemble_arg)
+    ensemble_id, ensemble = resolve_ensemble_from_args(temp_args)
     if not ensemble:
         return 1
 
@@ -269,17 +298,17 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
     # Gauge observables
     gauge_configs = set(backend.get_measured_configs(ensemble_id, 'gauge_obs'))
     print("  gauge_obs:")
-    _print_measurement_summary(gauge_configs, config_set)
+    _print_measurement_summary(gauge_configs, config_set, therm_cfg)
     
     # Mres
     mres_configs = set(backend.get_measured_configs(ensemble_id, 'mres'))
     print("  mres:")
-    _print_measurement_summary(mres_configs, config_set)
+    _print_measurement_summary(mres_configs, config_set, therm_cfg)
     
     # Meson 2pt
     meson2pt_configs = set(backend.get_measured_configs(ensemble_id, 'meson2pt'))
     print("  meson2pt:")
-    _print_measurement_summary(meson2pt_configs, config_set)
+    _print_measurement_summary(meson2pt_configs, config_set, therm_cfg)
 
     # Operations summary table
     print('\nOperations:')
@@ -317,13 +346,26 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
     return 0
 
 
-def _print_measurement_summary(measured_configs, config_set):
-    """Print summary for a measurement type."""
+def _print_measurement_summary(measured_configs, config_set, therm_cfg=None):
+    """Print summary for a measurement type.
+    
+    Args:
+        measured_configs: Set of config numbers that have measurements
+        config_set: Set of all config numbers in the ensemble
+        therm_cfg: Thermalized config number (only count missing >= this)
+    """
     if measured_configs or config_set:
         # Configs that exist AND have measurements
         have_both = config_set & measured_configs
-        # Configs that exist but are missing measurements
-        missing = config_set - measured_configs
+        
+        # Filter to thermalized configs for missing count
+        if therm_cfg is not None:
+            thermalized_config_set = {c for c in config_set if c >= therm_cfg}
+            missing = thermalized_config_set - measured_configs
+        else:
+            thermalized_config_set = config_set
+            missing = config_set - measured_configs
+        
         # Measurements for configs that no longer exist
         orphaned = measured_configs - config_set
         
@@ -336,7 +378,10 @@ def _print_measurement_summary(measured_configs, config_set):
             print(f"    Range:    {min(measured_configs)}-{max(measured_configs)}")
         
         if missing:
-            print(f"    Missing:  {len(missing)} configs")
+            if therm_cfg is not None:
+                print(f"    Missing:  {len(missing)} configs (>= {therm_cfg})")
+            else:
+                print(f"    Missing:  {len(missing)} configs")
         
         if orphaned:
             print(f"    Orphaned: {len(orphaned)} (configs no longer exist)")
@@ -420,3 +465,117 @@ def _print_operation_details(operation):
         print("\nAdditional parameters:")
         for key, value in sorted(params.items()):
             print(f"  {key} = {value}")
+
+
+def _resolve_ensembles(backend, ensemble_args):
+    """Resolve ensemble arguments to list of (ensemble_id, ensemble_doc) tuples.
+    
+    Special keywords (only work when used alone):
+    - "all": all ensembles
+    - "PRODUCTION": all ensembles with status='PRODUCTION'
+    - "TUNING": all ensembles with status='TUNING'
+    """
+    results = []
+    
+    # Handle special keywords (only when used alone)
+    if len(ensemble_args) == 1:
+        keyword = ensemble_args[0].upper()
+        if keyword == 'ALL':
+            all_ensembles = backend.list_ensembles(detailed=True)
+            for ens in all_ensembles:
+                results.append((ens['ensemble_id'], ens))
+            return results
+        elif keyword == 'PRODUCTION':
+            all_ensembles = backend.list_ensembles(detailed=True)
+            for ens in all_ensembles:
+                # Check both status field and directory path
+                status = ens.get('status', '').upper()
+                directory = ens.get('directory', '').upper()
+                if status == 'PRODUCTION' or 'ENSEMBLES' in directory:
+                    results.append((ens['ensemble_id'], ens))
+            return results
+        elif keyword == 'TUNING':
+            all_ensembles = backend.list_ensembles(detailed=True)
+            for ens in all_ensembles:
+                # Check both status field and directory path
+                status = ens.get('status', '').upper()
+                directory = ens.get('directory', '').upper()
+                if status == 'TUNING' or 'TUNING' in directory:
+                    results.append((ens['ensemble_id'], ens))
+            return results
+    
+    # Handle regular ensemble identifiers (keywords not allowed with multiple values)
+    for identifier in ensemble_args:
+        keyword = identifier.upper()
+        if keyword in ('ALL', 'PRODUCTION', 'TUNING'):
+            print(f"WARNING: Keyword '{identifier}' ignored when used with other identifiers. Use alone or use ensemble IDs.", file=sys.stderr)
+            continue
+        try:
+            ens_id, ens = backend.resolve_ensemble_identifier(identifier)
+            results.append((ens_id, ens))
+        except Exception as e:
+            print(f"WARNING: Could not resolve ensemble '{identifier}': {e}", file=sys.stderr)
+    
+    return results
+
+
+def _show_measurements_table(backend, args):
+    """Print measurement counts table for ensembles."""
+    # Determine which measurement types to show
+    if not args.measurements or 'all' in args.measurements:
+        measurement_types = ['gauge_obs', 'mres', 'meson2pt']
+    else:
+        measurement_types = [m for m in args.measurements if m != 'all']
+    
+    # Get ensembles to show
+    if args.ensemble:
+        # Use specified ensemble(s) - args.ensemble is a list when nargs='*'
+        ensembles = _resolve_ensembles(backend, args.ensemble)
+        if not ensembles:
+            print("No ensembles found", file=sys.stderr)
+            return 1
+    else:
+        # Use all ensembles
+        all_ensembles = backend.list_ensembles(detailed=True)
+        ensembles = [(ens['ensemble_id'], ens) for ens in all_ensembles]
+    
+    if not ensembles:
+        print('No ensembles found')
+        return 0
+    
+    # Build table rows - one row per ensemble
+    rows = []
+    for ensemble_id, ensemble in ensembles:
+        cfg = ensemble.get('configurations', {})
+        config_set = set(cfg.get('config_list', []))
+        therm_cfg = cfg.get('thermalized')
+        nickname = ensemble.get('nickname', '')
+        
+        # Filter config_set to only thermalized configs for missing count
+        if therm_cfg is not None:
+            thermalized_config_set = {c for c in config_set if c >= therm_cfg}
+        else:
+            thermalized_config_set = config_set
+        
+        # Start building row with ensemble info
+        row = {
+            'EID': ensemble_id,
+            'NICK': nickname,
+        }
+        
+        # Add columns for each measurement type
+        for mtype in measurement_types:
+            measured_configs = set(backend.get_measured_configs(ensemble_id, mtype))
+            
+            # Add column for this measurement type
+            row[f'{mtype}_MEASURED'] = len(measured_configs)
+        
+        rows.append(row)
+    
+    # Build headers dynamically based on measurement types
+    headers = ['EID', 'NICK']
+    for mtype in measurement_types:
+        headers.append(f'{mtype}_MEASURED')
+    
+    print_table(headers, rows)
+    return 0

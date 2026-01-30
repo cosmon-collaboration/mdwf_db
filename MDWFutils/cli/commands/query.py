@@ -169,7 +169,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         '-e', '--ensemble',
         nargs='+',
         metavar='ENSEMBLE',
-        help='Ensemble(s) to export, or "all" for all ensembles (required unless using --list-fields)',
+        help='Ensemble(s) to export. Can use: ID(s), "all", "PRODUCTION", or "TUNING" (required unless using --list-fields)',
     )
     parser.add_argument(
         '-o', '--output',
@@ -211,23 +211,52 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
 def _resolve_ensembles(backend, ensemble_args: List[str]) -> List[Dict[str, Any]]:
     """Resolve ensemble arguments to list of (ensemble_id, ensemble_doc) tuples.
     
-    Special case: if ensemble_args is ["all"], returns all ensembles in the database.
+    Special keywords (only work when used alone):
+    - "all": all ensembles
+    - "PRODUCTION": all ensembles with status='PRODUCTION'
+    - "TUNING": all ensembles with status='TUNING'
     """
     results = []
     
-    # Handle "all" keyword
-    if len(ensemble_args) == 1 and ensemble_args[0].lower() == 'all':
-        all_ensembles = backend.list_ensembles(detailed=True)
-        for ens in all_ensembles:
-            results.append((ens['ensemble_id'], ens))
-        return results
+    # Handle special keywords (only when used alone)
+    if len(ensemble_args) == 1:
+        keyword = ensemble_args[0].upper()
+        if keyword == 'ALL':
+            all_ensembles = backend.list_ensembles(detailed=True)
+            for ens in all_ensembles:
+                results.append((ens['ensemble_id'], ens))
+            return results
+        elif keyword == 'PRODUCTION':
+            all_ensembles = backend.list_ensembles(detailed=True)
+            for ens in all_ensembles:
+                # Check both status field and directory path
+                status = ens.get('status', '').upper()
+                directory = ens.get('directory', '').upper()
+                if status == 'PRODUCTION' or 'ENSEMBLES' in directory:
+                    results.append((ens['ensemble_id'], ens))
+            return results
+        elif keyword == 'TUNING':
+            all_ensembles = backend.list_ensembles(detailed=True)
+            for ens in all_ensembles:
+                # Check both status field and directory path
+                status = ens.get('status', '').upper()
+                directory = ens.get('directory', '').upper()
+                if status == 'TUNING' or 'TUNING' in directory:
+                    results.append((ens['ensemble_id'], ens))
+            return results
     
+    # Handle regular ensemble identifiers (keywords not allowed with multiple values)
     for identifier in ensemble_args:
+        keyword = identifier.upper()
+        if keyword in ('ALL', 'PRODUCTION', 'TUNING'):
+            print(f"WARNING: Keyword '{identifier}' ignored when used with other identifiers. Use alone or use ensemble IDs.", file=sys.stderr)
+            continue
         try:
             ens_id, ens = backend.resolve_ensemble_identifier(identifier)
             results.append((ens_id, ens))
         except Exception as e:
             print(f"WARNING: Could not resolve ensemble '{identifier}': {e}", file=sys.stderr)
+    
     return results
 
 
@@ -462,7 +491,7 @@ class QueryAllCommand:
             '-e', '--ensemble',
             nargs='+',
             metavar='ENSEMBLE',
-            help='Ensemble(s) to export, or "all" for all ensembles (required unless using --list-fields)',
+            help='Ensemble(s) to export. Can use: ID(s), "all", "PRODUCTION", or "TUNING" (required unless using --list-fields)',
         )
         parser.add_argument(
             '-o', '--output',
@@ -502,6 +531,8 @@ EXAMPLES:
   mdwf_db query all -e 5 -o ensemble5.h5           # Single ensemble
   mdwf_db query all -e 1 3 5 -o subset.h5          # Multiple ensembles
   mdwf_db query all -e all -o everything.h5        # All ensembles
+  mdwf_db query all -e PRODUCTION -o prod.h5       # All PRODUCTION ensembles
+  mdwf_db query all -e TUNING -o tuning.h5         # All TUNING ensembles
   mdwf_db query all -e 5 --cfg-inc 10 -o s.h5   # Every 10th config
   mdwf_db query all --list-fields                  # Show all available fields
 """
@@ -615,6 +646,8 @@ EXAMPLES:
   mdwf_db query meson2pt -e 5 --fields pion # Pion correlators only
   mdwf_db query all -e 5 -o ensemble5.h5    # All data for ensemble 5
   mdwf_db query all -e all -o all.h5        # All ensembles
+  mdwf_db query all -e PRODUCTION -o prod.h5  # All PRODUCTION ensembles
+  mdwf_db query all -e TUNING -o tuning.h5    # All TUNING ensembles
   mdwf_db query gauge_obs -e 5 --cfg-inc 10  # Every 10th config
   mdwf_db query gauge_obs --list-fields     # Show available fields
 """,
