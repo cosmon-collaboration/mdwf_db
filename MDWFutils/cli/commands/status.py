@@ -167,22 +167,17 @@ def _list_ensembles(backend, args):
         ensemble_id = ens.get('ensemble_id', '')
         physics = ens.get('physics', {})
         cfg = ens.get('configurations', {})
-        
-        # Calculate N_CFG if possible
-        n_cfg = ''
-        if cfg.get('total'):
-            n_cfg = str(cfg['total'])
-        elif cfg.get('first') is not None and cfg.get('last') is not None and cfg.get('increment'):
-            try:
-                n_cfg = str((cfg['last'] - cfg['first']) // cfg['increment'] + 1)
-            except:
-                pass
-        
-        # Get thermalized config
-        c_therm = ''
-        if cfg.get('thermalized') is not None:
-            c_therm = str(cfg['thermalized'])
-        
+        config_set = set(cfg.get('config_list', []))
+        therm_cfg = cfg.get('thermalized')
+
+        if therm_cfg is not None:
+            thermalized_config_set = {c for c in config_set if c >= therm_cfg}
+            c_therm = therm_cfg
+        else:
+            thermalized_config_set = config_set
+        n_cfg = len(thermalized_config_set)
+
+
         # Get last operation info
         last_op = ''
         last_user = ''
