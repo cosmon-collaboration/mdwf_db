@@ -611,19 +611,23 @@ def _show_measurements_table(backend, args):
         
         rows.append(row)
     
-    # Sort by physics parameters (same as default status table)
-    def sort_key(row):
-        return (
-            safe_float(row['_beta']),
-            safe_float(row['_b']),
-            safe_int(row['_Ls']),
-            safe_float(row['_mc']),
-            safe_float(row['_ms']),
-            safe_float(row['_ml']),
-            safe_int(row['_L']),
-            safe_int(row['_T']),
-        )
-    rows.sort(key=sort_key)
+    # Sort ensembles
+    if args.sort_by_id:
+        rows.sort(key=lambda r: r['EID'])
+    else:
+        # Sort by physics parameters (same as default status table)
+        def sort_key(row):
+            return (
+                safe_float(row['_beta']),
+                safe_float(row['_b']),
+                safe_int(row['_Ls']),
+                safe_float(row['_mc']),
+                safe_float(row['_ms']),
+                safe_float(row['_ml']),
+                safe_int(row['_L']),
+                safe_int(row['_T']),
+            )
+        rows.sort(key=sort_key)
     
     # Build headers dynamically based on measurement types (exclude physics params)
     headers = ['EID', 'NICK', 'N_CFG']
