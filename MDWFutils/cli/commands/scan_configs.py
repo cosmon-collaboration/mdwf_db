@@ -108,6 +108,15 @@ def do_scan(args):
         ensemble_path = Path(ens['directory'])
         measurements_found = False
         
+        # Get thermalized config set for filtering
+        cfg = ens.get('configurations') or {}
+        config_set = set(values if values else cfg.get('config_list', []))
+        therm_cfg = cfg.get('thermalized')
+        if therm_cfg is not None:
+            thermalized_config_set = {c for c in config_set if c >= therm_cfg}
+        else:
+            thermalized_config_set = config_set
+        
         # Collect measurement stats
         measurement_stats = []
         
@@ -117,9 +126,12 @@ def do_scan(args):
         if gauge_files:
             existing_gauge = set(backend.get_measured_configs(ens_id, 'gauge_obs'))
             found_configs = {r.config_number for r in gauge_files}
-            ingested = len(found_configs & existing_gauge)
-            pending = len(found_configs - existing_gauge)
-            pending_list = sorted(found_configs - existing_gauge) if pending > 0 else []
+            # Filter to thermalized configs only
+            thermalized_found = found_configs & thermalized_config_set
+            thermalized_existing = existing_gauge & thermalized_config_set
+            ingested = len(thermalized_found & thermalized_existing)
+            pending = len(thermalized_found - thermalized_existing)
+            pending_list = sorted(thermalized_found - thermalized_existing) if pending > 0 else []
             measurement_stats.append(('gauge_obs', ingested, pending, pending_list))
             measurements_found = True
         
@@ -129,9 +141,12 @@ def do_scan(args):
         if mres_files:
             existing_mres = set(backend.get_measured_configs(ens_id, 'mres'))
             found_configs = {r.config_number for r in mres_files}
-            ingested = len(found_configs & existing_mres)
-            pending = len(found_configs - existing_mres)
-            pending_list = sorted(found_configs - existing_mres) if pending > 0 else []
+            # Filter to thermalized configs only
+            thermalized_found = found_configs & thermalized_config_set
+            thermalized_existing = existing_mres & thermalized_config_set
+            ingested = len(thermalized_found & thermalized_existing)
+            pending = len(thermalized_found - thermalized_existing)
+            pending_list = sorted(thermalized_found - thermalized_existing) if pending > 0 else []
             measurement_stats.append(('mres', ingested, pending, pending_list))
             measurements_found = True
         
@@ -141,15 +156,20 @@ def do_scan(args):
         if meson2pt_files:
             existing_meson2pt = set(backend.get_measured_configs(ens_id, 'meson2pt'))
             found_configs = {r.config_number for r in meson2pt_files}
-            ingested = len(found_configs & existing_meson2pt)
-            pending = len(found_configs - existing_meson2pt)
-            pending_list = sorted(found_configs - existing_meson2pt) if pending > 0 else []
+            # Filter to thermalized configs only
+            thermalized_found = found_configs & thermalized_config_set
+            thermalized_existing = existing_meson2pt & thermalized_config_set
+            ingested = len(thermalized_found & thermalized_existing)
+            pending = len(thermalized_found - thermalized_existing)
+            pending_list = sorted(thermalized_found - thermalized_existing) if pending > 0 else []
             measurement_stats.append(('meson2pt', ingested, pending, pending_list))
             measurements_found = True
         
         # Print measurements section
         if measurements_found:
             print("  Measurements:")
+            if therm_cfg is None:
+                print("    (Note: thermalization threshold not set, showing all configs)")
             # Calculate max width for alignment
             max_name_len = max(len(name) for name, _, _, _ in measurement_stats)
             for name, ingested, pending, pending_list in measurement_stats:
@@ -206,12 +226,24 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
     
     Only reports "missing" for measurement types that have SOME files present,
     to avoid confusing output when a measurement type doesn't apply to the ensemble.
+    Only reports missing configs for thermalized configurations.
     """
     if not config_list:
         return
     
     try:
-        expected = set(config_list)
+        config_set = set(config_list)
+        cfg = ensemble.get('configurations', {})
+        therm_cfg = cfg.get('thermalized')
+        
+        # Filter to thermalized configs only (or all if not set)
+        if therm_cfg is not None:
+            expected = {c for c in config_set if c >= therm_cfg}
+            config_label = "thermalized configs"
+        else:
+            expected = config_set
+            config_label = "configs"
+        
         warnings = []
         
         # Gauge obs missing (only if we found some gauge files)
@@ -222,9 +254,9 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
             
             if missing_gauge:
                 if len(missing_gauge) <= 8:
-                    warnings.append(f"gauge_obs: {len(missing_gauge)} configs have no files: {missing_gauge}")
+                    warnings.append(f"gauge_obs: {len(missing_gauge)} {config_label} have no files: {missing_gauge}")
                 else:
-                    warnings.append(f"gauge_obs: {len(missing_gauge)} configs have no files")
+                    warnings.append(f"gauge_obs: {len(missing_gauge)} {config_label} have no files")
         
         # Mres missing (only if we found some mres files)
         if mres_files:
@@ -234,9 +266,9 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
             
             if missing_mres:
                 if len(missing_mres) <= 8:
-                    warnings.append(f"mres: {len(missing_mres)} configs have no files: {missing_mres}")
+                    warnings.append(f"mres: {len(missing_mres)} {config_label} have no files: {missing_mres}")
                 else:
-                    warnings.append(f"mres: {len(missing_mres)} configs have no files")
+                    warnings.append(f"mres: {len(missing_mres)} {config_label} have no files")
         
         # Meson2pt missing (only if we found some meson2pt files)
         if meson2pt_files:
@@ -246,9 +278,9 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
             
             if missing_meson2pt:
                 if len(missing_meson2pt) <= 8:
-                    warnings.append(f"meson2pt: {len(missing_meson2pt)} configs have no files: {missing_meson2pt}")
+                    warnings.append(f"meson2pt: {len(missing_meson2pt)} {config_label} have no files: {missing_meson2pt}")
                 else:
-                    warnings.append(f"meson2pt: {len(missing_meson2pt)} configs have no files")
+                    warnings.append(f"meson2pt: {len(missing_meson2pt)} {config_label} have no files")
         
         # Print warnings section if any
         if warnings:

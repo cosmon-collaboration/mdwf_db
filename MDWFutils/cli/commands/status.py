@@ -137,19 +137,37 @@ def _show_missing_measurements(backend, ensemble_id, ensemble, measurement_type)
         print(f"ERROR: No config list for ensemble {ensemble_id} (run 'mdwf scan' first)")
         return 1
     
-    expected = set(config_list)
+    config_set = set(config_list)
+    therm_cfg = cfg.get('thermalized')
+    
+    # Filter to thermalized configs only
+    if therm_cfg is not None:
+        expected = {c for c in config_set if c >= therm_cfg}
+    else:
+        expected = config_set
+    
     measured = set(backend.get_measured_configs(ensemble_id, measurement_type))
     missing = sorted(expected - measured)
     
     if missing:
         print(f"Configs missing {measurement_type} for ensemble {ensemble_id}:")
+        if therm_cfg is not None:
+            print(f"(Only showing thermalized configs >= {therm_cfg})")
+        else:
+            print(f"(Note: thermalization threshold not set, showing all configs)")
         # Print in groups
         for i in range(0, len(missing), 15):
             chunk = missing[i:i+15]
             print("  " + ", ".join(str(c) for c in chunk))
-        print(f"\nTotal: {len(missing)} missing out of {len(expected)}")
+        if therm_cfg is not None:
+            print(f"\nTotal: {len(missing)} missing out of {len(expected)} thermalized configs")
+        else:
+            print(f"\nTotal: {len(missing)} missing out of {len(expected)} configs")
     else:
-        print(f"All configs have {measurement_type} measurements for ensemble {ensemble_id}")
+        if therm_cfg is not None:
+            print(f"All thermalized configs have {measurement_type} measurements for ensemble {ensemble_id}")
+        else:
+            print(f"All configs have {measurement_type} measurements for ensemble {ensemble_id}")
     
     return 0
 
@@ -174,8 +192,9 @@ def _list_ensembles(backend, args):
             thermalized_config_set = {c for c in config_set if c >= therm_cfg}
             c_therm = therm_cfg
         else:
+            # When thermalization is not set, show all configs but indicate it's unknown
             thermalized_config_set = config_set
-            c_therm = ''
+            c_therm = '?'  # Indicates thermalization threshold not set
         n_cfg = len(thermalized_config_set)
 
 
@@ -282,13 +301,21 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
     config_set = set(cfg.get('config_list', []))
     therm_cfg = cfg.get('thermalized')
     
+    # Filter to thermalized configs
+    if therm_cfg is not None:
+        thermalized_config_set = {c for c in config_set if c >= therm_cfg}
+    else:
+        thermalized_config_set = config_set
+    
     print("\nMeasurements:")
     if therm_cfg is not None:
         print(f"  C_therm: {therm_cfg}")
+        if thermalized_config_set:
+            print(f"  Total thermalized configs: {len(thermalized_config_set)}")
     else:
-        print(f"  C_therm: UNKNOWN")
-    if config_set:
-        print(f"  Total configs: {len(config_set)}")
+        print(f"  C_therm: UNKNOWN (showing all configs)")
+        if thermalized_config_set:
+            print(f"  Total configs: {len(thermalized_config_set)}")
     print()
     
     # Gauge observables
@@ -336,6 +363,9 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
                 'EXIT': slurm.get('exit_code', ''),
             })
         
+        # Sort by operation ID descending (most recent first)
+        op_rows.sort(key=lambda r: safe_int(r['ID']) if r['ID'] else 0, reverse=True)
+        
         op_headers = ['ID', 'TYPE', 'STATUS', 'UPDATED', 'USER', 'RANGE', 'JOB', 'EXIT']
         print_table(op_headers, op_rows)
 
@@ -348,25 +378,24 @@ def _print_measurement_summary(measured_configs, config_set, therm_cfg=None):
     Args:
         measured_configs: Set of config numbers that have measurements
         config_set: Set of all config numbers in the ensemble
-        therm_cfg: Thermalized config number (only count missing >= this)
+        therm_cfg: Thermalized config number (only count >= this)
     """
     if measured_configs or config_set:
-        # Configs that exist AND have measurements
-        have_both = config_set & measured_configs
-        
-        # Filter to thermalized configs for missing count
+        # Filter to thermalized configs
         if therm_cfg is not None:
             thermalized_config_set = {c for c in config_set if c >= therm_cfg}
-            missing = thermalized_config_set - measured_configs
         else:
             thermalized_config_set = config_set
-            missing = config_set - measured_configs
+        
+        # Configs that exist AND have measurements (filtered to thermalized if set)
+        have_both = thermalized_config_set & measured_configs
+        missing = thermalized_config_set - measured_configs
         
         # Measurements for configs that no longer exist
         orphaned = measured_configs - config_set
         
-        if config_set:
-            print(f"    Measured: {len(have_both)}/{len(config_set)} configs")
+        if thermalized_config_set:
+            print(f"    Measured: {len(have_both)}/{len(thermalized_config_set)} configs")
         else:
             print(f"    Measured: {len(measured_configs)} configs")
         
@@ -542,37 +571,67 @@ def _show_measurements_table(backend, args):
     # Build table rows - one row per ensemble
     rows = []
     for ensemble_id, ensemble in ensembles:
+        physics = ensemble.get('physics', {})
         cfg = ensemble.get('configurations', {})
         config_set = set(cfg.get('config_list', []))
         therm_cfg = cfg.get('thermalized')
         nickname = ensemble.get('nickname', '')
         
-        # Filter config_set to only thermalized configs for missing count
+        # Filter config_set to only thermalized configs
         if therm_cfg is not None:
             thermalized_config_set = {c for c in config_set if c >= therm_cfg}
         else:
             thermalized_config_set = config_set
         
         # Start building row with ensemble info
+        # Include physics params for sorting but they won't be displayed
         row = {
             'EID': ensemble_id,
             'NICK': nickname,
-            'N_CFG': len(config_set),
+            'N_CFG': len(thermalized_config_set),
+            # Physics params for sorting (not displayed)
+            '_beta': physics.get('beta', ''),
+            '_b': physics.get('b', ''),
+            '_Ls': physics.get('Ls', ''),
+            '_mc': physics.get('mc', ''),
+            '_ms': physics.get('ms', ''),
+            '_ml': physics.get('ml', ''),
+            '_L': physics.get('L', ''),
+            '_T': physics.get('T', ''),
         }
         
         # Add columns for each measurement type
         for mtype in measurement_types:
             measured_configs = set(backend.get_measured_configs(ensemble_id, mtype))
+            # Count only thermalized measured configs
+            thermalized_measured = measured_configs & thermalized_config_set
             
             # Add column for this measurement type
-            row[f'{mtype}_MEASURED'] = len(measured_configs)
+            row[f'{mtype}_MEASURED'] = len(thermalized_measured)
         
         rows.append(row)
     
-    # Build headers dynamically based on measurement types
+    # Sort by physics parameters (same as default status table)
+    def sort_key(row):
+        return (
+            safe_float(row['_beta']),
+            safe_float(row['_b']),
+            safe_int(row['_Ls']),
+            safe_float(row['_mc']),
+            safe_float(row['_ms']),
+            safe_float(row['_ml']),
+            safe_int(row['_L']),
+            safe_int(row['_T']),
+        )
+    rows.sort(key=sort_key)
+    
+    # Build headers dynamically based on measurement types (exclude physics params)
     headers = ['EID', 'NICK', 'N_CFG']
     for mtype in measurement_types:
         headers.append(f'{mtype}_MEASURED')
     
-    print_table(headers, rows)
+    # Filter rows to only include displayed columns
+    display_rows = [{k: v for k, v in row.items() if not k.startswith('_')} for row in rows]
+    
+    print_table(headers, display_rows)
     return 0
