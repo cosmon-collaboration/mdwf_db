@@ -19,7 +19,7 @@ def register(subparsers):
     p.add_argument('--operation-type', '-o', help='Operation type label (required for operation updates)')
     p.add_argument('--status', '-s', help='Operation status (required for operation updates)')
     p.add_argument('--operation-id', '-i', type=int, help='Existing operation ID to update')
-    p.add_argument('-p', '--params', default='', help='Space separated key=val pairs for metadata or ensemble properties')
+    p.add_argument('-p', '--params', default='', help='Key=val pairs (e.g. C_therm=500 for configurations.thermalized)')
     p.add_argument('-u', '--user', default=None, help='Override username associated with the operation')
     p.set_defaults(func=do_update)
 
@@ -82,17 +82,22 @@ def do_update(args):
     return 0
 
 
+# Aliases for ensemble update keys (e.g. -p C_therm=500)
+_ENSEMBLE_UPDATE_ALIASES = {"C_therm": "configurations.thermalized"}
+
+
 def _update_ensemble(backend, ensemble_id, ensemble, param_dict):
     """Update ensemble properties."""
     if not param_dict:
         print("ERROR: No properties specified for ensemble update", file=sys.stderr)
-        print("Hint: Use -p key=value to specify properties (e.g., -p configurations.thermalized=500)", file=sys.stderr)
+        print("Hint: Use -p key=value (e.g. -p configurations.thermalized=500 or -p C_therm=500)", file=sys.stderr)
         return 1
     
     updates = {}
     cfg_updates = {}  # Collect all configuration updates first
     
     for key, value in param_dict.items():
+        key = _ENSEMBLE_UPDATE_ALIASES.get(key, key)
         # Handle nested keys like "configurations.thermalized"
         if '.' in key:
             parts = key.split('.')

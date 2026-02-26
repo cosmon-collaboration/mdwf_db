@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 class DatabaseBackend(ABC):
@@ -133,8 +133,12 @@ class DatabaseBackend(ABC):
         measurement_type: str,
         config_start: Optional[int] = None,
         config_end: Optional[int] = None,
+        config_numbers: Optional[Sequence[int]] = None,
     ) -> List[Dict]:
-        """Query measurement documents for a range of configurations."""
+        """Query measurement documents by range or by explicit config list.
+        
+        If config_numbers is given, only those configs are returned (range/start/end ignored).
+        """
 
     @abstractmethod
     def get_measured_configs(

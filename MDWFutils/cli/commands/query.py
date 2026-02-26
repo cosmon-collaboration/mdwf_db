@@ -188,7 +188,15 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         '--cfg-inc',
         type=int,
         metavar='N',
-        help='Use every Nth config (applied after range/thermalization filter)',
+        help='Use every Nth config number in range (e.g. 20,40,60,...; use --cfg-range for range)',
+    )
+    parser.add_argument(
+        '--cfg-list',
+        nargs='+',
+        type=int,
+        metavar='CFG',
+        dest='cfg_list',
+        help='Explicit config numbers (overrides --cfg-range/--cfg-inc). Shell ok: --cfg-list $(seq 0 20 240)',
     )
     parser.add_argument(
         '--fields',
@@ -282,17 +290,40 @@ def _get_config_filter(
     return None, None
 
 
-def _apply_stride(measurements: List[Dict], stride: Optional[int]) -> List[Dict]:
-    """Apply stride filter to measurements, keeping every Nth config.
+def _sort_by_config_list(measurements: List[Dict], config_list: List[int]) -> List[Dict]:
+    """Sort measurements to match the order of config_list (first occurrence). Missing configs omitted."""
+    order = {}
+    for i, cfg in enumerate(config_list):
+        if cfg not in order:
+            order[cfg] = i
+    return sorted(measurements, key=lambda m: order.get(m["config_number"], len(order)))
+
+
+def _apply_stride(
+    measurements: List[Dict],
+    stride: Optional[int],
+    range_start: Optional[int] = None,
+) -> List[Dict]:
+    """Apply stride filter by config number: keep configs at start, start+N, start+2*N, ...
     
-    The stride is applied relative to the first config in the sorted list,
-    so if configs are [100, 110, 120, 130, ...] and stride=2, you get [100, 120, ...].
+    This gives "every Nth config" in the range by config number, not by position in the
+    list of measurements. So with data at 20, 40, ..., 220, 240, ..., 600, ... and
+    stride=20, range_start=20 you get 20, 40, 60, ..., 220, 240, ... (every 20th config
+    number), not every 20th measurement (which would be 20, 220, 600, ...).
+    
+    range_start: first config in the logical range (from --cfg-range or thermalized).
+                 If None, the minimum config_number in measurements is used.
     """
     if not stride or stride <= 1 or not measurements:
         return measurements
     
-    # Measurements should already be sorted by config_number from the query
-    return measurements[::stride]
+    if range_start is None:
+        range_start = min(m["config_number"] for m in measurements)
+    
+    return [
+        m for m in measurements
+        if (m["config_number"] - range_start) % stride == 0
+    ]
 
 
 # =============================================================================
@@ -345,19 +376,26 @@ Export {self.measurement_type} data.
         
         fields = expand_fields(args.fields, self.measurement_type) if args.fields else None
         stride = getattr(args, 'cfg_inc', None)
+        cfg_list = getattr(args, 'cfg_list', None)
         output_data = {}
         
         for ens_id, ensemble in ensembles:
-            config_start, config_end = _get_config_filter(
-                ensemble, args.cfg_range, args.include_pretherm
-            )
-            
-            measurements = backend.query_measurements(
-                ens_id, self.measurement_type,
-                config_start=config_start,
-                config_end=config_end,
-            )
-            measurements = _apply_stride(measurements, stride)
+            if cfg_list is not None:
+                measurements = backend.query_measurements(
+                    ens_id, self.measurement_type,
+                    config_numbers=cfg_list,
+                )
+                measurements = _sort_by_config_list(measurements, cfg_list)
+            else:
+                config_start, config_end = _get_config_filter(
+                    ensemble, args.cfg_range, args.include_pretherm
+                )
+                measurements = backend.query_measurements(
+                    ens_id, self.measurement_type,
+                    config_start=config_start,
+                    config_end=config_end,
+                )
+                measurements = _apply_stride(measurements, stride, config_start)
             
             if not measurements:
                 continue
@@ -510,7 +548,15 @@ class QueryAllCommand:
             '--cfg-inc',
             type=int,
             metavar='N',
-            help='Use every Nth config (applied after range/thermalization filter)',
+            help='Use every Nth config number in range (use --cfg-range for range)',
+        )
+        parser.add_argument(
+            '--cfg-list',
+            nargs='+',
+            type=int,
+            metavar='CFG',
+            dest='cfg_list',
+            help='Explicit config numbers. Shell ok: --cfg-list $(seq 0 20 240)',
         )
         parser.add_argument(
             '--include-pretherm',
@@ -534,6 +580,7 @@ EXAMPLES:
   mdwf_db query all -e PRODUCTION -o prod.h5       # All PRODUCTION ensembles
   mdwf_db query all -e TUNING -o tuning.h5         # All TUNING ensembles
   mdwf_db query all -e 5 --cfg-inc 10 -o s.h5   # Every 10th config
+  mdwf_db query all -e 5 --cfg-list 0 20 40 60 -o subset.h5  # Explicit configs
   mdwf_db query all --list-fields                  # Show all available fields
 """
     
@@ -559,41 +606,60 @@ EXAMPLES:
             return 1
         
         stride = getattr(args, 'cfg_inc', None)
+        cfg_list = getattr(args, 'cfg_list', None)
         output_data = {}
         
         for ens_id, ensemble in ensembles:
-            config_start, config_end = _get_config_filter(
-                ensemble, args.cfg_range, args.include_pretherm
-            )
             physics = ensemble.get('physics', {})
             ens_name = get_ensemble_name(ensemble)
-            
             ens_data = {}
+            if cfg_list is None:
+                config_start, config_end = _get_config_filter(
+                    ensemble, args.cfg_range, args.include_pretherm
+                )
             
-            measurements = backend.query_measurements(
-                ens_id, 'gauge_obs',
-                config_start=config_start,
-                config_end=config_end,
-            )
-            measurements = _apply_stride(measurements, stride)
+            if cfg_list is not None:
+                measurements = backend.query_measurements(
+                    ens_id, 'gauge_obs', config_numbers=cfg_list,
+                )
+                measurements = _sort_by_config_list(measurements, cfg_list)
+            else:
+                measurements = backend.query_measurements(
+                    ens_id, 'gauge_obs',
+                    config_start=config_start,
+                    config_end=config_end,
+                )
+                measurements = _apply_stride(measurements, stride, config_start)
             if measurements:
                 ens_data['gauge_obs'] = prepare_gauge_obs_data(measurements)
             
-            measurements = backend.query_measurements(
-                ens_id, 'mres',
-                config_start=config_start,
-                config_end=config_end,
-            )
-            measurements = _apply_stride(measurements, stride)
+            if cfg_list is not None:
+                measurements = backend.query_measurements(
+                    ens_id, 'mres', config_numbers=cfg_list,
+                )
+                measurements = _sort_by_config_list(measurements, cfg_list)
+            else:
+                measurements = backend.query_measurements(
+                    ens_id, 'mres',
+                    config_start=config_start,
+                    config_end=config_end,
+                )
+                measurements = _apply_stride(measurements, stride, config_start)
             if measurements:
                 ens_data['mres'] = prepare_mres_data(measurements, physics)
             
-            measurements = backend.query_measurements(
-                ens_id, 'meson2pt',
-                config_start=config_start,
-                config_end=config_end,
-            )
-            measurements = _apply_stride(measurements, stride)
+            if cfg_list is not None:
+                measurements = backend.query_measurements(
+                    ens_id, 'meson2pt', config_numbers=cfg_list,
+                )
+                measurements = _sort_by_config_list(measurements, cfg_list)
+            else:
+                measurements = backend.query_measurements(
+                    ens_id, 'meson2pt',
+                    config_start=config_start,
+                    config_end=config_end,
+                )
+                measurements = _apply_stride(measurements, stride, config_start)
             if measurements:
                 meson_data = prepare_meson2pt_data(measurements, physics)
                 # Include ensemble config_list if available
@@ -648,7 +714,10 @@ EXAMPLES:
   mdwf_db query all -e all -o all.h5        # All ensembles
   mdwf_db query all -e PRODUCTION -o prod.h5  # All PRODUCTION ensembles
   mdwf_db query all -e TUNING -o tuning.h5    # All TUNING ensembles
-  mdwf_db query gauge_obs -e 5 --cfg-inc 10  # Every 10th config
+  mdwf_db query gauge_obs -e 5 --cfg-inc 10  # Every 10th config number
+  mdwf_db query meson2pt -e a05m364 --cfg-range 0 240 --cfg-inc 20  # Configs 0,20,...,240
+  mdwf_db query meson2pt -e 5 --cfg-list 20 40 100 500  # Explicit config list
+  mdwf_db query meson2pt -e 5 --cfg-list $(seq 0 20 240) -o out.h5  # Every 20 from 0 to 240
   mdwf_db query gauge_obs --list-fields     # Show available fields
 """,
         )

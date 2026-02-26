@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import time
 from pymongo import ASCENDING, DESCENDING, MongoClient
@@ -413,9 +413,14 @@ class MongoDBBackend(DatabaseBackend):
         measurement_type: str,
         config_start: Optional[int] = None,
         config_end: Optional[int] = None,
+        config_numbers: Optional[Sequence[int]] = None,
     ) -> List[Dict]:
         query = {"ensemble_id": ensemble_id, "measurement_type": measurement_type}
-        if config_start is not None or config_end is not None:
+        if config_numbers is not None:
+            if not config_numbers:
+                return []
+            query["config_number"] = {"$in": list(config_numbers)}
+        elif config_start is not None or config_end is not None:
             query["config_number"] = {}
             if config_start is not None:
                 query["config_number"]["$gte"] = config_start
