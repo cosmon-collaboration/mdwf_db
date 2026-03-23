@@ -33,10 +33,18 @@ MODES:
    Shows complete information for a specific operation including all timing,
    SLURM details, execution context, chain information, and parameters.
 
-4. Missing measurements mode (with --ensemble and --missing specified):
-   Lists configuration numbers missing a specific measurement type.
+4. Missing measurements mode (with --ensemble and --missing TYPE):
+   Lists configuration numbers in config_list that lack TYPE in the database.
+   By default, only configs >= configurations.thermalized are considered expected
+   (or all configs in config_list if thermalized is not set).
+   With --cfg-range START END, expected configs are those in config_list with
+   START <= c <= END (inclusive); thermalization is not applied in that case.
 
-5. Measurements table mode (with --measurements specified):
+5. Measured configs mode (with --ensemble and --measured TYPE):
+   Prints config numbers that already have TYPE stored in the database, one per line
+   (for scripting: wc -l, xargs, etc.). Cannot be combined with --missing.
+
+6. Measurements table mode (with --measurements specified):
    Shows a table of measurement counts for ensembles.
    Use "all" to show all measurement types, or specify: gauge_obs mres meson2pt
 
@@ -48,6 +56,8 @@ EXAMPLES:
   mdwf_db status -e 5 --dir         # Print only the directory path
   mdwf_db status -e 5 --op 147      # Show operation 147 details
   mdwf_db status -e 5 --missing gauge_obs  # Configs missing gauge_obs
+  mdwf_db status -e 5 --measured meson2pt  # Config numbers with meson2pt in DB (one per line)
+  mdwf_db status -e 5 --missing meson2pt --cfg-range 100 500  # Missing in [100,500] ∩ config_list
   mdwf_db status --measurements all  # Show all measurement types for all ensembles
   mdwf_db status --measurements gauge_obs mres  # Show only gauge_obs and mres
   mdwf_db status -e 5 7 --measurements all  # Show measurements for ensembles 5 and 7
@@ -64,7 +74,16 @@ EXAMPLES:
                    help='Show detailed information for a specific operation (requires -e)')
     p.add_argument('--missing', metavar='TYPE',
                    choices=['gauge_obs', 'mres', 'meson2pt'],
-                   help='List config numbers missing measurements of TYPE (requires -e)')
+                   help='List configs in config_list missing TYPE in the DB (requires -e). '
+                        'Default: expected = thermalized configs (or all if C_therm unset). '
+                        'Use --cfg-range to restrict expected set to [START,END] ∩ config_list.')
+    p.add_argument('--measured', metavar='TYPE',
+                   choices=['gauge_obs', 'mres', 'meson2pt'], default=None,
+                   help='Print config numbers that have TYPE in the DB, one per line (requires -e). '
+                        'Not combinable with --missing.')
+    p.add_argument('--cfg-range', nargs=2, type=int, metavar=('START', 'END'), default=None,
+                   help='With --missing only: expected configs are config_list ∩ [START,END] inclusive. '
+                        'Does not apply thermalization filter.')
     p.add_argument('--measurements', nargs='*', metavar='TYPE',
                    choices=['all', 'gauge_obs', 'mres', 'meson2pt'],
                    help='Show measurement counts table. Use "all" for all types, or specify: gauge_obs mres meson2pt. Use with -e to filter by ensemble(s).')
@@ -86,6 +105,18 @@ def do_status(args):
     # Check if --missing is used without -e
     if args.missing and not args.ensemble:
         print("ERROR: --missing requires -e/--ensemble")
+        return 1
+
+    if getattr(args, 'measured', None) and not args.ensemble:
+        print("ERROR: --measured requires -e/--ensemble", file=sys.stderr)
+        return 1
+
+    if args.cfg_range is not None and not args.missing:
+        print("ERROR: --cfg-range is only valid with --missing", file=sys.stderr)
+        return 1
+
+    if getattr(args, 'measured', None) and args.missing:
+        print("ERROR: --measured and --missing cannot be used together", file=sys.stderr)
         return 1
 
     if not args.ensemble:
@@ -111,9 +142,16 @@ def do_status(args):
         print(ensemble['directory'])
         return 0
 
+    # Measured configs in DB (one per line)
+    if getattr(args, 'measured', None):
+        return _show_measured_configs(backend, ensemble_id, args.measured)
+
     # Missing measurements mode - show configs missing a measurement type
     if args.missing:
-        return _show_missing_measurements(backend, ensemble_id, ensemble, args.missing)
+        cfg_range = tuple(args.cfg_range) if args.cfg_range is not None else None
+        return _show_missing_measurements(
+            backend, ensemble_id, ensemble, args.missing, cfg_range=cfg_range,
+        )
 
     # Operation detail mode - show specific operation
     if args.op:
@@ -128,8 +166,26 @@ def do_status(args):
     return _print_ensemble_details(backend, ensemble_id, ensemble)
 
 
-def _show_missing_measurements(backend, ensemble_id, ensemble, measurement_type):
-    """Show configs missing a specific measurement type."""
+def _show_measured_configs(backend, ensemble_id, measurement_type):
+    """Print config numbers that have measurements in the DB, one per line."""
+    measured = sorted(backend.get_measured_configs(ensemble_id, measurement_type))
+    for c in measured:
+        print(c)
+    return 0
+
+
+def _show_missing_measurements(
+    backend,
+    ensemble_id,
+    ensemble,
+    measurement_type,
+    cfg_range=None,
+):
+    """Show configs missing a specific measurement type.
+
+    cfg_range: if (c_i, c_f), expected = config_list ∩ [c_i, c_f] (no thermal filter).
+    Otherwise expected = thermalized configs in config_list (or all if thermalized unset).
+    """
     cfg = ensemble.get('configurations', {})
     config_list = cfg.get('config_list', [])
     
@@ -139,32 +195,46 @@ def _show_missing_measurements(backend, ensemble_id, ensemble, measurement_type)
     
     config_set = set(config_list)
     therm_cfg = cfg.get('thermalized')
-    
-    # Filter to thermalized configs only
-    if therm_cfg is not None:
+
+    if cfg_range is not None:
+        c_i, c_f = cfg_range[0], cfg_range[1]
+        if c_i > c_f:
+            print("ERROR: --cfg-range START must be <= END", file=sys.stderr)
+            return 1
+        expected = {c for c in config_set if c_i <= c <= c_f}
+        range_note = f"config_list ∩ [{c_i}, {c_f}]"
+    elif therm_cfg is not None:
         expected = {c for c in config_set if c >= therm_cfg}
+        range_note = None
     else:
         expected = config_set
+        range_note = None
     
     measured = set(backend.get_measured_configs(ensemble_id, measurement_type))
     missing = sorted(expected - measured)
     
     if missing:
         print(f"Configs missing {measurement_type} for ensemble {ensemble_id}:")
-        if therm_cfg is not None:
+        if cfg_range is not None:
+            print(f"(Expected set: {range_note}, {len(expected)} configs)")
+        elif therm_cfg is not None:
             print(f"(Only showing thermalized configs >= {therm_cfg})")
         else:
-            print(f"(Note: thermalization threshold not set, showing all configs)")
+            print("(Note: thermalization threshold not set, showing all configs in config_list)")
         # Print in groups
         for i in range(0, len(missing), 15):
             chunk = missing[i:i+15]
             print("  " + ", ".join(str(c) for c in chunk))
-        if therm_cfg is not None:
+        if cfg_range is not None:
+            print(f"\nTotal: {len(missing)} missing out of {len(expected)} configs in range")
+        elif therm_cfg is not None:
             print(f"\nTotal: {len(missing)} missing out of {len(expected)} thermalized configs")
         else:
             print(f"\nTotal: {len(missing)} missing out of {len(expected)} configs")
     else:
-        if therm_cfg is not None:
+        if cfg_range is not None:
+            print(f"All configs in {range_note} have {measurement_type} measurements for ensemble {ensemble_id}")
+        elif therm_cfg is not None:
             print(f"All thermalized configs have {measurement_type} measurements for ensemble {ensemble_id}")
         else:
             print(f"All configs have {measurement_type} measurements for ensemble {ensemble_id}")
