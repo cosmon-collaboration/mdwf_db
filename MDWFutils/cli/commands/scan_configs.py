@@ -9,6 +9,7 @@ from ...scanners.gauge_obs import GaugeObsScanner
 from ...scanners.meson2pt import Meson2ptScanner
 from ...scanners.mres import MresScanner
 from ..ensemble_utils import add_ensemble_argument, get_backend_for_args
+from ..json_output import print_json
 
 
 def register(subparsers):
@@ -32,6 +33,8 @@ EXAMPLES:
     )
     add_ensemble_argument(p, help_text='Optional: scan only this ensemble (ID, path, or nickname)', required=False)
     p.add_argument('--force', action='store_true', help='Update config counts even if unchanged')
+    p.add_argument('--dry-run', action='store_true', help='Report scan deltas without updating the database')
+    p.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
     p.set_defaults(func=do_scan)
 
 
@@ -54,16 +57,28 @@ def do_scan(args):
         return 0
 
     updated = 0
+    planned_updates = 0
+    summaries = []
+    emit = not args.json
     for ens in ensembles:
         ens_id = ens.get('ensemble_id') or ens.get('id')
         nick = ens.get('nickname')
+        summary = {
+            "ensemble_id": ens_id,
+            "nickname": nick,
+            "directory": ens.get("directory"),
+            "configurations": {"found": [], "would_update": False, "updated": False},
+            "measurements": [],
+            "warnings": [],
+        }
         
         # Print ensemble header
-        if nick:
-            print(f"\nEnsemble {ens_id} ({nick})")
-        else:
-            print(f"\nEnsemble {ens_id}")
-        print("-" * 50)
+        if emit:
+            if nick:
+                print(f"\nEnsemble {ens_id} ({nick})")
+            else:
+                print(f"\nEnsemble {ens_id}")
+            print("-" * 50)
         
         # Existing cnfg/ scanning
         cnfg_dir = Path(ens['directory']) / 'cnfg'
@@ -86,23 +101,41 @@ def do_scan(args):
             
             # Print config info
             inc_str = f", inc={increment}" if increment else ""
-            print(f"  Configurations: {total} total ({first}-{last}{inc_str})")
+            summary["configurations"] = {
+                "found": values,
+                "first": first,
+                "last": last,
+                "increment": increment,
+                "total": total,
+                "would_update": should_update,
+                "updated": False,
+            }
+            if emit:
+                print(f"  Configurations: {total} total ({first}-{last}{inc_str})")
             
             if should_update:
-                backend.update_ensemble(
-                    ens_id,
-                    configurations={
-                        'first': first,
-                        'last': last,
-                        'increment': increment,
-                        'total': total,
-                        'config_list': values,
-                    },
-                )
-                updated += 1
-                print(f"    [updated in database]")
+                if args.dry_run:
+                    planned_updates += 1
+                    if emit:
+                        print(f"    [would update database]")
+                else:
+                    backend.update_ensemble(
+                        ens_id,
+                        configurations={
+                            'first': first,
+                            'last': last,
+                            'increment': increment,
+                            'total': total,
+                            'config_list': values,
+                        },
+                    )
+                    updated += 1
+                    summary["configurations"]["updated"] = True
+                    if emit:
+                        print(f"    [updated in database]")
         else:
-            print("  Configurations: none found")
+            if emit:
+                print("  Configurations: none found")
         
         # Discover measurement files and report status
         ensemble_path = Path(ens['directory'])
@@ -167,30 +200,56 @@ def do_scan(args):
         
         # Print measurements section
         if measurements_found:
-            print("  Measurements:")
-            if therm_cfg is None:
-                print("    (Note: thermalization threshold not set, showing all configs)")
+            if emit:
+                print("  Measurements:")
+                if therm_cfg is None:
+                    print("    (Note: thermalization threshold not set, showing all configs)")
             # Calculate max width for alignment
             max_name_len = max(len(name) for name, _, _, _ in measurement_stats)
             for name, ingested, pending, pending_list in measurement_stats:
+                summary["measurements"].append({
+                    "type": name,
+                    "ingested": ingested,
+                    "pending": pending,
+                    "pending_configs": pending_list,
+                })
                 name_padded = name.ljust(max_name_len)
-                if pending > 0:
-                    if len(pending_list) <= 5:
-                        print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending  {pending_list}")
+                if emit:
+                    if pending > 0:
+                        if len(pending_list) <= 5:
+                            print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending  {pending_list}")
+                        else:
+                            print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending")
                     else:
                         print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending")
-                else:
-                    print(f"    {name_padded}  {ingested:4d} ingested, {pending:4d} pending")
         else:
-            print("  Measurements: no data files found")
+            if emit:
+                print("  Measurements: no data files found")
         
         # Report missing (DB-only comparison)
         config_list = values if values else ens.get('configurations', {}).get('config_list', [])
         if config_list:
-            _report_missing(backend, ens_id, ens, config_list, gauge_files, mres_files, meson2pt_files)
+            summary["warnings"].extend(
+                _report_missing(
+                    backend, ens_id, ens, config_list, gauge_files, mres_files, meson2pt_files, emit=emit,
+                )
+            )
+        summaries.append(summary)
 
-    print(f"\n{'=' * 50}")
-    print(f"Scan complete: {updated} ensemble(s) updated")
+    if args.json:
+        print_json({
+            "ok": True,
+            "status": "dry_run" if args.dry_run else "ok",
+            "updated": updated,
+            "planned_updates": planned_updates,
+            "ensembles": summaries,
+        })
+    else:
+        print(f"\n{'=' * 50}")
+        if args.dry_run:
+            print(f"Scan complete: {planned_updates} ensemble update(s) planned")
+        else:
+            print(f"Scan complete: {updated} ensemble(s) updated")
     return 0
 
 
@@ -221,7 +280,7 @@ def _infer_increment(values):
     return inc
 
 
-def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list, gauge_files: list, mres_files: list, meson2pt_files: list):
+def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list, gauge_files: list, mres_files: list, meson2pt_files: list, emit: bool = True):
     """Report missing measurements (DB-only comparison).
     
     Only reports "missing" for measurement types that have SOME files present,
@@ -229,7 +288,7 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
     Only reports missing configs for thermalized configurations.
     """
     if not config_list:
-        return
+        return []
     
     try:
         config_set = set(config_list)
@@ -283,10 +342,11 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
                     warnings.append(f"meson2pt: {len(missing_meson2pt)} {config_label} have no files")
         
         # Print warnings section if any
-        if warnings:
+        if warnings and emit:
             print("  Warnings:")
             for warning in warnings:
                 print(f"    {warning}")
+        return warnings
     except Exception:
         # Silently skip if reporting fails
-        pass
+        return []

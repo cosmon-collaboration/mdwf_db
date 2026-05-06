@@ -90,7 +90,8 @@ class HMCGPUContextBuilder(ContextBuilder):
         work_root = self._resolve_run_dir(ensemble, job_params)
         log_dir = work_root / "cnfg" / "jlog"
         script_dir = work_root / "cnfg" / "slurm"
-        script_dir.mkdir(parents=True, exist_ok=True)
+        if not job_params.get("_dry_run"):
+            script_dir.mkdir(parents=True, exist_ok=True)
         volume = _format_volume(physics)
         ens_name = _format_ensemble_name(physics)
         
@@ -183,7 +184,8 @@ class HMCCPUContextBuilder(ContextBuilder):
         work_root = self._resolve_run_dir(ensemble, job_params)
         log_dir = work_root / "cnfg" / "jlog"
         script_dir = work_root / "cnfg" / "slurm"
-        script_dir.mkdir(parents=True, exist_ok=True)
+        if not job_params.get("_dry_run"):
+            script_dir.mkdir(parents=True, exist_ok=True)
         volume = _format_volume(physics)
         ens_name = _format_ensemble_name(physics)
         cfg_max = job_params.get("cfg_max")
@@ -266,7 +268,8 @@ class HMCXMLContextBuilder(ContextBuilder):
         
         ensemble_dir = Path(ensemble["directory"]).resolve()
         xml_dir = ensemble_dir / "cnfg"
-        xml_dir.mkdir(parents=True, exist_ok=True)
+        if not input_params.get("_dry_run") and not job_params.get("_dry_run"):
+            xml_dir.mkdir(parents=True, exist_ok=True)
         
         return {
             "xml": xml_string,
@@ -416,4 +419,3 @@ def _require(params: Dict, key: str, message: str):
     if value in (None, ""):
         raise ValidationError(message)
     return value
-

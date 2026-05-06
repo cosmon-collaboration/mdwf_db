@@ -52,8 +52,13 @@ Ensemble identifiers: use ID (-e 1), path (-e ./path), or current dir (-e .)
     # Allow query/ingest without variant to show helpful error message
     skip_db_check = (
         args.cmd == 'init-db' or
+        args.cmd == 'agent' or
+        args.cmd in ('remote', 'perlmutter', 'fs') or
+        args.cmd == 'storage' or
         getattr(args, 'params', False) or
         getattr(args, 'list_fields', False) or
+        (args.cmd == 'add-ensemble' and getattr(args, 'dry_run', False)) or
+        (args.cmd == 'submit' and getattr(args, 'dry_run', False)) or
         (args.cmd in ('query', 'ingest') and not getattr(args, 'variant', None))
     )
     if not skip_db_check:

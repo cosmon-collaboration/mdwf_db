@@ -61,8 +61,9 @@ class SmearContextBuilder(ContextBuilder):
         # Compute derived values
         smear_dir = work_root / f"cnfg_{smear_type}{smiters}"
         log_dir = smear_dir / "jlog"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        (smear_dir / "slurm").mkdir(parents=True, exist_ok=True)
+        if not job_params.get("_dry_run"):
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (smear_dir / "slurm").mkdir(parents=True, exist_ok=True)
         
         prefix_for_files = _determine_output_prefix(smear_type, smiters, job_params)
         glu_input_path = smear_dir / "glu_smear.in"

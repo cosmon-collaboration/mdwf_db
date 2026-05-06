@@ -21,6 +21,7 @@ from ..writers import (
     MESON_ORDER,
     MESON_CORRELATORS,
 )
+from ..json_output import print_json
 
 
 # =============================================================================
@@ -139,6 +140,23 @@ def generate_fields_help(measurement_type: str) -> str:
     return format_field_schema(schema, title)
 
 
+def generate_fields_data(measurement_type: str) -> Dict[str, Any]:
+    """Generate machine-readable field metadata for a measurement type."""
+    schema = FIELD_SCHEMAS.get(measurement_type, [])
+    return {
+        "measurement_type": measurement_type,
+        "fields": [
+            {
+                "name": field.name,
+                "help": field.help,
+                "is_group": field.is_group,
+                "expands_to": field.expands_to,
+            }
+            for field in schema
+        ],
+    }
+
+
 def generate_brief_fields_list(measurement_type: str) -> str:
     """Generate brief field list for help description."""
     schema = FIELD_SCHEMAS.get(measurement_type, [])
@@ -213,6 +231,11 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         '--include-pretherm',
         action='store_true',
         help='Include pre-thermalization configs (default: only configs >= configurations.thermalized)',
+    )
+    parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Print machine-readable JSON output for metadata/status messages',
     )
 
 
@@ -359,7 +382,14 @@ Export {self.measurement_type} data.
     def execute(self, args) -> int:
         """Execute the query command."""
         if getattr(args, 'list_fields', False):
-            print(generate_fields_help(self.measurement_type))
+            if getattr(args, 'json', False):
+                print_json({
+                    "ok": True,
+                    "status": "ok",
+                    "data": generate_fields_data(self.measurement_type),
+                })
+            else:
+                print(generate_fields_help(self.measurement_type))
             return 0
         
         if not args.ensemble:
@@ -415,8 +445,23 @@ Export {self.measurement_type} data.
         
         if args.output:
             write_data(output_data, args.output, self.measurement_type)
-            print(f"Wrote {len(output_data)} ensemble(s) to {args.output}")
+            if getattr(args, 'json', False):
+                print_json({
+                    "ok": True,
+                    "status": "ok",
+                    "output": str(args.output),
+                    "ensemble_count": len(output_data),
+                })
+            else:
+                print(f"Wrote {len(output_data)} ensemble(s) to {args.output}")
         else:
+            if getattr(args, 'json', False):
+                print_json({
+                    "ok": True,
+                    "status": "ok",
+                    "data": output_data,
+                })
+                return 0
             self.print_stdout(output_data, fields)
         
         return 0
@@ -568,6 +613,11 @@ class QueryAllCommand:
             action='store_true',
             help='Show available fields for all measurement types',
         )
+        parser.add_argument(
+            '--json',
+            action='store_true',
+            help='Print machine-readable JSON output for metadata/status messages',
+        )
         parser.description = """
 Export all measurement types to a single file.
 
@@ -586,9 +636,16 @@ EXAMPLES:
     
     def execute(self, args) -> int:
         if getattr(args, 'list_fields', False):
-            for mtype in ['gauge_obs', 'mres', 'meson2pt']:
-                print(generate_fields_help(mtype))
-                print()
+            if getattr(args, 'json', False):
+                print_json({
+                    "ok": True,
+                    "status": "ok",
+                    "data": [generate_fields_data(mtype) for mtype in ['gauge_obs', 'mres', 'meson2pt']],
+                })
+            else:
+                for mtype in ['gauge_obs', 'mres', 'meson2pt']:
+                    print(generate_fields_help(mtype))
+                    print()
             return 0
         
         if not args.ensemble:
@@ -676,7 +733,15 @@ EXAMPLES:
             return 0
         
         write_data(output_data, args.output, 'all')
-        print(f"Wrote {len(output_data)} ensemble(s) to {args.output}")
+        if getattr(args, 'json', False):
+            print_json({
+                "ok": True,
+                "status": "ok",
+                "output": str(args.output),
+                "ensemble_count": len(output_data),
+            })
+        else:
+            print(f"Wrote {len(output_data)} ensemble(s) to {args.output}")
         return 0
 
 

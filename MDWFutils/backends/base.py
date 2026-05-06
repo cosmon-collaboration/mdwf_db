@@ -174,4 +174,48 @@ class DatabaseBackend(ABC):
             Number of documents deleted
         """
 
+    # ------------------------------------------------------------------
+    # Agent curation and provenance
+    # ------------------------------------------------------------------
+    @abstractmethod
+    def upsert_recipe(
+        self,
+        operation_type: str,
+        variant: str,
+        input_params: str = "",
+        job_params: str = "",
+        ensemble_id: Optional[int] = None,
+        parsed_params: Optional[Dict] = None,
+        schema_hash: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        notes: Optional[str] = None,
+        active: bool = True,
+    ) -> int:
+        """Create or update a reusable parameter recipe."""
+
+    @abstractmethod
+    def list_recipes(
+        self,
+        ensemble_id: Optional[int] = None,
+        operation_type: Optional[str] = None,
+        active_only: bool = True,
+    ) -> List[Dict]:
+        """List reusable parameter recipes."""
+
+    @abstractmethod
+    def add_curation_event(self, **event) -> int:
+        """Append an audit event for ensemble/workflow curation."""
+
+    @abstractmethod
+    def add_analysis_run(self, **run) -> int:
+        """Record a query/export/analysis artifact and its provenance."""
+
+    @abstractmethod
+    def list_analysis_runs(
+        self,
+        ensemble_id: Optional[int] = None,
+        status: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict]:
+        """List recorded analysis runs."""
 

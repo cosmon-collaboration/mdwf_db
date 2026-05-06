@@ -6,6 +6,7 @@ import sys
 
 from ..ensemble_utils import resolve_ensemble_from_args, get_backend_for_args
 from ..components import ParameterManager
+from ..json_output import print_json
 
 
 def register(subparsers):
@@ -18,19 +19,23 @@ def register(subparsers):
 
     show = sub.add_parser('show', help='Show parameters for a variant')
     _add_common_args(show)
+    _add_json_arg(show)
 
     set_cmd = sub.add_parser('set', help='Set parameters for a variant')
     _add_common_args(set_cmd)
     set_cmd.add_argument('--input', default='', help='Input parameter string (key=val ...)')
     set_cmd.add_argument('--job', default='', help='Job parameter string (key=val ...)')
+    _add_json_arg(set_cmd)
 
     delete = sub.add_parser('delete', help='Delete a stored variant')
     _add_common_args(delete)
     delete.add_argument('--force', action='store_true', help='Skip confirmation prompt')
+    _add_json_arg(delete)
 
     list_cmd = sub.add_parser('list', help='List all variants for an ensemble')
     list_cmd.add_argument('-e', '--ensemble', required=True)
     list_cmd.add_argument('--job-type', help='Filter by job type')
+    _add_json_arg(list_cmd)
 
     p.set_defaults(func=do_default_params)
 
@@ -39,6 +44,10 @@ def _add_common_args(parser):
     parser.add_argument('-e', '--ensemble', required=True)
     parser.add_argument('--job-type', required=True)
     parser.add_argument('--variant', required=True)
+
+
+def _add_json_arg(parser):
+    parser.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
 
 
 def do_default_params(args):
@@ -51,6 +60,14 @@ def do_default_params(args):
 
     if args.action == 'list':
         defaults = param_manager.list_all_defaults(ensemble_id, args.job_type)
+        if args.json:
+            print_json({
+                "ok": True,
+                "status": "ok",
+                "ensemble_id": ensemble_id,
+                "defaults": defaults,
+            })
+            return 0
         if not defaults:
             print('No default parameter variants stored')
             return 0
@@ -91,6 +108,16 @@ def do_default_params(args):
 
     if args.action == 'show':
         params = backend.get_default_params(ensemble_id, job_type, variant)
+        if args.json:
+            print_json({
+                "ok": True,
+                "status": "ok",
+                "ensemble_id": ensemble_id,
+                "job_type": job_type,
+                "variant": variant,
+                "params": params,
+            })
+            return 0
         if not params['input_params'] and not params['job_params']:
             print('No params stored')
             return 0
@@ -127,16 +154,40 @@ def do_default_params(args):
                 return 0
         
         if param_manager.delete_defaults(ensemble_id, job_type, variant):
-            print(f'Deleted default parameters for {job_type}.{variant}')
+            if args.json:
+                print_json({
+                    "ok": True,
+                    "status": "ok",
+                    "action": "deleted",
+                    "job_type": job_type,
+                    "variant": variant,
+                })
+            else:
+                print(f'Deleted default parameters for {job_type}.{variant}')
             return 0
-        print('Nothing to delete')
+        if args.json:
+            print_json({"ok": True, "status": "ok", "action": "noop"})
+        else:
+            print('Nothing to delete')
         return 0
 
     if args.action == 'set':
         input_params = args.input.strip()
         job_params = args.job.strip()
         backend.set_default_params(ensemble_id, job_type, variant, input_params, job_params)
-        print(f"Stored defaults for {job_type}.{variant}")
+        if args.json:
+            print_json({
+                "ok": True,
+                "status": "ok",
+                "action": "stored",
+                "ensemble_id": ensemble_id,
+                "job_type": job_type,
+                "variant": variant,
+                "input_params": input_params,
+                "job_params": job_params,
+            })
+        else:
+            print(f"Stored defaults for {job_type}.{variant}")
         return 0
 
     print(f"ERROR: Unknown action {args.action}", file=sys.stderr)

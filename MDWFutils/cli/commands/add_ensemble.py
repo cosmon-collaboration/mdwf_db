@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from ..ensemble_utils import get_backend_for_args
+from ..json_output import print_json
 from ...exceptions import ValidationError
 
 REQUIRED = ['beta','b','Ls','mc','ms','ml','L','T']
@@ -78,6 +79,16 @@ You can either:
         default=None,
         help='Optional nickname to attach to this ensemble for quick lookup'
     )
+    p.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Validate and report planned directories/database insert without writing',
+    )
+    p.add_argument(
+        '--json',
+        action='store_true',
+        help='Print machine-readable JSON output',
+    )
     p.set_defaults(func=do_add)
 
 
@@ -106,14 +117,12 @@ def _parse_params_from_path(path: Path):
 
 
 def do_add(args):
-    backend = get_backend_for_args(args)
-
     # parse params into a dict (if provided)
     pdict = {}
     if args.params:
         for tok in args.params.strip().split():
             if '=' not in tok:
-                print(f"ERROR: bad key=val pair '{tok}'", file=sys.stderr)
+                _print_error(args, f"bad key=val pair '{tok}'")
                 return 1
             k, v = tok.split('=', 1)
             pdict[k] = v
@@ -129,10 +138,7 @@ def do_add(args):
             pdict.update(inferred)
         missing = [k for k in REQUIRED if k not in pdict]
         if missing:
-            print(
-                f"ERROR: missing required params: {missing}. Provide -p or use --directory with a standard path.",
-                file=sys.stderr,
-            )
+            _print_error(args, f"missing required params: {missing}. Provide -p or use --directory with a standard path.")
             return 1
     else:
         # Only create TUNING/ and ENSEMBLES/ roots when auto-generating the directory
@@ -142,10 +148,7 @@ def do_add(args):
         prod_root.mkdir(parents=True, exist_ok=True)
         missing = [k for k in REQUIRED if k not in pdict]
         if missing:
-            print(
-                f"ERROR: missing required params: {missing}. Provide -p or use --directory with a standard path.",
-                file=sys.stderr,
-            )
+            _print_error(args, f"missing required params: {missing}. Provide -p or use --directory with a standard path.")
             return 1
         rel = (
           f"b{pdict['beta']}/b{pdict['b']}Ls{pdict['Ls']}/"
@@ -154,6 +157,41 @@ def do_add(args):
         )
         root = prod_root if args.status=='PRODUCTION' else tuning_root
         ens_dir = root / rel
+
+    planned_dirs = [
+        str(ens_dir),
+        str(ens_dir / "cnfg"),
+        str(ens_dir / "cnfg" / "log_hmc"),
+        str(ens_dir / "cnfg" / "slurm"),
+        str(ens_dir / "cnfg" / "jlog"),
+    ]
+
+    if args.dry_run:
+        payload = {
+            "ok": True,
+            "status": "dry_run",
+            "ensemble": {
+                "directory": str(ens_dir),
+                "status": args.status,
+                "description": args.description,
+                "nickname": args.nickname,
+                "physics": pdict,
+            },
+            "effects": [
+                {"type": "would_create_directories", "paths": planned_dirs},
+                {"type": "would_insert_ensemble", "directory": str(ens_dir)},
+            ],
+        }
+        if args.json:
+            print_json(payload)
+        else:
+            print(f"Would add ensemble at {ens_dir}")
+            print("Would create directories:")
+            for path in planned_dirs:
+                print(f"  {path}")
+        return 0
+
+    backend = get_backend_for_args(args)
 
     #create folders
     ens_dir.mkdir(parents=True, exist_ok=True)
@@ -172,8 +210,24 @@ def do_add(args):
             description=args.description,
             nickname=args.nickname,
         )
-        print(f"Ensemble added: ID={eid}")
+        if args.json:
+            print_json({
+                "ok": True,
+                "status": "ok",
+                "ensemble_id": eid,
+                "directory": str(ens_dir),
+                "created_directories": planned_dirs,
+            })
+        else:
+            print(f"Ensemble added: ID={eid}")
     except ValidationError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        _print_error(args, str(exc))
         return 1
     return 0
+
+
+def _print_error(args, message):
+    if getattr(args, 'json', False):
+        print_json({"ok": False, "status": "error", "summary": message})
+    else:
+        print(f"ERROR: {message}", file=sys.stderr)

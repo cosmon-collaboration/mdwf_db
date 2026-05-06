@@ -55,8 +55,9 @@ class WflowContextBuilder(ContextBuilder):
         work_root = self._resolve_run_dir(ensemble, job_params)
         wflow_dir = work_root / "t0"
         log_dir = wflow_dir / "jlog"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        (wflow_dir / "slurm").mkdir(parents=True, exist_ok=True)
+        if not job_params.get("_dry_run"):
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (wflow_dir / "slurm").mkdir(parents=True, exist_ok=True)
 
         # Extract values needed for computations
         smear_type = input_params["SMEARTYPE"]
@@ -92,6 +93,5 @@ class WflowContextBuilder(ContextBuilder):
             "_input_output_dir": str(wflow_dir),
             "_input_output_prefix": "glu_smear",
         }
-
 
 

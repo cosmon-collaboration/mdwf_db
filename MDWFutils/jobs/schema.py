@@ -268,9 +268,10 @@ class WitGPUContextBuilder(ContextBuilder):
         work_root = self._resolve_run_dir(ensemble, job_params)
         workdir = work_root / subdir
         log_dir = workdir / "jlog"
-        workdir.mkdir(parents=True, exist_ok=True)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        (workdir / "slurm").mkdir(parents=True, exist_ok=True)
+        if not job_params.get("_dry_run"):
+            workdir.mkdir(parents=True, exist_ok=True)
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (workdir / "slurm").mkdir(parents=True, exist_ok=True)
         return workdir, log_dir
     
     def _parse_geometry(self, physics: Dict, job_params: Dict) -> Tuple[int, int, List[int], List[int]]:
@@ -336,4 +337,3 @@ class WitGPUContextBuilder(ContextBuilder):
         ensemble_dir = Path(ensemble["directory"]).resolve()
         run_dir = job_params.get("run_dir")
         return Path(run_dir).resolve() if run_dir else ensemble_dir
-

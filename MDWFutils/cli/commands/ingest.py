@@ -11,6 +11,7 @@ from ...scanners.gauge_obs import GaugeObsScanner
 from ...scanners.meson2pt import Meson2ptScanner
 from ...scanners.mres import MresScanner
 from ..ensemble_utils import add_ensemble_argument, get_backend_for_args
+from ..json_output import print_json
 
 
 class IngestGaugeObsCommand:
@@ -36,6 +37,7 @@ class IngestGaugeObsCommand:
             action='store_true',
             help='Show what would be ingested without writing to database',
         )
+        parser.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
     
     def execute(self, args):
         """Execute the ingest command."""
@@ -57,7 +59,9 @@ class IngestGaugeObsCommand:
             dry_run=args.dry_run,
         )
         
-        if args.dry_run:
+        if args.json:
+            _print_ingest_json(args, "gauge_obs", result)
+        elif args.dry_run:
             print(f"Would ingest {result.would_ingest} configs, skip {result.skipped}")
         else:
             print(f"Ingested {result.ingested} configs, skipped {result.skipped}")
@@ -95,6 +99,7 @@ class IngestMresCommand:
             action='store_true',
             help='Show what would be ingested without writing to database',
         )
+        parser.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
     
     def execute(self, args):
         """Execute the ingest mres command."""
@@ -122,7 +127,9 @@ class IngestMresCommand:
             dry_run=args.dry_run,
         )
         
-        if args.dry_run:
+        if args.json:
+            _print_ingest_json(args, "mres", result)
+        elif args.dry_run:
             print(f"Would ingest {result.would_ingest} configs, skip {result.skipped}")
         else:
             print(f"Ingested {result.ingested} configs, skipped {result.skipped}")
@@ -160,6 +167,7 @@ class IngestMeson2ptCommand:
             action='store_true',
             help='Show what would be ingested without writing to database',
         )
+        parser.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
     
     def execute(self, args):
         """Execute the ingest meson2pt command."""
@@ -181,7 +189,9 @@ class IngestMeson2ptCommand:
             dry_run=args.dry_run,
         )
         
-        if args.dry_run:
+        if args.json:
+            _print_ingest_json(args, "meson2pt", result)
+        elif args.dry_run:
             print(f"Would ingest {result.would_ingest} configs, skip {result.skipped}")
         else:
             print(f"Ingested {result.ingested} configs, skipped {result.skipped}")
@@ -220,6 +230,7 @@ class IngestAllCommand:
             action='store_true',
             help='Show what would be ingested without writing to database',
         )
+        parser.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
     
     def execute(self, args):
         """Execute the ingest all command."""
@@ -243,12 +254,14 @@ class IngestAllCommand:
         grand_total_skipped = 0
         grand_total_errors = 0
         grand_total_would_ingest = 0
+        json_ensembles = []
         
         for ensemble_id, ensemble in ensembles:
             nick = ensemble.get('nickname')
-            print(f"\n{'='*60}")
-            print(f"Ensemble {ensemble_id}" + (f" ({nick})" if nick else ""))
-            print(f"{'='*60}")
+            if not args.json:
+                print(f"\n{'='*60}")
+                print(f"Ensemble {ensemble_id}" + (f" ({nick})" if nick else ""))
+                print(f"{'='*60}")
             
             ensemble_path = Path(ensemble['directory'])
             ensemble_physics = ensemble.get('physics', {})
@@ -257,8 +270,9 @@ class IngestAllCommand:
             total_skipped = 0
             total_errors = 0
             total_would_ingest = 0
+            json_measurements = []
             
-            for measurement_type, scanner, parser in self._get_ingestors(ensemble_physics, getattr(args, 'creader', None)):
+            for measurement_type, scanner, parser in self._get_ingestors(ensemble_physics, getattr(args, 'creader', None), quiet=args.json):
                 ingestor = MeasurementIngestor(backend, scanner, parser, measurement_type)
                 result = ingestor.ingest(
                     ensemble_id,
@@ -269,42 +283,65 @@ class IngestAllCommand:
                 )
                 
                 if args.dry_run:
-                    print(f"  {measurement_type}: would ingest {result.would_ingest}, skip {result.skipped}")
+                    if not args.json:
+                        print(f"  {measurement_type}: would ingest {result.would_ingest}, skip {result.skipped}")
                     total_would_ingest += result.would_ingest
                 else:
-                    print(f"  {measurement_type}: ingested {result.ingested}, skipped {result.skipped}")
-                    if result.errors:
+                    if not args.json:
+                        print(f"  {measurement_type}: ingested {result.ingested}, skipped {result.skipped}")
+                    if result.errors and not args.json:
                         error_configs = [str(cfg) for cfg, _ in result.errors]
                         print(f"    Errors on {len(result.errors)} configs: {', '.join(error_configs[:10])}")
                     total_ingested += result.ingested
                     total_skipped += result.skipped
                     total_errors += len(result.errors)
+                json_measurements.append(_ingest_result_data(measurement_type, result, args.dry_run))
             
             grand_total_ingested += total_ingested
             grand_total_skipped += total_skipped
             grand_total_errors += total_errors
             grand_total_would_ingest += total_would_ingest
+            json_ensembles.append({
+                "ensemble_id": ensemble_id,
+                "nickname": nick,
+                "measurements": json_measurements,
+            })
         
-        print(f"\n{'='*60}")
-        if args.dry_run:
-            print(f"Grand total: would ingest {grand_total_would_ingest}")
+        if args.json:
+            print_json({
+                "ok": True,
+                "status": "dry_run" if args.dry_run else "ok",
+                "totals": {
+                    "ingested": grand_total_ingested,
+                    "skipped": grand_total_skipped,
+                    "errors": grand_total_errors,
+                    "would_ingest": grand_total_would_ingest,
+                },
+                "ensembles": json_ensembles,
+            })
         else:
-            print(f"Grand total: ingested {grand_total_ingested}, skipped {grand_total_skipped}, errors {grand_total_errors}")
+            print(f"\n{'='*60}")
+            if args.dry_run:
+                print(f"Grand total: would ingest {grand_total_would_ingest}")
+            else:
+                print(f"Grand total: ingested {grand_total_ingested}, skipped {grand_total_skipped}, errors {grand_total_errors}")
         
         return 0
     
-    def _get_ingestors(self, ensemble_physics, creader_path=None):
+    def _get_ingestors(self, ensemble_physics, creader_path=None, quiet=False):
         """Generate ingestors, skipping those with missing dependencies."""
         yield ("gauge_obs", GaugeObsScanner(), GaugeObsParser())
         # mres and meson2pt require creader - skip if not available
         try:
             yield ("mres", MresScanner(), MresParser(creader_path=creader_path, ensemble_physics=ensemble_physics))
         except ValueError as e:
-            print(f"  Skipping mres: {e}")
+            if not quiet:
+                print(f"  Skipping mres: {e}")
         try:
             yield ("meson2pt", Meson2ptScanner(), Meson2ptParser(creader_path=creader_path))
         except ValueError as e:
-            print(f"  Skipping meson2pt: {e}")
+            if not quiet:
+                print(f"  Skipping meson2pt: {e}")
 
 
 class IngestCommand:
@@ -368,3 +405,22 @@ EXAMPLES:
 def register(subparsers):
     """Register the ingest command."""
     IngestCommand().register(subparsers)
+
+
+def _ingest_result_data(measurement_type: str, result: IngestResult, dry_run: bool) -> dict:
+    return {
+        "measurement_type": measurement_type,
+        "status": "dry_run" if dry_run else "ok",
+        "ingested": result.ingested,
+        "skipped": result.skipped,
+        "would_ingest": result.would_ingest,
+        "errors": [{"config": cfg, "error": error} for cfg, error in result.errors],
+    }
+
+
+def _print_ingest_json(args, measurement_type: str, result: IngestResult):
+    print_json({
+        "ok": True,
+        "status": "dry_run" if args.dry_run else "ok",
+        "result": _ingest_result_data(measurement_type, result, args.dry_run),
+    })

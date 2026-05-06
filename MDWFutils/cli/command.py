@@ -19,6 +19,7 @@ from .args import (
 )
 from .components import EnsembleResolver, ParameterManager, ScriptGenerator
 from .help_generator import HelpGenerator
+from .json_output import print_json
 from ..jobs.schema import ContextParam, ContextBuilder, _deduplicate_schema
 
 
@@ -134,6 +135,16 @@ class BaseCommand:
         add_output_file_arg(parser)
         add_default_params_group(parser)
         add_params_flag(parser)
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Validate and report planned outputs without writing files or saving defaults",
+        )
+        parser.add_argument(
+            "--json",
+            action="store_true",
+            help="Print machine-readable JSON output",
+        )
         self.add_custom_args(parser)
 
     # ------------------------------------------------------------------
@@ -201,9 +212,13 @@ class BaseCommand:
                 typed_job = merged_job
 
             self.custom_validation(typed_input, typed_job, ensemble)
+            if getattr(args, "dry_run", False):
+                typed_input["_dry_run"] = True
+                typed_job["_dry_run"] = True
 
             # Build job context first (if exists) to get custom input file location
             job_context = None
+            planned_outputs = []
             if self.job_builder_class is not None:
                 job_builder = self.job_builder_class()
                 job_context = job_builder.build(backend, ensemble_id, typed_job, typed_input)
@@ -234,7 +249,15 @@ class BaseCommand:
                 input_content = generator.generate_input(
                     ensemble_id, self.input_type, typed_input, job_params=typed_job
                 )
-                input_path = self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
+                input_path = self._resolve_output_path(ensemble, args.output_file, suffix=".in", context=input_context)
+                planned_outputs.append({
+                    "kind": "input",
+                    "path": str(input_path),
+                    "bytes": len(input_content.encode("utf-8")),
+                    "would_write": bool(getattr(args, "dry_run", False)),
+                })
+                if not getattr(args, "dry_run", False):
+                    input_path = self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
                 
                 # Print friendly name
                 input_names = {
@@ -243,24 +266,42 @@ class BaseCommand:
                     "glu_input": "GLU"
                 }
                 display_name = input_names.get(self.input_type, self.input_type)
-                print(f"Generated {display_name} input: {input_path}")
+                if not getattr(args, "json", False):
+                    verb = "Would generate" if getattr(args, "dry_run", False) else "Generated"
+                    print(f"{verb} {display_name} input: {input_path}")
 
             # Generate job script if needed
             if self.job_builder_class is not None or self.job_type:
                 script_content = generator.generate_slurm(
                     ensemble_id, self.job_type, typed_job, typed_input
                 )
-                script_path = self._write_file(
+                script_path = self._resolve_output_path(
                     ensemble,
-                    script_content,
                     args.output_file,
                     suffix=".sh",
                     context=job_context,
-                    executable=True,
                 )
-                print(f"Wrote SLURM script to {script_path}")
+                planned_outputs.append({
+                    "kind": "slurm",
+                    "path": str(script_path),
+                    "bytes": len(script_content.encode("utf-8")),
+                    "executable": True,
+                    "would_write": bool(getattr(args, "dry_run", False)),
+                })
+                if not getattr(args, "dry_run", False):
+                    script_path = self._write_file(
+                        ensemble,
+                        script_content,
+                        args.output_file,
+                        suffix=".sh",
+                        context=job_context,
+                        executable=True,
+                    )
+                if not getattr(args, "json", False):
+                    verb = "Would write" if getattr(args, "dry_run", False) else "Wrote"
+                    print(f"{verb} SLURM script to {script_path}")
 
-            if args.save_default_params:
+            if args.save_default_params and not getattr(args, "dry_run", False):
                 variant = args.params_variant or self.default_variant
                 param_manager.save_defaults(
                     ensemble_id,
@@ -269,6 +310,26 @@ class BaseCommand:
                     args.input_params or "",
                     args.job_params or "",
                 )
+            elif args.save_default_params and getattr(args, "dry_run", False):
+                planned_outputs.append({
+                    "kind": "default_params",
+                    "job_type": self.job_type,
+                    "variant": args.params_variant or self.default_variant,
+                    "would_write": True,
+                })
+
+            if getattr(args, "json", False):
+                print_json({
+                    "ok": True,
+                    "status": "dry_run" if getattr(args, "dry_run", False) else "ok",
+                    "command": self.name,
+                    "ensemble_id": ensemble_id,
+                    "job_type": self.job_type,
+                    "input_type": self.input_type,
+                    "input_params": typed_input,
+                    "job_params": typed_job,
+                    "outputs": planned_outputs,
+                })
 
             return 0
         except MDWFError as exc:
@@ -317,7 +378,7 @@ class BaseCommand:
             return self._backend_override
         return _load_default_backend()
 
-    def _write_file(self, ensemble, content: str, output_file: str | None, suffix: str, context: dict = None, executable: bool = False):
+    def _resolve_output_path(self, ensemble, output_file: str | None, suffix: str, context: dict = None) -> Path:
         if output_file:
             path = Path(output_file)
         elif context and "_output_dir" in context:
@@ -328,16 +389,17 @@ class BaseCommand:
         else:
             # Fallback for commands without context
             target_dir = Path(ensemble["directory"]) / "cnfg" / "slurm"
-            target_dir.mkdir(parents=True, exist_ok=True)
             prefix = self.job_type or "output"
             identifier = ensemble.get("id", ensemble.get("ensemble_id", ""))
             filename = f"{prefix}_{identifier}{suffix}" if identifier else f"{prefix}{suffix}"
             path = target_dir / filename
+        return path
+
+    def _write_file(self, ensemble, content: str, output_file: str | None, suffix: str, context: dict = None, executable: bool = False):
+        path = self._resolve_output_path(ensemble, output_file, suffix, context)
         
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
         if executable:
             path.chmod(0o755)
         return path
-
-

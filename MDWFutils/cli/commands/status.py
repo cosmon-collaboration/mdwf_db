@@ -6,6 +6,7 @@ import sys
 
 from ..ensemble_utils import add_ensemble_argument, resolve_ensemble_from_args, get_backend_for_args
 from ..formatting import print_table, format_float, safe_float, safe_int
+from ..json_output import print_json
 
 
 def register(subparsers):
@@ -87,11 +88,15 @@ EXAMPLES:
     p.add_argument('--measurements', nargs='*', metavar='TYPE',
                    choices=['all', 'gauge_obs', 'mres', 'meson2pt'],
                    help='Show measurement counts table. Use "all" for all types, or specify: gauge_obs mres meson2pt. Use with -e to filter by ensemble(s).')
+    p.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
     p.set_defaults(func=do_status)
 
 
 def do_status(args):
     backend = get_backend_for_args(args)
+
+    if args.json:
+        return _show_status_json(backend, args)
 
     # Measurements mode - show measurement counts table (supports multiple ensembles)
     if args.measurements is not None:
@@ -709,3 +714,195 @@ def _show_measurements_table(backend, args):
     
     print_table(headers, display_rows)
     return 0
+
+
+def _show_status_json(backend, args):
+    """Machine-readable status path for agent workflows."""
+    try:
+        if args.measurements is not None:
+            payload = _measurements_table_data(backend, args)
+            print_json({"ok": True, "status": "ok", "mode": "measurements", "data": payload})
+            return 0
+
+        if not args.ensemble:
+            ensembles = backend.list_ensembles(detailed=True)
+            rows = [_ensemble_list_entry(backend, ens) for ens in ensembles]
+            if args.sort_by_id:
+                rows.sort(key=lambda r: r["ensemble_id"])
+            else:
+                rows.sort(key=lambda r: (
+                    safe_float(r["physics"].get("beta")),
+                    safe_float(r["physics"].get("b")),
+                    safe_int(r["physics"].get("Ls")),
+                    safe_float(r["physics"].get("mc")),
+                    safe_float(r["physics"].get("ms")),
+                    safe_float(r["physics"].get("ml")),
+                    safe_int(r["physics"].get("L")),
+                    safe_int(r["physics"].get("T")),
+                ))
+            print_json({"ok": True, "status": "ok", "mode": "list", "ensembles": rows})
+            return 0
+
+        ensemble_arg = args.ensemble[0] if isinstance(args.ensemble, list) else args.ensemble
+        ensemble_id, ensemble = backend.resolve_ensemble_identifier(ensemble_arg)
+
+        if args.dir:
+            print_json({"ok": True, "status": "ok", "mode": "dir", "directory": ensemble["directory"]})
+            return 0
+
+        if getattr(args, "measured", None):
+            measured = sorted(backend.get_measured_configs(ensemble_id, args.measured))
+            print_json({
+                "ok": True,
+                "status": "ok",
+                "mode": "measured",
+                "ensemble_id": ensemble_id,
+                "measurement_type": args.measured,
+                "configs": measured,
+                "count": len(measured),
+            })
+            return 0
+
+        if args.missing:
+            data = _missing_measurements_data(
+                backend,
+                ensemble_id,
+                ensemble,
+                args.missing,
+                tuple(args.cfg_range) if args.cfg_range is not None else None,
+            )
+            print_json({"ok": True, "status": "ok", "mode": "missing", "data": data})
+            return 0
+
+        if args.op:
+            operation = backend.get_operation(ensemble_id, args.op)
+            if not operation:
+                print_json({"ok": False, "status": "not_found", "summary": f"Operation {args.op} not found"})
+                return 1
+            print_json({"ok": True, "status": "ok", "mode": "operation", "operation": operation})
+            return 0
+
+        detail = _ensemble_detail_data(backend, ensemble_id, ensemble)
+        print_json({"ok": True, "status": "ok", "mode": "detail", "ensemble": detail})
+        return 0
+    except Exception as exc:
+        print_json({"ok": False, "status": "error", "summary": str(exc)})
+        return 1
+
+
+def _ensemble_list_entry(backend, ens):
+    ensemble_id = ens.get("ensemble_id")
+    cfg = ens.get("configurations", {})
+    config_set = set(cfg.get("config_list", []))
+    therm_cfg = cfg.get("thermalized")
+    expected = {c for c in config_set if therm_cfg is None or c >= therm_cfg}
+    latest = None
+    try:
+        ops = backend.list_operations(ensemble_id)
+        if ops:
+            latest = max(ops, key=lambda o: o.get("timing", {}).get("update_time") or "")
+    except Exception:
+        latest = None
+    return {
+        "ensemble_id": ensemble_id,
+        "directory": ens.get("directory"),
+        "status": ens.get("status"),
+        "description": ens.get("description"),
+        "nickname": ens.get("nickname"),
+        "physics": ens.get("physics", {}),
+        "configurations": cfg,
+        "thermalized_config_count": len(expected),
+        "last_operation": latest,
+    }
+
+
+def _ensemble_detail_data(backend, ensemble_id, ensemble):
+    cfg = ensemble.get("configurations", {})
+    config_set = set(cfg.get("config_list", []))
+    therm_cfg = cfg.get("thermalized")
+    measurements = {}
+    for measurement_type in ("gauge_obs", "mres", "meson2pt"):
+        measured = set(backend.get_measured_configs(ensemble_id, measurement_type))
+        measurements[measurement_type] = _measurement_summary_data(measured, config_set, therm_cfg)
+    return {
+        **ensemble,
+        "ensemble_id": ensemble_id,
+        "measurements": measurements,
+        "operations": backend.list_operations(ensemble_id),
+    }
+
+
+def _measurement_summary_data(measured_configs, config_set, therm_cfg=None):
+    expected = {c for c in config_set if therm_cfg is None or c >= therm_cfg}
+    have_both = expected & measured_configs
+    missing = expected - measured_configs
+    orphaned = measured_configs - config_set
+    return {
+        "measured_count": len(have_both) if expected else len(measured_configs),
+        "expected_count": len(expected),
+        "range": [min(measured_configs), max(measured_configs)] if measured_configs else None,
+        "missing_count": len(missing),
+        "missing_configs": sorted(missing),
+        "orphaned_count": len(orphaned),
+        "orphaned_configs": sorted(orphaned),
+    }
+
+
+def _missing_measurements_data(backend, ensemble_id, ensemble, measurement_type, cfg_range=None):
+    cfg = ensemble.get("configurations", {})
+    config_list = cfg.get("config_list", [])
+    config_set = set(config_list)
+    therm_cfg = cfg.get("thermalized")
+    if cfg_range is not None:
+        c_i, c_f = cfg_range
+        if c_i > c_f:
+            raise ValueError("--cfg-range START must be <= END")
+        expected = {c for c in config_set if c_i <= c <= c_f}
+        expected_label = f"config_list ∩ [{c_i}, {c_f}]"
+    elif therm_cfg is not None:
+        expected = {c for c in config_set if c >= therm_cfg}
+        expected_label = f"thermalized configs >= {therm_cfg}"
+    else:
+        expected = config_set
+        expected_label = "all configs in config_list"
+    measured = set(backend.get_measured_configs(ensemble_id, measurement_type))
+    missing = sorted(expected - measured)
+    return {
+        "ensemble_id": ensemble_id,
+        "measurement_type": measurement_type,
+        "expected_label": expected_label,
+        "expected_count": len(expected),
+        "missing_count": len(missing),
+        "missing_configs": missing,
+    }
+
+
+def _measurements_table_data(backend, args):
+    if not args.measurements or "all" in args.measurements:
+        measurement_types = ["gauge_obs", "mres", "meson2pt"]
+    else:
+        measurement_types = [m for m in args.measurements if m != "all"]
+    if args.ensemble:
+        ensembles = _resolve_ensembles(backend, args.ensemble)
+    else:
+        ensembles = [(ens["ensemble_id"], ens) for ens in backend.list_ensembles(detailed=True)]
+    rows = []
+    for ensemble_id, ensemble in ensembles:
+        cfg = ensemble.get("configurations", {})
+        config_set = set(cfg.get("config_list", []))
+        therm_cfg = cfg.get("thermalized")
+        expected = {c for c in config_set if therm_cfg is None or c >= therm_cfg}
+        row = {
+            "ensemble_id": ensemble_id,
+            "nickname": ensemble.get("nickname"),
+            "expected_config_count": len(expected),
+            "measurements": {},
+        }
+        for measurement_type in measurement_types:
+            measured = set(backend.get_measured_configs(ensemble_id, measurement_type))
+            row["measurements"][measurement_type] = {
+                "measured_count": len(measured & expected),
+                "expected_count": len(expected),
+            }
+        rows.append(row)
+    return {"measurement_types": measurement_types, "ensembles": rows}

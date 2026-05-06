@@ -65,6 +65,9 @@ class MongoDBBackend(DatabaseBackend):
         self.ensembles = self.db.ensembles
         self.operations = self.db.operations
         self.measurements = self.db.measurements
+        self.recipes = self.db.recipes
+        self.curation_events = self.db.curation_events
+        self.analysis_runs = self.db.analysis_runs
         self._ensure_indexes()
 
     def _ensure_indexes(self) -> None:
@@ -85,6 +88,26 @@ class MongoDBBackend(DatabaseBackend):
                 ("measurement_type", ASCENDING),
             ]
         )
+        self.recipes.create_index(
+            [
+                ("ensemble_id", ASCENDING),
+                ("operation_type", ASCENDING),
+                ("variant", ASCENDING),
+            ],
+            unique=True,
+            sparse=True,
+        )
+        self.recipes.create_index([("operation_type", ASCENDING), ("variant", ASCENDING)])
+        self.recipes.create_index("active")
+
+        self.curation_events.create_index("timestamp")
+        self.curation_events.create_index([("target.collection", ASCENDING), ("target.id", ASCENDING)])
+        self.curation_events.create_index("actor")
+
+        self.analysis_runs.create_index("created_at")
+        self.analysis_runs.create_index("ensemble_ids")
+        self.analysis_runs.create_index("measurement_types")
+        self.analysis_runs.create_index("status")
 
     # ------------------------------------------------------------------
     # Ensemble operations
@@ -495,4 +518,141 @@ class MongoDBBackend(DatabaseBackend):
         result = self.measurements.delete_many(query)
         return result.deleted_count
 
+    # ------------------------------------------------------------------
+    # Agent curation and provenance
+    # ------------------------------------------------------------------
+    @retry_on_error()
+    def upsert_recipe(
+        self,
+        operation_type: str,
+        variant: str,
+        input_params: str = "",
+        job_params: str = "",
+        ensemble_id: Optional[int] = None,
+        parsed_params: Optional[Dict] = None,
+        schema_hash: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        notes: Optional[str] = None,
+        active: bool = True,
+    ) -> int:
+        query = {
+            "ensemble_id": ensemble_id,
+            "operation_type": operation_type,
+            "variant": variant,
+        }
+        existing = self.recipes.find_one(query, {"recipe_id": 1})
+        if existing:
+            recipe_id = existing["recipe_id"]
+        else:
+            last = self.recipes.find_one(sort=[("recipe_id", DESCENDING)])
+            recipe_id = (last["recipe_id"] + 1) if last else 1
+
+        now = datetime.utcnow()
+        set_doc = {
+            "recipe_id": recipe_id,
+            "ensemble_id": ensemble_id,
+            "scope": "ensemble" if ensemble_id is not None else "global",
+            "operation_type": operation_type,
+            "variant": variant,
+            "input_params": input_params,
+            "job_params": job_params,
+            "parsed_params": parsed_params or {},
+            "schema_hash": schema_hash,
+            "tags": tags or [],
+            "notes": notes,
+            "active": active,
+            "updated_at": now,
+        }
+        self.recipes.update_one(
+            query,
+            {
+                "$set": set_doc,
+                "$setOnInsert": {"created_at": now},
+            },
+            upsert=True,
+        )
+        return recipe_id
+
+    @retry_on_error()
+    def list_recipes(
+        self,
+        ensemble_id: Optional[int] = None,
+        operation_type: Optional[str] = None,
+        active_only: bool = True,
+    ) -> List[Dict]:
+        query = {}
+        if ensemble_id is not None:
+            query["ensemble_id"] = ensemble_id
+        if operation_type:
+            query["operation_type"] = operation_type
+        if active_only:
+            query["active"] = True
+        docs = []
+        for doc in self.recipes.find(query, {"_id": 0}).sort(
+            [("operation_type", ASCENDING), ("variant", ASCENDING)]
+        ):
+            docs.append(doc)
+        return docs
+
+    @retry_on_error()
+    def add_curation_event(self, **event) -> int:
+        last = self.curation_events.find_one(sort=[("event_id", DESCENDING)])
+        event_id = (last["event_id"] + 1) if last else 1
+        doc = {
+            "event_id": event_id,
+            "timestamp": datetime.utcnow(),
+            "actor": event.pop("actor", "unknown"),
+            "tool": event.pop("tool", None),
+            "target": event.pop("target", {}),
+            "before": event.pop("before", None),
+            "after": event.pop("after", None),
+            "summary": event.pop("summary", None),
+            "risk": event.pop("risk", None),
+            "approval_id": event.pop("approval_id", None),
+            "metadata": event,
+        }
+        self.curation_events.insert_one(doc)
+        return event_id
+
+    @retry_on_error()
+    def add_analysis_run(self, **run) -> int:
+        last = self.analysis_runs.find_one(sort=[("analysis_run_id", DESCENDING)])
+        run_id = (last["analysis_run_id"] + 1) if last else 1
+        doc = {
+            "analysis_run_id": run_id,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "status": run.pop("status", "RECORDED"),
+            "ensemble_ids": run.pop("ensemble_ids", []),
+            "measurement_types": run.pop("measurement_types", []),
+            "cfg_selection": run.pop("cfg_selection", {}),
+            "fields": run.pop("fields", []),
+            "output_path": run.pop("output_path", None),
+            "query_args": run.pop("query_args", {}),
+            "package_version": run.pop("package_version", None),
+            "quality_flags": run.pop("quality_flags", {}),
+            "notes": run.pop("notes", None),
+            "metadata": run,
+        }
+        self.analysis_runs.insert_one(doc)
+        return run_id
+
+    @retry_on_error()
+    def list_analysis_runs(
+        self,
+        ensemble_id: Optional[int] = None,
+        status: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict]:
+        query = {}
+        if ensemble_id is not None:
+            query["ensemble_ids"] = ensemble_id
+        if status:
+            query["status"] = status
+        docs = []
+        for doc in self.analysis_runs.find(query, {"_id": 0}).sort(
+            "created_at", DESCENDING
+        ).limit(limit):
+            docs.append(doc)
+        return docs
 

@@ -6,6 +6,7 @@ import sys
 from getpass import getuser
 
 from ..ensemble_utils import resolve_ensemble_from_args, get_backend_for_args
+from ..json_output import print_json
 
 
 def register(subparsers):
@@ -21,6 +22,8 @@ def register(subparsers):
     p.add_argument('--operation-id', '-i', type=int, help='Existing operation ID to update')
     p.add_argument('-p', '--params', default='', help='Key=val pairs (e.g. C_therm=500 for configurations.thermalized)')
     p.add_argument('-u', '--user', default=None, help='Override username associated with the operation')
+    p.add_argument('--dry-run', action='store_true', help='Validate and report planned database update without writing')
+    p.add_argument('--json', action='store_true', help='Print machine-readable JSON output')
     p.set_defaults(func=do_update)
 
 
@@ -34,7 +37,7 @@ def do_update(args):
     
     # If operation-type and status are not provided, treat as ensemble update
     if not args.operation_type and not args.status:
-        return _update_ensemble(backend, ensemble_id, ensemble, param_dict)
+        return _update_ensemble(backend, ensemble_id, ensemble, param_dict, args)
     
     # Otherwise, proceed with operation update (require both)
     if not args.operation_type or not args.status:
@@ -46,17 +49,38 @@ def do_update(args):
 
     if args.operation_id:
         payload = _flatten_update_fields(param_dict)
+        if args.dry_run:
+            return _print_update_plan(args, {
+                "target": "operation",
+                "lookup": {"operation_id": args.operation_id},
+                "status": status,
+                "updates": payload,
+            })
         updated = backend.update_operation_by_id(args.operation_id, status, **payload)
         if not updated:
             print(f"ERROR: Operation {args.operation_id} not found", file=sys.stderr)
             return 1
-        print(f"Updated operation {args.operation_id}")
+        if args.json:
+            print_json({"ok": True, "status": "ok", "action": "updated_operation", "operation_id": args.operation_id})
+        else:
+            print(f"Updated operation {args.operation_id}")
         return 0
 
     slurm_job_id = param_dict.pop('slurm_job_id', param_dict.pop('slurm_job', None))
     if slurm_job_id:
         payload = _flatten_update_fields(param_dict)
         payload['slurm.job_id'] = slurm_job_id
+        if args.dry_run:
+            return _print_update_plan(args, {
+                "target": "operation",
+                "lookup": {
+                    "slurm_job_id": slurm_job_id,
+                    "ensemble_id": ensemble_id,
+                    "operation_type": args.operation_type,
+                },
+                "status": status,
+                "updates": payload,
+            })
         updated = backend.update_operation_by_slurm_id(
             slurm_job_id, 
             status,
@@ -65,20 +89,37 @@ def do_update(args):
             **payload
         )
         if updated:
-            print(f"Updated SLURM job {slurm_job_id}")
+            if args.json:
+                print_json({"ok": True, "status": "ok", "action": "updated_slurm_job", "slurm_job_id": slurm_job_id})
+            else:
+                print(f"Updated SLURM job {slurm_job_id}")
             return 0
         # fall through to creation if not found
         param_dict['slurm_job_id'] = slurm_job_id
 
     user = args.user or getuser()
+    operation_kwargs = _extract_operation_kwargs(param_dict)
+    if args.dry_run:
+        return _print_update_plan(args, {
+            "target": "operation",
+            "action": "create",
+            "ensemble_id": ensemble_id,
+            "operation_type": args.operation_type,
+            "status": status,
+            "user": user,
+            "params": operation_kwargs,
+        })
     backend.add_operation(
         ensemble_id,
         operation_type=args.operation_type,
         status=status,
         user=user,
-        **_extract_operation_kwargs(param_dict),
+        **operation_kwargs,
     )
-    print("Created operation entry")
+    if args.json:
+        print_json({"ok": True, "status": "ok", "action": "created_operation"})
+    else:
+        print("Created operation entry")
     return 0
 
 
@@ -86,11 +127,14 @@ def do_update(args):
 _ENSEMBLE_UPDATE_ALIASES = {"C_therm": "configurations.thermalized"}
 
 
-def _update_ensemble(backend, ensemble_id, ensemble, param_dict):
+def _update_ensemble(backend, ensemble_id, ensemble, param_dict, args=None):
     """Update ensemble properties."""
     if not param_dict:
-        print("ERROR: No properties specified for ensemble update", file=sys.stderr)
-        print("Hint: Use -p key=value (e.g. -p configurations.thermalized=500 or -p C_therm=500)", file=sys.stderr)
+        if args and args.json:
+            print_json({"ok": False, "status": "error", "summary": "No properties specified for ensemble update"})
+        else:
+            print("ERROR: No properties specified for ensemble update", file=sys.stderr)
+            print("Hint: Use -p key=value (e.g. -p configurations.thermalized=500 or -p C_therm=500)", file=sys.stderr)
         return 1
     
     updates = {}
@@ -132,16 +176,49 @@ def _update_ensemble(backend, ensemble_id, ensemble, param_dict):
         current_cfg = ensemble.get('configurations', {}).copy()
         current_cfg.update(cfg_updates)
         updates['configurations'] = current_cfg
+
+    if args and args.dry_run:
+        return _print_update_plan(args, {
+            "target": "ensemble",
+            "ensemble_id": ensemble_id,
+            "updates": updates,
+        })
     
     try:
         backend.update_ensemble(ensemble_id, **updates)
-        print(f"Updated ensemble {ensemble_id}")
-        for key in updates:
-            print(f"  {key}: {updates[key]}")
+        if args and args.json:
+            print_json({
+                "ok": True,
+                "status": "ok",
+                "target": "ensemble",
+                "ensemble_id": ensemble_id,
+                "updates": updates,
+            })
+        else:
+            print(f"Updated ensemble {ensemble_id}")
+            for key in updates:
+                print(f"  {key}: {updates[key]}")
         return 0
     except Exception as e:
-        print(f"ERROR: Failed to update ensemble: {e}", file=sys.stderr)
+        if args and args.json:
+            print_json({"ok": False, "status": "error", "summary": f"Failed to update ensemble: {e}"})
+        else:
+            print(f"ERROR: Failed to update ensemble: {e}", file=sys.stderr)
         return 1
+
+
+def _print_update_plan(args, plan):
+    payload = {
+        "ok": True,
+        "status": "dry_run",
+        "effects": [{"type": "would_update_database", **plan}],
+    }
+    if args.json:
+        print_json(payload)
+    else:
+        print("Would update database:")
+        print_json(payload)
+    return 0
 
 
 def _parse_params(param_string):

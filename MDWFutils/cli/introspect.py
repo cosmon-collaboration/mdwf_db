@@ -95,7 +95,9 @@ def _extract_arguments(parser: argparse.ArgumentParser) -> List[Dict[str, Any]]:
     """Extract argument definitions from an ArgumentParser."""
     args = []
     for action in parser._actions:
-        if action.dest in ('help', 'func', 'cmd', 'variant'):
+        if isinstance(action, argparse._SubParsersAction):
+            continue
+        if action.dest in ('help', 'func', 'cmd'):
             continue
         
         arg_def = {
@@ -227,4 +229,3 @@ def _serialize_schema(schema) -> List[Dict[str, Any]]:
             param_dict["choices"] = param.choices
         result.append(param_dict)
     return result
-
