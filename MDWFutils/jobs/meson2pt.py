@@ -22,9 +22,9 @@ class Meson2ptContextBuilder(WitGPUContextBuilder):
         *common_wit_gpu_params(),
         # Meson2pt-specific params
         ContextParam("wit_exec_path", str, default=DEFAULT_WIT_EXEC, help="WIT executable path"),
-        ContextParam("ml", float, help="Light quark mass override"),
-        ContextParam("ms", float, help="Strange quark mass override"),
-        ContextParam("mc", float, help="Charm quark mass override"),
+        ContextParam("ml", float, help="Light quark mass override (creates meson2pt_ml<value>/ workdir)"),
+        ContextParam("ms", float, help="Strange quark mass override (creates meson2pt_ms<value>/ workdir)"),
+        ContextParam("mc", float, help="Charm quark mass override (creates meson2pt_mc<value>/ workdir)"),
     ]
     
     input_params_schema = [
@@ -36,23 +36,14 @@ class Meson2ptContextBuilder(WitGPUContextBuilder):
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
                       job_params: Dict, input_params: Dict) -> Dict:
         """Build the context dictionary for rendering meson2pt SLURM templates."""
-        try:
-            ml = float(physics["ml"])
-            ms = float(physics["ms"])
-            mc = float(physics["mc"])
-        except KeyError as exc:
-            raise ValidationError("Ensemble is missing required physics parameters") from exc
-
-        ml = _maybe_override(job_params.get("ml"), ml, "ml")
-        ms = _maybe_override(job_params.get("ms"), ms, "ms")
-        mc = _maybe_override(job_params.get("mc"), mc, "mc")
+        ml, ms, mc = resolve_meson2pt_masses(physics, job_params)
 
         kappa_l = compute_kappa(ml)
         kappa_s = compute_kappa(ms)
         kappa_c = compute_kappa(mc)
 
-        # Use shared helper methods
-        workdir, log_dir = self._setup_wit_workdir(ensemble, job_params, "meson2pt")
+        subdir = meson2pt_workdir_subdir(physics, job_params)
+        workdir, log_dir = self._setup_wit_workdir(ensemble, job_params, subdir)
         L, T, ogeom, lgeom = self._parse_geometry(physics, job_params)
 
         wit_input_path = workdir / "DWF_meson2pt.in"
@@ -83,6 +74,33 @@ class Meson2ptContextBuilder(WitGPUContextBuilder):
             "_input_output_dir": str(workdir),
             "_input_output_prefix": "DWF_meson2pt",
         }
+
+
+def resolve_meson2pt_masses(physics: Dict, job_params: Dict) -> tuple[float, float, float]:
+    """Return effective ml/ms/mc after optional job-param overrides."""
+    try:
+        ml = float(physics["ml"])
+        ms = float(physics["ms"])
+        mc = float(physics["mc"])
+    except KeyError as exc:
+        raise ValidationError("Ensemble is missing required physics parameters") from exc
+
+    ml = _maybe_override(job_params.get("ml"), ml, "ml")
+    ms = _maybe_override(job_params.get("ms"), ms, "ms")
+    mc = _maybe_override(job_params.get("mc"), mc, "mc")
+    return ml, ms, mc
+
+
+def meson2pt_workdir_subdir(physics: Dict, job_params: Dict) -> str:
+    """Workdir name: meson2pt/ by default, meson2pt_ml<X>_ms<Y>_mc<Z>/ when overridden."""
+    labels = []
+    for key in ("ml", "ms", "mc"):
+        if job_params.get(key) is not None:
+            value = _maybe_override(job_params[key], float(physics[key]), key)
+            labels.append(f"{key}{value}")
+    if not labels:
+        return "meson2pt"
+    return "meson2pt_" + "_".join(labels)
 
 
 def _apply_meson_defaults(wit_params: Dict, kappa_l: float, kappa_s: float, kappa_c: float) -> None:

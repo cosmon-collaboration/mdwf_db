@@ -231,9 +231,15 @@ class BaseCommand:
                     if "_input_output_prefix" in job_context:
                         input_context["_output_prefix"] = job_context["_input_output_prefix"]
                 
-                input_content = generator.generate_input(
-                    ensemble_id, self.input_type, typed_input, job_params=typed_job
-                )
+                if self.input_builder_class is not None:
+                    input_content = generator.renderer.render(
+                        f"input/{input_builder.type_name}.j2",
+                        input_context,
+                    )
+                else:
+                    input_content = generator.generate_input(
+                        ensemble_id, self.input_type, typed_input, job_params=typed_job
+                    )
                 input_path = self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
                 
                 # Print friendly name

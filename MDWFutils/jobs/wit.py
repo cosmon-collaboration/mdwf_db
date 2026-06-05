@@ -46,9 +46,9 @@ class WitContextBuilder(ContextBuilder):
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
                       job_params: Dict, input_params: Dict) -> Dict:
         """Build WIT input. Schema params auto-merged."""
-        # Extract for processing
+        effective_physics = _physics_with_job_mass_overrides(physics, job_params)
         unflattened = _unflatten_params(input_params)
-        params = _build_parameters(physics, unflattened)
+        params = _build_parameters(effective_physics, unflattened)
         sections = _ordered_dict_to_sections(params)
         
         ensemble_dir = Path(ensemble["directory"]).resolve()
@@ -107,6 +107,26 @@ def _build_parameters(
 
     _finalize_params(params)
     return params
+
+
+def _physics_with_job_mass_overrides(physics: Dict, job_params: Dict) -> Dict:
+    """Apply optional ml/ms/mc job-param overrides to ensemble physics."""
+    if not any(job_params.get(key) is not None for key in ("ml", "ms", "mc")):
+        return physics
+
+    effective = dict(physics)
+    for key in ("ml", "ms", "mc"):
+        raw = job_params.get(key)
+        if raw is None:
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(f"{key} override must be numeric, got {raw}") from exc
+        if value <= 0:
+            raise ValidationError(f"{key} must be positive, got {value}")
+        effective[key] = value
+    return effective
 
 
 def _default_params() -> "OrderedDict[str, Dict[str, str]]":
