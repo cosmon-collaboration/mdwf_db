@@ -1,12 +1,53 @@
-MDWFutils.egg-info
-test_hmc_xml/
-**/*/__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Test / coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+
+# Agent / local AI tooling (keep locally, do not commit)
+AGENTS.md
+.cursorrules
+.claude/
 
 # MongoDB credential files
 config/*.env
 !config/*.env.template
 
-# Test artifacts
-#test_run/
-#test/*.log
-#test/test_ensembles.db
+# Env files at repo root
+.env
+.env.*
+
+# Ensemble tree roots (never at repo root; use local_test/ for local dev)
+/TUNING/
+/ENSEMBLES/
+
+# Local dev ensemble trees and scratch (use: mdwf_db init-db --base-dir local_test)
+local_test/
+
+# Scratch / one-off test output
+test_hmc_xml/
+*.log

@@ -30,6 +30,24 @@ def _unflatten_params(flat_params: Dict) -> Dict:
     return nested
 
 
+DEFAULT_AMA_PARAMS = {
+    "NEXACT": "2",
+    "SLOPPY_PREC": "1E-5",
+    "NHITS": "1",
+    "NT": "48",
+}
+
+
+def common_wit_ama_params() -> List[ContextParam]:
+    """AMA section overrides shared by all WitContextBuilder consumers."""
+    return [
+        ContextParam("AMA.NEXACT", int, default=int(DEFAULT_AMA_PARAMS["NEXACT"]), help="AMA exact solver count"),
+        ContextParam("AMA.SLOPPY_PREC", str, default=DEFAULT_AMA_PARAMS["SLOPPY_PREC"], help="AMA sloppy precision"),
+        ContextParam("AMA.NHITS", int, default=int(DEFAULT_AMA_PARAMS["NHITS"]), help="AMA hits per configuration"),
+        ContextParam("AMA.NT", int, default=int(DEFAULT_AMA_PARAMS["NT"]), help="AMA time slices"),
+    ]
+
+
 class WitContextBuilder(ContextBuilder):
     """WIT input file context builder."""
     
@@ -41,6 +59,7 @@ class WitContextBuilder(ContextBuilder):
         ContextParam("Configurations.step", int, default=4, help="Configuration step size"),
         ContextParam("Run_name.name", str, default="ck", help="Run label"),
         ContextParam("Directories.cnfg_dir", str, default="../cnfg_STOUT8/", help="Configuration directory"),
+        *common_wit_ama_params(),
     ]
     
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
@@ -346,18 +365,15 @@ _DEFAULT_WIT_PARAMS = [
     ),
     (
         "AMA",
-        {
-            "NEXACT": "2",
-            "SLOPPY_PREC": "1E-5",
-            "NHITS": "1",
-            "NT": "48",
-        },
+        dict(DEFAULT_AMA_PARAMS),
     ),
 ]
 
 
 __all__ = [
     "WitContextBuilder",
+    "common_wit_ama_params",
+    "DEFAULT_AMA_PARAMS",
     "render_wit_input",
     "convert_cli_to_wit_format",
     "update_nested_dict",

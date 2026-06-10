@@ -182,16 +182,23 @@ def _find_schemas_for_command(cmd_name: str, variant: str = None) -> tuple:
 
 def _get_schemas_from_command(cmd) -> tuple:
     """Get schemas from a command instance, preferring direct builder class references."""
+    from .command import _resolve_input_schema
+
     # Prefer direct builder class references (new style)
-    if cmd.job_builder_class is not None:
-        job_schema = _deduplicate_schema(cmd.job_builder_class.job_params_schema)
-        input_schema = _deduplicate_schema(cmd.job_builder_class.input_params_schema)
-        builder = cmd.job_builder_class.type_name
-        return (input_schema, job_schema, builder, f"job:{builder}")
-    elif cmd.input_builder_class is not None:
-        input_schema = _deduplicate_schema(cmd.input_builder_class.input_params_schema)
-        builder = cmd.input_builder_class.type_name
-        return (input_schema, None, builder, f"input:{builder}")
+    if cmd.job_builder_class is not None or cmd.input_builder_class is not None:
+        job_schema = (
+            _deduplicate_schema(cmd.job_builder_class.job_params_schema)
+            if cmd.job_builder_class is not None
+            else None
+        )
+        input_schema = _resolve_input_schema(cmd)
+        builder = (
+            cmd.job_builder_class.type_name
+            if cmd.job_builder_class is not None
+            else cmd.input_builder_class.type_name
+        )
+        role = "job" if cmd.job_builder_class is not None else "input"
+        return (input_schema, job_schema, builder, f"{role}:{builder}")
     
     # Fall back to legacy string-based lookup via registry
     if cmd.job_type:
