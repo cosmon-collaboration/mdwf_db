@@ -1,0 +1,12 @@
+module load cpu
+
+export CRAY_CPU_TARGET=x86-64
+
+export CC=$(which cc)
+export CXX=$(which CC)
+export C_FLAGS="-march=native -O3 -msse4.2"
+export CXX_FLAGS="-O3 -fopenmp -march=native -msse4.2 "
+
+export MPI_HOME=$MPICH_DIR
+export MPI_CXX_COMPILER=$(which CC)
+export MPI_CXX_COMPILER_FLAGS=$(CC --cray-print-opts=all)

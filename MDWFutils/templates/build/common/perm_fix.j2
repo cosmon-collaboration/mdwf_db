@@ -1,0 +1,14 @@
+#!/bin/bash
+# Permission fix for shared NERSC project directories
+dir_fix=$1
+group={{ perm_group }}
+
+if [ -z "$dir_fix" ]; then
+    echo "USAGE"
+    echo "$0 dir_to_fix_permissions"
+    exit 1
+fi
+
+find "$dir_fix" -user "$USER" | xargs chgrp "$group"
+find "$dir_fix" -user "$USER" | xargs chmod ug+rwX
+find "$dir_fix" -type d -user "$USER" | xargs chmod g+s

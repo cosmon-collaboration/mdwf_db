@@ -20,6 +20,26 @@ DEFAULT_LOGFILE = "/global/cfs/cdirs/m2986/cosmon/mdwf/mdwf_update.log"
 DEFAULT_GPU_MPI = "4.4.4.8"
 DEFAULT_CPU_MPI = "4.4.4.8"
 DEFAULT_CPU_CACHEBLOCKING = "2.2.2.2"
+HMC_MODE_CHOICES = ["tepid", "continue", "reseed"]
+
+
+def _hmc_run_input_params():
+    """Executable/run parameters for HMC SLURM scripts (passed via -i)."""
+    return [
+        ContextParam("n_trajec", int, required=True, help="Number of trajectories per job"),
+        ContextParam("trajL", float, required=True, help="Trajectory length"),
+        ContextParam("lvl_sizes", str, required=True, help="Level sizes (e.g., 9,1,1)"),
+        ContextParam(
+            "mode",
+            str,
+            default="tepid",
+            choices=HMC_MODE_CHOICES,
+            help="HMC mode (tepid/continue/reseed)",
+        ),
+        ContextParam("ensemble_relpath", str, default="", help="Ensemble relative path"),
+        ContextParam("config_start", int, help="First configuration (for output prefix)"),
+        ContextParam("config_end", int, help="Last configuration (for output prefix)"),
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -47,20 +67,13 @@ class HMCGPUContextBuilder(ContextBuilder):
         ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
         ContextParam("exec_path", str, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
         ContextParam("bind_script", str, help="CPU binding script (or set via ensemble paths.hmc_bind_script_gpu)"),
-        ContextParam("n_trajec", int, required=True, help="Number of trajectories per job"),
-        ContextParam("trajL", float, required=True, help="Trajectory length"),
-        ContextParam("lvl_sizes", str, required=True, help="Level sizes (e.g., 9,1,1)"),
         ContextParam("mpi", str, default=DEFAULT_GPU_MPI, help="MPI configuration"),
         ContextParam("cfg_max", int, help="Maximum configuration number"),
-        ContextParam("mode", str, default="tepid", help="HMC mode (tepid/continue/reseed)"),
-        ContextParam("ensemble_relpath", str, default="", help="Ensemble relative path"),
         ContextParam("conda_env", str, default=DEFAULT_CONDA_ENV, help="Conda environment path"),
         ContextParam("omp_num_threads", int, default=16, help="OpenMP threads"),
-        ContextParam("config_start", int, help="First configuration (for output prefix)"),
-        ContextParam("config_end", int, help="Last configuration (for output prefix)"),
     ]
     
-    input_params_schema = []  # HMC uses XML input, not parameter-based
+    input_params_schema = _hmc_run_input_params()
     
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
                       job_params: Dict, input_params: Dict) -> Dict:
@@ -68,12 +81,17 @@ class HMCGPUContextBuilder(ContextBuilder):
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
         paths = ensemble.get("hmc_paths", {})
-        exec_path = job_params.get("exec_path") or paths.get("hmc_exec_path")
+        exec_path = (
+            job_params.get("exec_path")
+            or paths.get("exec_path")
+            or paths.get("hmc_exec_path")
+        )
         if not exec_path:
-            raise ValidationError("exec_path is required (set via CLI or ensemble paths.hmc_exec_path)")
+            raise ValidationError("exec_path is required (set via CLI or ensemble hmc_paths.exec_path)")
 
         bind_script = (
             job_params.get("bind_script")
+            or paths.get("bind_script_gpu")
             or paths.get("hmc_bind_script_gpu")
             or paths.get("hmc_bind_script")
         )
@@ -83,9 +101,9 @@ class HMCGPUContextBuilder(ContextBuilder):
             )
 
         # Extract values needed for computations
-        n_trajec = job_params["n_trajec"]
-        trajL = job_params["trajL"]
-        lvl_sizes = job_params["lvl_sizes"]
+        n_trajec = input_params["n_trajec"]
+        trajL = input_params["trajL"]
+        lvl_sizes = input_params["lvl_sizes"]
 
         work_root = self._resolve_run_dir(ensemble, job_params)
         log_dir = work_root / "cnfg" / "jlog"
@@ -121,7 +139,9 @@ class HMCGPUContextBuilder(ContextBuilder):
             "cfg_max": int(cfg_max) if cfg_max not in (None, "") else None,
             "logfile": DEFAULT_LOGFILE,
             "_output_dir": str(script_dir),
-            "_output_prefix": f"hmc_gpu_{job_params.get('config_start', 0)}_{job_params.get('config_end', 100)}",
+            "_output_prefix": (
+                f"hmc_gpu_{input_params.get('config_start', 0)}_{input_params.get('config_end', 100)}"
+            ),
         }
 
 
@@ -144,20 +164,13 @@ class HMCCPUContextBuilder(ContextBuilder):
         ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
         ContextParam("exec_path", str, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
         ContextParam("bind_script", str, help="CPU binding script (or set via ensemble paths.hmc_bind_script_cpu)"),
-        ContextParam("n_trajec", int, required=True, help="Number of trajectories per job"),
-        ContextParam("trajL", float, required=True, help="Trajectory length"),
-        ContextParam("lvl_sizes", str, required=True, help="Level sizes (e.g., 9,1,1)"),
         ContextParam("mpi", str, default=DEFAULT_CPU_MPI, help="MPI configuration"),
         ContextParam("cfg_max", int, help="Maximum configuration number"),
-        ContextParam("mode", str, default="tepid", help="HMC mode (tepid/continue/reseed)"),
-        ContextParam("ensemble_relpath", str, default="", help="Ensemble relative path"),
         ContextParam("conda_env", str, default=DEFAULT_CONDA_ENV, help="Conda environment path"),
         ContextParam("omp_num_threads", int, default=4, help="OpenMP threads"),
-        ContextParam("config_start", int, help="First configuration (for output prefix)"),
-        ContextParam("config_end", int, help="Last configuration (for output prefix)"),
     ]
     
-    input_params_schema = []
+    input_params_schema = _hmc_run_input_params()
     
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
                       job_params: Dict, input_params: Dict) -> Dict:
@@ -165,20 +178,28 @@ class HMCCPUContextBuilder(ContextBuilder):
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
         paths = ensemble.get("hmc_paths", {})
-        exec_path = job_params.get("exec_path") or paths.get("hmc_exec_path")
+        exec_path = (
+            job_params.get("exec_path")
+            or paths.get("exec_path")
+            or paths.get("hmc_exec_path")
+        )
         if not exec_path:
-            raise ValidationError("exec_path is required (set via CLI or ensemble paths.hmc_exec_path)")
+            raise ValidationError("exec_path is required (set via CLI or ensemble hmc_paths.exec_path)")
 
-        bind_script = job_params.get("bind_script") or paths.get("hmc_bind_script_cpu")
+        bind_script = (
+            job_params.get("bind_script")
+            or paths.get("bind_script_cpu")
+            or paths.get("hmc_bind_script_cpu")
+        )
         if not bind_script:
             raise ValidationError(
                 "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_cpu)"
             )
 
         # Extract values needed for computations
-        n_trajec = job_params["n_trajec"]
-        trajL = job_params["trajL"]
-        lvl_sizes = job_params["lvl_sizes"]
+        n_trajec = input_params["n_trajec"]
+        trajL = input_params["trajL"]
+        lvl_sizes = input_params["lvl_sizes"]
 
         work_root = self._resolve_run_dir(ensemble, job_params)
         log_dir = work_root / "cnfg" / "jlog"
@@ -208,7 +229,9 @@ class HMCCPUContextBuilder(ContextBuilder):
             "cfg_max": int(cfg_max) if cfg_max not in (None, "") else None,
             "logfile": DEFAULT_LOGFILE,
             "_output_dir": str(script_dir),
-            "_output_prefix": f"hmc_cpu_{job_params.get('config_start', 0)}_{job_params.get('config_end', 100)}",
+            "_output_prefix": (
+                f"hmc_cpu_{input_params.get('config_start', 0)}_{input_params.get('config_end', 100)}"
+            ),
         }
 
 
@@ -222,7 +245,13 @@ class HMCXMLContextBuilder(ContextBuilder):
     type_name = "hmc_xml"
     
     input_params_schema = [
-        ContextParam("mode", str, default="tepid", choices=["tepid", "cold", "hot"], help="HMC start mode"),
+        ContextParam(
+            "mode",
+            str,
+            default="tepid",
+            choices=HMC_MODE_CHOICES,
+            help="HMC start mode (tepid/continue/reseed)",
+        ),
         ContextParam("Seed", int, help="Random seed (optional)"),
         ContextParam("Trajectories", int, required=True, help="Number of trajectories"),
         ContextParam("trajL", float, required=True, help="Trajectory length"),

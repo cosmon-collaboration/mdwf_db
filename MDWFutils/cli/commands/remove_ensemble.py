@@ -1,7 +1,9 @@
-import shutil
 import argparse
+import shutil
+import sys
 
 from ..ensemble_utils import resolve_ensemble_from_args, get_backend_for_args
+from ...build.operations import SITE_ENSEMBLE_NICKNAME
 
 def register(subparsers):
     p = subparsers.add_parser(
@@ -64,6 +66,12 @@ def do_remove(args):
         return 1
 
     display_id = ens.get('ensemble_id', ens.get('id'))
+    if ens.get('nickname') == SITE_ENSEMBLE_NICKNAME and not args.force:
+        print(
+            f"ERROR: Refusing to remove site ensemble '{SITE_ENSEMBLE_NICKNAME}' without --force",
+            file=sys.stderr,
+        )
+        return 1
     print(f"Removing ensemble {display_id} @ {ens['directory']}")
     if not args.force:
         if input("Proceed? (y/N) ").lower() not in ('y','yes'):

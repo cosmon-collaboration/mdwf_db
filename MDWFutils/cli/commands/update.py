@@ -46,6 +46,7 @@ def do_update(args):
 
     if args.operation_id:
         payload = _flatten_update_fields(param_dict)
+        _apply_terminal_timing(payload, status, param_dict)
         updated = backend.update_operation_by_id(args.operation_id, status, **payload)
         if not updated:
             print(f"ERROR: Operation {args.operation_id} not found", file=sys.stderr)
@@ -71,14 +72,14 @@ def do_update(args):
         param_dict['slurm_job_id'] = slurm_job_id
 
     user = args.user or getuser()
-    backend.add_operation(
+    operation_id = backend.add_operation(
         ensemble_id,
         operation_type=args.operation_type,
         status=status,
         user=user,
         **_extract_operation_kwargs(param_dict),
     )
-    print("Created operation entry")
+    print(f"Created operation entry operation_id={operation_id}")
     return 0
 
 
@@ -142,6 +143,23 @@ def _update_ensemble(backend, ensemble_id, ensemble, param_dict):
     except Exception as e:
         print(f"ERROR: Failed to update ensemble: {e}", file=sys.stderr)
         return 1
+
+
+_TERMINAL_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELED", "TIMEOUT"})
+
+
+def _apply_terminal_timing(payload: dict, status: str, param_dict: dict) -> None:
+    if status not in _TERMINAL_STATUSES:
+        return
+    from datetime import datetime
+
+    payload["timing.end_time"] = datetime.utcnow()
+    runtime = param_dict.get("runtime")
+    if runtime is not None:
+        try:
+            payload["timing.runtime_seconds"] = int(runtime)
+        except (TypeError, ValueError):
+            pass
 
 
 def _parse_params(param_string):

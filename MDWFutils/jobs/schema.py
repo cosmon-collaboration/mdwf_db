@@ -129,7 +129,7 @@ class ContextBuilder(ABC):
         # it's really input_params (input builders called with positional arg)
         if job_params is not None and input_params is None:
             # Check if this looks like input params (no typical job params)
-            if not any(k in job_params for k in ["config_start", "n_trajec", "nodes", "time_limit"]):
+            if not any(k in job_params for k in ["config_start", "nodes", "time_limit"]):
                 input_params = job_params
                 job_params = {}
         

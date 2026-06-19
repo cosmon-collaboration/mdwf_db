@@ -29,25 +29,36 @@ def _load_default_backend():
     return get_backend(connection)
 
 
+def resolve_command_schemas(cmd) -> tuple[Optional[List], Optional[List]]:
+    """Resolve input and job parameter schemas for a command instance."""
+    input_schema = None
+    job_schema = None
+
+    if cmd.job_builder_class is not None:
+        job_schema = _deduplicate_schema(cmd.job_builder_class.job_params_schema)
+        job_input = cmd.job_builder_class.input_params_schema or []
+        if cmd.input_builder_class is not None:
+            xml_input = cmd.input_builder_class.input_params_schema or []
+            # Job-builder input params win on name collisions (e.g. HMC run settings).
+            input_schema = _deduplicate_schema(xml_input + job_input)
+        else:
+            input_schema = _deduplicate_schema(job_input)
+    elif cmd.input_builder_class is not None:
+        input_schema = _deduplicate_schema(cmd.input_builder_class.input_params_schema)
+    elif cmd.job_type:
+        from ..jobs.registry import get_job_schema
+        job_schema, input_schema = get_job_schema(cmd.job_type)
+    elif cmd.input_type:
+        from ..jobs.registry import get_input_schema
+        input_schema = get_input_schema(cmd.input_type)
+
+    return input_schema, job_schema
+
+
 def _resolve_input_schema(command: "BaseCommand") -> Optional[List[ContextParam]]:
     """Merge input schemas from job and input builders when both are present."""
-    parts: List[ContextParam] = []
-    if command.job_builder_class is not None and command.job_builder_class.input_params_schema:
-        parts.extend(command.job_builder_class.input_params_schema)
-    if command.input_builder_class is not None and command.input_builder_class.input_params_schema:
-        parts.extend(command.input_builder_class.input_params_schema)
-    if parts:
-        return _deduplicate_schema(parts)
-
-    if command.job_type:
-        from ..jobs.registry import get_job_schema
-        _, input_schema = get_job_schema(command.job_type)
-        return _deduplicate_schema(input_schema) if input_schema else None
-    if command.input_type:
-        from ..jobs.registry import get_input_schema
-        input_schema = get_input_schema(command.input_type)
-        return _deduplicate_schema(input_schema) if input_schema else None
-    return None
+    input_schema, _ = resolve_command_schemas(command)
+    return input_schema
 
 
 class BaseCommand:
@@ -122,20 +133,13 @@ class BaseCommand:
     def _build_description(self) -> str:
         """Build help description including parameter schemas from builder classes."""
         description = self.help or ""
-        
-        input_schema = _resolve_input_schema(self)
-        job_schema = None
-        if self.job_builder_class is not None:
-            job_schema = _deduplicate_schema(self.job_builder_class.job_params_schema)
-        elif self.job_type:
-            from ..jobs.registry import get_job_schema
-            job_schema, _ = get_job_schema(self.job_type)
-        
+        input_schema, job_schema = resolve_command_schemas(self)
+
         if input_schema:
             description += self.help_gen.generate_help(input_schema, "Input parameters (-i)")
         if job_schema:
             description += self.help_gen.generate_help(job_schema, "Job parameters (-j)")
-        
+
         return description
 
     def _add_arguments(self, parser):
@@ -183,23 +187,21 @@ class BaseCommand:
             cli_job = param_manager.parse(args.job_params or "")
             merged_job = param_manager.merge(default_job, cli_job)
 
-            builder_input_schema = _resolve_input_schema(self)
-            builder_job_schema = None
-            if self.job_builder_class is not None:
-                builder_job_schema = _deduplicate_schema(self.job_builder_class.job_params_schema)
-            elif self.job_type:
-                from ..jobs.registry import get_job_schema
-                builder_job_schema, _ = get_job_schema(self.job_type)
-            
+            builder_input_schema, builder_job_schema = resolve_command_schemas(self)
+
             # Handle input params: use builder schema with defaults if available
             if builder_input_schema is not None:
-                typed_input = self.help_gen.apply_defaults_and_validate(merged_input, builder_input_schema, "input")
+                typed_input = self.help_gen.apply_defaults_and_validate(
+                    merged_input, builder_input_schema, "input"
+                )
             else:
                 typed_input = merged_input
-            
+
             # Handle job params: use builder schema with defaults if available
             if builder_job_schema is not None:
-                typed_job = self.help_gen.apply_defaults_and_validate(merged_job, builder_job_schema, "job")
+                typed_job = self.help_gen.apply_defaults_and_validate(
+                    merged_job, builder_job_schema, "job"
+                )
             else:
                 typed_job = merged_job
 
@@ -298,14 +300,8 @@ class BaseCommand:
     # ------------------------------------------------------------------
     def _print_params(self) -> int:
         """Print detailed parameter documentation and exit."""
-        input_schema = _resolve_input_schema(self)
-        job_schema = None
-        if self.job_builder_class is not None:
-            job_schema = _deduplicate_schema(self.job_builder_class.job_params_schema)
-        elif self.job_type:
-            from ..jobs.registry import get_job_schema
-            job_schema, _ = get_job_schema(self.job_type)
-        
+        input_schema, job_schema = resolve_command_schemas(self)
+
         output = self.help_gen.format_params_detailed(
             input_schema or [],
             job_schema or [],
@@ -341,5 +337,4 @@ class BaseCommand:
         if executable:
             path.chmod(0o755)
         return path
-
 

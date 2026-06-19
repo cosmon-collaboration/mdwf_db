@@ -1,0 +1,54 @@
+#!/usr/bin/bash
+{{ provenance }}set -euo pipefail
+
+{% include 'build/common/env_gpu.j2' %}
+
+export BASE={{ base }}
+export SOURCE_DIR={{ source_dir }}
+export BUILD_DIR={{ build_dir }}
+export INSTALL_DIR={{ install_gpu_dir }}
+export PERM_FIX={{ perm_fix }}
+
+{% include 'build/common/build_status_start.j2' %}
+
+PKG_src=wit
+PKG=wit
+if [[ ! -d $SOURCE_DIR/$PKG_src ]]; then
+    pushd $SOURCE_DIR
+    git clone {{ git_url }}
+    popd
+fi
+
+pushd $SOURCE_DIR/$PKG_src
+autoreconf -i -f -v
+popd
+
+$PERM_FIX $SOURCE_DIR/$PKG_src
+
+{% if clean_install %}
+if [[ -d $BUILD_DIR/${PKG} ]]; then rm -rf $BUILD_DIR/${PKG}; fi
+if [[ -d $INSTALL_DIR/${PKG} ]]; then rm -rf $INSTALL_DIR/${PKG}; fi
+{% endif %}
+
+mkdir -p $BUILD_DIR/${PKG}
+pushd $BUILD_DIR/${PKG}
+
+nvidia_math_libs=${CUDA_HOME}/../../math_libs/12.4/lib64
+
+${SOURCE_DIR}/$PKG/configure --prefix=${INSTALL_DIR}/${PKG} \
+    CXX="${CXX}" \
+    CXXFLAGS="--std=c++17 $CXX_FLAGS -L$nvidia_math_libs " \
+    LDFLAGS="-lcufft -lnvidia-ml " \
+    --with-cuda=$CUDA_HOME \
+    --with-quda=${INSTALL_DIR}/quda \
+    --with-qdp=${INSTALL_DIR}/qdpxx/bin/ \
+    --enable-DOMAINWALL \
+    --enable-TWOPOINT_FILTER
+
+make -j{{ parallel_jobs }}
+make -j{{ parallel_jobs }} install
+
+popd
+
+$PERM_FIX $BUILD_DIR/${PKG}
+$PERM_FIX $INSTALL_DIR/${PKG}

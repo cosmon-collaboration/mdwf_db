@@ -109,6 +109,7 @@ class MongoDBBackend(DatabaseBackend):
             "physics": validated.physics.dict(),
             "configurations": {},
             "hmc_paths": {},
+            "grid_build": {},
             "default_params": {},
             "tags": [],
             "notes": None,
@@ -177,6 +178,7 @@ class MongoDBBackend(DatabaseBackend):
                 entry["physics"] = doc.get("physics", {})
                 entry["configurations"] = doc.get("configurations", {})
                 entry["hmc_paths"] = doc.get("hmc_paths", {})
+                entry["grid_build"] = doc.get("grid_build", {})
                 entry["tags"] = doc.get("tags", [])
                 entry["default_params"] = doc.get("default_params", {})
             docs.append(entry)

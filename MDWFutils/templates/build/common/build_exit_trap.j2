@@ -1,0 +1,16 @@
+# Job status tracking for build scripts
+_SIG=""
+trap '_SIG=1' TERM INT
+_update_status() {
+    local ec=$? st=""
+    [ -n "$_SIG" ] || case $ec in 130|137|143) _SIG=1;; esac
+    [ -z "$st" ] && [ -n "$_SIG" ] && st="CANCELED"
+    [ -z "$st" ] && { [ $ec -eq 0 ] && st="COMPLETED" || st="FAILED"; }
+    if [ -n "$OPERATION_ID" ]; then
+        mdwf_db update -e {{ ensemble_id }} -i "$OPERATION_ID" -s "$st" \
+            -p "exit_code=$ec runtime=$SECONDS host=$(hostname)" || true
+    else
+        echo "WARNING: OPERATION_ID not set; build status not updated" >&2
+    fi
+}
+trap _update_status EXIT

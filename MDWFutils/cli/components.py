@@ -91,6 +91,28 @@ class ParameterManager:
         return self.backend.delete_default_params(ensemble_id, job_type, variant)
 
 
+class BuildScriptGenerator:
+    """Generate build shell scripts and sources using templates."""
+
+    def __init__(self, backend: DatabaseBackend | None = None):
+        self.backend = backend
+        self.renderer = TemplateRenderer(TemplateLoader())
+
+    def generate(self, type_name: str, ensemble_id: int, build_params: Dict, *, ensemble=None, command_line: str = "") -> str:
+        from ..build.registry import get_build_builder
+
+        builder = get_build_builder(type_name)
+        template = getattr(builder, "template_name", None) or f"build/{type_name}.j2"
+        context = builder.build(
+            self.backend,
+            ensemble_id,
+            build_params,
+            ensemble=ensemble,
+            command_line=command_line,
+        )
+        return self.renderer.render(template, context), context
+
+
 class ScriptGenerator:
     """Generate input files and SLURM scripts using templates."""
 

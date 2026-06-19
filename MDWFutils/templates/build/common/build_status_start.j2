@@ -1,0 +1,5 @@
+SECONDS=0
+OPERATION_ID=$(mdwf_db update -e {{ ensemble_id }} -o {{ operation }} -s RUNNING \
+  -p "build_script={{ build_script_path }} install_prefix={{ install_prefix }} package={{ package }} host=$(hostname)" \
+  2>/dev/null | sed -n 's/.*operation_id=//p')
+{% include 'build/common/build_exit_trap.j2' %}

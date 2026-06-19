@@ -1,0 +1,244 @@
+  // these are universal
+  const RealD M5         = 1.0;
+  const Real pv_mass     = 1.0;
+  const Real charm_mass  = 11.8*strange_mass ;
+  std::cout<<"aml,ams,amc = " << light_mass << " , " << strange_mass << " , " << charm_mass << std::endl ;
+  
+  auto GridPtr   = TheHMC.Resources.GetCartesian();
+  auto GridRBPtr = TheHMC.Resources.GetRBCartesian();
+  auto FGrid     = SpaceTimeGrid::makeFiveDimGrid(Ls,GridPtr);
+  auto FrbGrid   = SpaceTimeGrid::makeFiveDimRedBlackGrid(Ls,GridPtr);
+
+  std::cout<<GridLogMessage<<"Double-precison grid"<<std::endl ;
+  GridPtr -> show_decomposition() ;
+  FrbGrid -> show_decomposition() ;
+
+  Coordinate latt  = GridDefaultLatt();
+  Coordinate mpi   = GridDefaultMpi();
+  Coordinate simdF = GridDefaultSimd(Nd,vComplexF::Nsimd());
+  Coordinate simdD = GridDefaultSimd(Nd,vComplexD::Nsimd());
+  auto GridPtrF    = SpaceTimeGrid::makeFourDimGrid(latt,simdF,mpi);
+  auto GridRBPtrF  = SpaceTimeGrid::makeFourDimRedBlackGrid(GridPtrF);
+  auto FGridF      = SpaceTimeGrid::makeFiveDimGrid(Ls,GridPtrF);
+  auto FrbGridF    = SpaceTimeGrid::makeFiveDimRedBlackGrid(Ls,GridPtrF);
+
+  std::cout<<GridLogMessage<<"Single-precison grid"<<std::endl ;
+  GridPtrF -> show_decomposition() ;
+  FrbGridF -> show_decomposition() ;
+
+
+  // temporarily need a gauge field
+  LatticeGaugeField U(GridPtr);
+  LatticeGaugeFieldF UF(GridPtrF);
+
+  // These lines are unecessary if BC are all periodic
+  std::vector<Complex> boundary = {1,1,1,-1};
+  FermionAction::ImplParams Params(boundary);
+  FermionActionF::ImplParams ParamsF(boundary);
+  
+  const double ActionStoppingCondition     = 1e-10;
+  const double DerivativeStoppingCondition = 1e-7;
+  const double MaxCGIterations             = 30000;
+
+  ////////////////////////////////////
+  // Collect actions
+  ////////////////////////////////////
+  ActionLevel<HMCWrapper::Field> Level1( HMCparams.MD.lvl_sizes[0] , IntStringToEnum( HMCparams.MD.name[0] ) );
+  ActionLevel<HMCWrapper::Field> Level2( HMCparams.MD.lvl_sizes[1] , IntStringToEnum( HMCparams.MD.name[1] ) );
+  ActionLevel<HMCWrapper::Field> Level3( HMCparams.MD.lvl_sizes[2] , IntStringToEnum( HMCparams.MD.name[2] ) );
+
+  typedef SchurDiagMooeeOperator<FermionActionF,FermionFieldF> LinearOperatorF;
+  typedef SchurDiagMooeeOperator<FermionAction ,FermionField > LinearOperatorD;
+  typedef SchurDiagMooeeOperator<FermionEOFAActionF,FermionFieldF> LinearOperatorEOFAF;
+  typedef SchurDiagMooeeOperator<FermionEOFAAction ,FermionField > LinearOperatorEOFAD;
+
+  typedef MixedPrecisionConjugateGradientOperatorFunction<MobiusFermionD,MobiusFermionF,LinearOperatorD,LinearOperatorF> MxPCG;
+  typedef MixedPrecisionConjugateGradientOperatorFunction<MobiusEOFAFermionD,MobiusEOFAFermionF,LinearOperatorEOFAD,LinearOperatorEOFAF> MxPCG_EOFA;
+
+  ////////////////////////////////////
+  // Charm action -- should we put this on level 2??? Maybe
+  ////////////////////////////////////
+  const int MX_inner = 5000;
+  
+  ////////////////////////////////////
+  // Strange/Charm action
+  ////////////////////////////////////
+  OneFlavourRationalParams OFRp;
+  OFRp.lo        = 0.9;
+  OFRp.hi        = 3.5;
+  OFRp.MaxIter   = 10000;
+  OFRp.tolerance = 1.0e-9;
+  OFRp.degree    = 3 ;
+  OFRp.precision = 50;
+
+  ConjugateGradient<FermionField> ActionCG(ActionStoppingCondition,MaxCGIterations);
+
+  // could put an intermediate hasenbusch here I suppose ....
+  std::vector<double> EOFAhs = { {% for m in eofa_hs %}{{ m }}{% if not loop.last %}, {% endif %}{% endfor %} };
+  std::vector<MobiusEOFAFermionD*> Strange_Op_L  , Strange_Op_R  ;
+  std::vector<MobiusEOFAFermionF*> Strange_Op_LF , Strange_Op_RF ;
+  
+  std::vector<LinearOperatorEOFAD*> Strange_LinOp_L  , Strange_LinOp_R  ;
+  std::vector<LinearOperatorEOFAF*> Strange_LinOp_LF , Strange_LinOp_RF ;
+
+  std::vector<MxPCG_EOFA*> ActionCGL , DerivativeCGL , ActionCGR , DerivativeCGR ;
+  std::vector<ExactOneFlavourRatioPseudoFermionAction<FermionImplPolicy> *> EOFA ;
+
+  for( int i = 0 ; i < EOFAhs.size()-1 ; i++ ) {
+
+    Strange_Op_L.push_back( new MobiusEOFAFermionD(U , *FGrid , *FrbGrid , *GridPtr , *GridRBPtr , EOFAhs[i] , EOFAhs[i],  EOFAhs[i+1], 0.0, -1, M5, b, c) );
+    Strange_Op_R.push_back( new MobiusEOFAFermionD(U , *FGrid , *FrbGrid , *GridPtr , *GridRBPtr , EOFAhs[i+1], EOFAhs[i], EOFAhs[i+1], -1.0, 1, M5, b, c) );
+			    
+    Strange_Op_LF.push_back( new MobiusEOFAFermionF(UF, *FGridF, *FrbGridF, *GridPtrF, *GridRBPtrF, EOFAhs[i] , EOFAhs[i],  EOFAhs[i+1], 0.0, -1, M5, b, c) );
+    Strange_Op_RF.push_back( new MobiusEOFAFermionF(UF, *FGridF, *FrbGridF, *GridPtrF, *GridRBPtrF, EOFAhs[i+1], EOFAhs[i], EOFAhs[i+1], -1.0, 1, M5, b, c) );
+
+    // Mixed precision EOFA
+    Strange_LinOp_L.push_back( new LinearOperatorEOFAD( *Strange_Op_L[i] ) ) ;
+    Strange_LinOp_R.push_back( new LinearOperatorEOFAD( *Strange_Op_R[i] ) ) ;
+    Strange_LinOp_LF.push_back( new LinearOperatorEOFAF( *Strange_Op_LF[i] ) ) ;
+    Strange_LinOp_RF.push_back( new LinearOperatorEOFAF( *Strange_Op_RF[i] ) ) ;
+
+    ActionCGL.push_back( new MxPCG_EOFA( ActionStoppingCondition, MX_inner, MaxCGIterations, GridPtrF, FrbGridF, *Strange_Op_LF[i],*Strange_Op_L[i], *Strange_LinOp_LF[i],*Strange_LinOp_L[i]));
+    DerivativeCGL.push_back( new MxPCG_EOFA( DerivativeStoppingCondition, MX_inner, MaxCGIterations, GridPtrF, FrbGridF, *Strange_Op_LF[i],*Strange_Op_L[i], *Strange_LinOp_LF[i],*Strange_LinOp_L[i]));
+    ActionCGR.push_back( new MxPCG_EOFA( ActionStoppingCondition, MX_inner, MaxCGIterations, GridPtrF, FrbGridF, *Strange_Op_RF[i],*Strange_Op_R[i], *Strange_LinOp_RF[i],*Strange_LinOp_R[i]));
+    DerivativeCGR.push_back( new MxPCG_EOFA( DerivativeStoppingCondition, MX_inner, MaxCGIterations, GridPtrF, FrbGridF, *Strange_Op_RF[i],*Strange_Op_R[i], *Strange_LinOp_RF[i],*Strange_LinOp_R[i]));
+
+    EOFA.push_back( new ExactOneFlavourRatioPseudoFermionAction<FermionImplPolicy>( *Strange_Op_L[i], *Strange_Op_R[i], ActionCG, *ActionCGL[i], *ActionCGR[i], *DerivativeCGL[i], *DerivativeCGR[i], OFRp, true ) );
+    EOFA[i] -> is_smeared = true ;
+
+    {% if beta_line == 'b4008' %}
+    if( i > 0 ) {
+      Level2.push_back( EOFA[i] );
+    } else {
+      Level1.push_back( EOFA[i] );
+    }
+    {% elif beta_line == 'b4068' %}
+    Level2.push_back( EOFA[i] );
+    {% elif beta_line == 'b416' %}
+    {% if L == 32 %}
+    Level2.push_back( EOFA[i] );
+    {% else %}
+    Level1.push_back( EOFA[i] );
+    {% endif %}
+    {% elif beta_line in ['b4238', 'b4300'] %}
+    Level1.push_back( EOFA[i] );
+    {% elif beta_line == 'b4333' %}
+    Level2.push_back( EOFA[i] );
+    {% endif %}
+  }
+
+  ////////////////////////////////////
+  // up down action
+  ////////////////////////////////////
+  std::vector<Real> light_den , light_num;
+
+  // charm as 2 flavor so we can EOFA the strange .... (c/s)(PV/c)^2 -> s/PV,c/PV and then the usual chain
+  int n_hasenbusch = hasenbusch.size();
+  light_den.push_back(light_mass);
+  for(int h=0;h<n_hasenbusch;h++){
+    light_den.push_back(hasenbusch[h]);
+    light_num.push_back(hasenbusch[h]);
+  }
+  // and then 
+  light_num.push_back(pv_mass);
+
+  light_den.push_back( charm_mass ) ;
+{% if beta_line == 'b4333' %}
+  light_num.push_back({{ eofa_hs_extra }});
+  light_den.push_back({{ eofa_hs_extra }});
+{% endif %}
+  light_num.push_back( pv_mass ) ;
+
+  //////////////////////////////////////////////////////////////
+  // Forced to replicate the MxPCG and DenominatorsF etc.. because
+  // there is no convenient way to "Clone" physics params from double op
+  // into single op for any operator pair.
+  // Same issue prevents using MxPCG in the Heatbath step
+  //////////////////////////////////////////////////////////////
+  std::vector<FermionAction *> Numerators;
+  std::vector<FermionAction *> Denominators;
+  std::vector<TwoFlavourEvenOddRatioPseudoFermionAction<FermionImplPolicy> *> Quotients;
+  std::vector<MxPCG *> ActionMPCG;
+  std::vector<MxPCG *> MPCG;
+  std::vector<FermionActionF *> DenominatorsF;
+  std::vector<LinearOperatorD *> LinOpD;
+  std::vector<LinearOperatorF *> LinOpF; 
+
+  // extra step for very fine ensemble
+{% if beta_line == 'b4333' %}
+  for(int h=0;h<n_hasenbusch+3;h++){
+{% else %}
+  for(int h=0;h<n_hasenbusch+2;h++){
+{% endif %}
+    std::cout << GridLogMessage << " 2f quotient Action  "<< light_num[h] << " / " << light_den[h]<< std::endl;
+
+    Numerators.push_back  (new FermionAction(U,*FGrid,*FrbGrid,*GridPtr,*GridRBPtr,light_num[h],M5,b,c, Params));
+    Denominators.push_back(new FermionAction(U,*FGrid,*FrbGrid,*GridPtr,*GridRBPtr,light_den[h],M5,b,c, Params));
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Mixed precision CG for 2f force
+    ////////////////////////////////////////////////////////////////////////////
+    double DerivativeStoppingConditionLoose = 3e-7;
+
+    DenominatorsF.push_back(new FermionActionF(UF,*FGridF,*FrbGridF,*GridPtrF,*GridRBPtrF,light_den[h],M5,b,c, ParamsF));
+    LinOpD.push_back(new LinearOperatorD(*Denominators[h]));
+    LinOpF.push_back(new LinearOperatorF(*DenominatorsF[h]));
+
+    double conv  = DerivativeStoppingCondition;
+    if (h<3) conv= DerivativeStoppingConditionLoose; // Relax on first two hasenbusch factors
+    MPCG.push_back(new MxPCG( conv,
+			      MX_inner,
+			      MaxCGIterations,
+			      GridPtrF,
+			      FrbGridF,
+			      *DenominatorsF[h],*Denominators[h],
+			      *LinOpF[h], *LinOpD[h]) );
+    
+    ActionMPCG.push_back(new MxPCG( ActionStoppingCondition,
+				    MX_inner,
+				    MaxCGIterations,
+				    GridPtrF,
+				    FrbGridF,
+				    *DenominatorsF[h],*Denominators[h],
+				    *LinOpF[h], *LinOpD[h]) );
+
+    // Heatbath not mixed yet. As inverts numerators not so important as raised mass.
+    Quotients.push_back (new TwoFlavourEvenOddRatioPseudoFermionAction<FermionImplPolicy>(*Numerators[h],*Denominators[h],*MPCG[h],*ActionMPCG[h],ActionCG));
+    Quotients[h] -> is_smeared = true ;
+
+    // put everything apart from the light quark and some hasenbusches on level 2
+    if( h > Nlvl1 ) {
+      Level2.push_back(Quotients[h]);
+    } else {
+      Level1.push_back(Quotients[h]);
+    }
+  }
+
+  /////////////////////////////////////////////////////////////
+  // Gauge action
+  /////////////////////////////////////////////////////////////
+
+  TheHMC.TheAction.push_back(Level1);
+  TheHMC.TheAction.push_back(Level2);
+
+  SymanzikGaugeActionR GaugeAction(beta);
+  GaugeAction.is_smeared = false ;
+  Level3.push_back(&GaugeAction);
+  
+  TheHMC.TheAction.push_back(Level3);
+  std::cout << GridLogMessage << " Action complete "<< std::endl;
+
+  /////////////////////////////////////////////////////////////
+  // HMC parameters are serialisable
+
+  //SmearingParameters SmPar(Reader);
+  double rho = 0.125;  // smearing parameter
+  int Nsmear = 8;    // number of smearing levels
+  Smear_Stout<HMCWrapper::ImplPolicy> Stout(rho,GridPtr);
+  SmearedConfiguration<HMCWrapper::ImplPolicy> SmearingPolicy(GridPtr, Nsmear, Stout);
+
+  std::cout << GridLogMessage << " Running the HMC "<< std::endl;
+  TheHMC.Run(SmearingPolicy); // for smearing
+
+  Grid_finalize();
+} // main

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -9,10 +10,12 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import pytest
 
 from MDWFutils.backends.base import DatabaseBackend
+from MDWFutils.build.operations import SITE_ENSEMBLE_NICKNAME
 from MDWFutils.exceptions import EnsembleNotFoundError
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+BUILD_FIXTURES_DIR = Path(__file__).resolve().parents[1] / "MDWFutils" / "build" / "fixtures"
 
 
 def make_physics(**overrides) -> dict:
@@ -47,11 +50,16 @@ def make_ensemble(directory: Path, ensemble_id: int = 1, **kwargs) -> dict:
             "thermalized": 20,
         },
         "hmc_paths": {},
+        "grid_build": deepcopy(kwargs.get("grid_build", {})),
         "default_params": deepcopy(kwargs.get("default_params", {})),
         "tags": [],
         "notes": None,
     }
-    doc.update({k: v for k, v in kwargs.items() if k not in ("physics", "default_params", "nickname", "status")})
+    doc.update({
+        k: v
+        for k, v in kwargs.items()
+        if k not in ("physics", "default_params", "nickname", "status", "grid_build")
+    })
     return doc
 
 
@@ -114,7 +122,14 @@ class FakeBackend(DatabaseBackend):
     def update_ensemble(self, ensemble_id: int, **updates) -> bool:
         if ensemble_id not in self.ensembles:
             return False
-        self.ensembles[ensemble_id].update(updates)
+        ens = self.ensembles[ensemble_id]
+        for key, value in updates.items():
+            if "." in key:
+                top, rest = key.split(".", 1)
+                ens.setdefault(top, {})
+                ens[top][rest] = value
+            else:
+                ens[key] = value
         self._rebuild_indexes()
         return True
 
@@ -245,6 +260,19 @@ class FakeBackend(DatabaseBackend):
             del self.measurements[key]
         return len(keys)
 
+    def seed_site_ensemble(self) -> int:
+        for eid, doc in self.ensembles.items():
+            if doc.get("nickname") == SITE_ENSEMBLE_NICKNAME:
+                return eid
+        return self.add_ensemble(
+            "/tmp/software",
+            make_physics(beta=4.0, b=1.0, Ls=4, mc=0.1, ms=0.1, ml=0.01, L=4, T=4),
+            nickname=SITE_ENSEMBLE_NICKNAME,
+        )
+
+    def seed_physics_ensemble(self, physics: dict, **kwargs) -> int:
+        return self.add_ensemble("/tmp/ensemble", physics, **kwargs)
+
 
 @pytest.fixture
 def tmp_ensemble_dir(tmp_path):
@@ -266,3 +294,43 @@ def fake_backend(sample_ensemble):
 @pytest.fixture
 def gauge_fixture_path():
     return FIXTURES / "gauge_obs" / "t0.100.out"
+
+
+@pytest.fixture
+def site_ensemble_id(fake_backend: FakeBackend) -> int:
+    return fake_backend.seed_site_ensemble()
+
+
+@pytest.fixture
+def b4238_fixture() -> dict:
+    return json.loads((BUILD_FIXTURES_DIR / "b4.238_L32.grid_build.json").read_text())
+
+
+@pytest.fixture
+def physics_ensemble_id(fake_backend: FakeBackend, b4238_fixture: dict) -> int:
+    return fake_backend.seed_physics_ensemble(
+        b4238_fixture["physics"],
+        grid_build=b4238_fixture["grid_build"],
+    )
+
+
+@pytest.fixture
+def tmp_software_root(tmp_path, monkeypatch) -> Path:
+    root = tmp_path / "software"
+    root.mkdir()
+    monkeypatch.setenv("MDWF_SOFTWARE_ROOT", str(root))
+    return root
+
+
+@pytest.fixture
+def mock_db(monkeypatch, fake_backend: FakeBackend):
+    """Patch get_backend imports used by CLI modules."""
+    monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
+
+    def _get_backend(conn):
+        return fake_backend
+
+    monkeypatch.setattr("MDWFutils.backends.get_backend", _get_backend)
+    monkeypatch.setattr("MDWFutils.cli.build_command.get_backend", _get_backend)
+    monkeypatch.setattr("MDWFutils.cli.ensemble_utils.get_backend", _get_backend)
+    return fake_backend

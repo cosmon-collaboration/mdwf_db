@@ -1,0 +1,187 @@
+/**
+   2+1+1 Mixed Precision EOFA Mobius with a tonne of smearing
+
+   Idea is to only do one EOFA ~det(c)/det(s) and a two flavor (det(PV)/det(c))^2 on top of the light quark Hasenbusch
+
+   We don't do an explicit c quark but it comes in through the quotient and cutoff in the strange, which has major benefits as the
+   EOFA is not cheap!!
+ **/
+#include <Grid/Grid.h>
+
+NAMESPACE_BEGIN(Grid);
+
+//#define b4008
+//#define b4068
+//#define b416
+#define b4238
+//#define b4300
+//#define b4333
+
+//#define L48
+#define L32
+//#define L24
+//#define L20
+//#define L16
+
+  /*
+   * Need a plan for gauge field update for mixed precision in HMC                      (2x speed up)
+   *    -- Store the single prec action operator.
+   *    -- Clone the gauge field from the operator function argument.
+   *    -- Build the mixed precision operator dynamically from the passed operator and single prec clone.
+   */
+
+  template<class FermionOperatorD, class FermionOperatorF, class SchurOperatorD, class  SchurOperatorF> 
+  class MixedPrecisionConjugateGradientOperatorFunction : public OperatorFunction<typename FermionOperatorD::FermionField> {
+  public:
+    typedef typename FermionOperatorD::FermionField FieldD;
+    typedef typename FermionOperatorF::FermionField FieldF;
+
+    using OperatorFunction<FieldD>::operator();
+
+    RealD   Tolerance;
+    RealD   InnerTolerance; //Initial tolerance for inner CG. Defaults to Tolerance but can be changed
+    Integer MaxInnerIterations;
+    Integer MaxOuterIterations;
+    GridBase* SinglePrecGrid4; //Grid for single-precision fields
+    GridBase* SinglePrecGrid5; //Grid for single-precision fields
+    RealD OuterLoopNormMult; //Stop the outer loop and move to a final double prec solve when the residual is OuterLoopNormMult * Tolerance
+
+    FermionOperatorF &FermOpF;
+    FermionOperatorD &FermOpD;;
+    SchurOperatorF &LinOpF;
+    SchurOperatorD &LinOpD;
+
+    Integer TotalInnerIterations; //Number of inner CG iterations
+    Integer TotalOuterIterations; //Number of restarts
+    Integer TotalFinalStepIterations; //Number of CG iterations in final patch-up step
+
+    MixedPrecisionConjugateGradientOperatorFunction(RealD tol, 
+						    Integer maxinnerit, 
+						    Integer maxouterit, 
+						    GridBase* _sp_grid4, 
+						    GridBase* _sp_grid5, 
+						    FermionOperatorF &_FermOpF,
+						    FermionOperatorD &_FermOpD,
+						    SchurOperatorF   &_LinOpF,
+						    SchurOperatorD   &_LinOpD): 
+      LinOpF(_LinOpF),
+      LinOpD(_LinOpD),
+      FermOpF(_FermOpF),
+      FermOpD(_FermOpD),
+      Tolerance(tol), 
+      InnerTolerance(tol), 
+      MaxInnerIterations(maxinnerit), 
+      MaxOuterIterations(maxouterit), 
+      SinglePrecGrid4(_sp_grid4),
+      SinglePrecGrid5(_sp_grid5),
+      OuterLoopNormMult(100.) 
+    { 
+    };
+
+    void operator()(LinearOperatorBase<FieldD> &LinOpU, const FieldD &src, FieldD &psi) {
+
+      std::cout << GridLogMessage << " Mixed precision CG wrapper operator() "<<std::endl;
+
+      SchurOperatorD * SchurOpU = static_cast<SchurOperatorD *>(&LinOpU);
+      assert(&(SchurOpU->_Mat)==&(LinOpD._Mat));
+
+      ////////////////////////////////////////////////////////////////////////////////////
+      // Must snarf a single precision copy of the gauge field in Linop_d argument
+      ////////////////////////////////////////////////////////////////////////////////////
+      typedef typename FermionOperatorF::GaugeField GaugeFieldF;
+      typedef typename FermionOperatorF::GaugeLinkField GaugeLinkFieldF;
+      typedef typename FermionOperatorD::GaugeField GaugeFieldD;
+      typedef typename FermionOperatorD::GaugeLinkField GaugeLinkFieldD;
+
+      GridBase * GridPtrF = SinglePrecGrid4;
+      GridBase * GridPtrD = FermOpD.Umu.Grid();
+      GaugeFieldF     U_f  (GridPtrF);
+      GaugeLinkFieldF Umu_f(GridPtrF);
+      
+      ////////////////////////////////////////////////////////////////////////////////////
+      // Moving this to a Clone method of fermion operator would allow to duplicate the 
+      // physics parameters and decrease gauge field copies
+      ////////////////////////////////////////////////////////////////////////////////////
+      GaugeLinkFieldD Umu_d(GridPtrD);
+      for(int mu=0;mu<Nd*2;mu++){ 
+	Umu_d = PeekIndex<LorentzIndex>(FermOpD.Umu, mu);
+	precisionChange(Umu_f,Umu_d);
+	PokeIndex<LorentzIndex>(FermOpF.Umu, Umu_f, mu);
+      }
+      pickCheckerboard(Even,FermOpF.UmuEven,FermOpF.Umu);
+      pickCheckerboard(Odd ,FermOpF.UmuOdd ,FermOpF.Umu);
+
+      ////////////////////////////////////////////////////////////////////////////////////
+      // Make a mixed precision conjugate gradient
+      ////////////////////////////////////////////////////////////////////////////////////
+      MixedPrecisionConjugateGradient<FieldD,FieldF> MPCG(Tolerance,MaxInnerIterations,MaxOuterIterations,SinglePrecGrid5,LinOpF,LinOpD);
+      std::cout << GridLogMessage << "Calling mixed precision Conjugate Gradient" <<std::endl;
+      MPCG(src,psi);
+    }
+  };
+
+NAMESPACE_END(Grid);
+
+
+int main(int argc, char **argv) {
+  using namespace Grid;
+
+  Grid_init(&argc, &argv);
+  int threads = GridThread::GetThreads();
+  // here make a routine to print all the relevant information on the run
+  std::cout << GridLogMessage << "Grid is setup to use " << threads << " threads" << std::endl;
+
+   // Typedefs to simplify notation
+  typedef WilsonImplR FermionImplPolicy;
+  typedef MobiusFermionD FermionAction;
+  typedef MobiusFermionF FermionActionF;
+  typedef MobiusEOFAFermionD FermionEOFAAction;
+  typedef MobiusEOFAFermionF FermionEOFAActionF;
+  typedef typename FermionAction::FermionField FermionField;
+  typedef typename FermionActionF::FermionField FermionFieldF;
+
+  typedef Grid::XmlReader       Serialiser;
+  
+  //::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+  typedef GenericHMCRunner<Integrator> HMCWrapper;
+
+  HMCparameters HMCparams;
+  {
+    XmlReader HMCrd("HMCparameters.xml");
+    read(HMCrd,"HMCparameters",HMCparams);
+    std::cout << GridLogMessage<< HMCparams <<std::endl;
+  } 
+  HMCWrapper TheHMC(HMCparams);
+
+  // Grid from the command line arguments --grid and --mpi
+  TheHMC.Resources.AddFourDimGrid("gauge"); // use default simd lanes decomposition
+  
+  CheckpointerParameters CPparams;
+  CPparams.config_prefix = "ckpoint_EODWF_lat";
+  CPparams.rng_prefix    = "ckpoint_EODWF_rng";
+{% if beta_line in ['b4008', 'b4068'] %}
+  CPparams.saveInterval  = 4;
+{% else %}
+  CPparams.saveInterval  = {{ save_interval }};
+{% endif %}
+  CPparams.saveSmeared   = false ;
+  CPparams.format        = "IEEE64BIG";
+  TheHMC.Resources.LoadNerscCheckpointer(CPparams);
+
+  // these are initial seeds and then the file IO takes precedence
+  RNGModuleParameters RNGpar;
+  for( int i = 0 ; i < 5 ; i++ ) {
+    RNGpar.serial_seeds += " " + std::to_string(HMCparams.Seed+i) ;
+    RNGpar.parallel_seeds += " " + std::to_string(HMCparams.Seed+5+i) ;
+  }
+  std::cout<<"Serial Seeds"<<RNGpar.serial_seeds<<std::endl ;
+  std::cout<<"Parallel Seeds"<<RNGpar.parallel_seeds<<std::endl ;
+  TheHMC.Resources.SetRNGSeeds(RNGpar);
+
+  // Construct observables
+  // here there is too much indirection 
+  typedef PlaquetteMod<HMCWrapper::ImplPolicy> PlaqObs;
+  TheHMC.Resources.AddObservable<PlaqObs>();
+  //////////////////////////////////////////////
+

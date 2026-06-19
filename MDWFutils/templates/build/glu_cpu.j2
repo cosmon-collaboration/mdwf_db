@@ -1,0 +1,39 @@
+#!/usr/bin/bash
+{{ provenance }}set -euo pipefail
+
+{% include 'build/common/env_cpu.j2' %}
+
+module load intel-mixed/2023.2.0
+module load cray-fftw/3.3.10.8
+
+export SOURCE_DIR={{ source_dir }}
+export BUILD_DIR={{ build_dir }}
+export INSTALL_DIR={{ install_cpu_dir }}
+export PERM_FIX={{ perm_fix }}
+
+{% include 'build/common/build_status_start.j2' %}
+
+{% if clean_install %}
+rm -rf $BUILD_DIR/GLU
+{% endif %}
+
+rsync -avu --progress --delete $SOURCE_DIR/GLU/ $BUILD_DIR/GLU/
+
+pushd $BUILD_DIR
+pushd GLU
+
+aclocal && autoreconf -ivf
+
+./configure CC=icc CFLAGS="-O3 -Wall -fopenmp -xHOST -msse4.2 -mfma" \
+    --prefix=$INSTALL_DIR/GLU_ICC --enable-GIVENS_APE \
+    --with-fftw=$FFTW_ROOT/ \
+    --with-MKL=
+
+make -j{{ parallel_jobs }}
+make install
+
+popd
+popd
+
+$PERM_FIX $BUILD_DIR/GLU
+$PERM_FIX $INSTALL_DIR/GLU_ICC

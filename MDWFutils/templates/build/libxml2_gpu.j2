@@ -1,0 +1,43 @@
+#!/usr/bin/bash
+{{ provenance }}set -euo pipefail
+
+{% include 'build/common/env_gpu.j2' %}
+
+export BASE={{ base }}
+export SOURCE_DIR={{ source_dir }}
+export BUILD_DIR={{ build_dir }}
+export INSTALL_DIR={{ install_gpu_dir }}
+export PERM_FIX={{ perm_fix }}
+
+{% include 'build/common/build_status_start.j2' %}
+
+PKG={{ pkg }}
+if [[ ! -d $SOURCE_DIR/$PKG ]]; then
+    pushd $SOURCE_DIR
+    git clone --branch {{ git_branch }} {{ git_url }}
+    popd
+fi
+
+pushd ${SOURCE_DIR}/$PKG
+autoreconf -i -f -v
+popd
+
+$PERM_FIX $SOURCE_DIR/$PKG
+
+{% if clean_install %}
+if [[ -d $BUILD_DIR/${PKG} ]]; then rm -rf $BUILD_DIR/${PKG}; fi
+if [[ -d $INSTALL_DIR/${PKG} ]]; then rm -rf $INSTALL_DIR/${PKG}; fi
+{% endif %}
+
+mkdir -p $BUILD_DIR/${PKG}
+pushd $BUILD_DIR/${PKG}
+
+$SOURCE_DIR/$PKG/autogen.sh --prefix=$INSTALL_DIR/${PKG} --without-python
+
+make -j{{ parallel_jobs }}
+make -j{{ parallel_jobs }} install
+
+popd
+
+$PERM_FIX $BUILD_DIR/${PKG}
+$PERM_FIX $INSTALL_DIR/${PKG}

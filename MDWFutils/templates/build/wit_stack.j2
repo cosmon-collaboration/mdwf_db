@@ -1,0 +1,12 @@
+#!/usr/bin/bash
+{{ provenance }}set -euo pipefail
+
+cd {{ scripts_dir }}
+
+{% include 'build/common/build_status_start.j2' %}
+
+bash build_libxml2_gpu.sh
+bash build_qmp_gpu.sh
+bash build_qdpxx_gpu.sh
+bash build_quda_gpu.sh
+bash build_wit_gpu.sh

@@ -1,0 +1,46 @@
+#!/usr/bin/bash
+{{ provenance }}set -euo pipefail
+
+{% include 'build/common/env_gpu.j2' %}
+
+export SCRIPT_DIR={{ scripts_dir }}
+export SRC_DIR={{ source_dir }}
+export BUILD_DIR={{ build_dir }}
+export INSTALL_DIR={{ install_gpu_dir }}
+export PERM_FIX={{ perm_fix }}
+
+action={{ action }}
+grid={{ grid_dir }}/
+
+{% include 'build/common/build_status_start.j2' %}
+
+[[ -d $BUILD_DIR ]] || mkdir -p $BUILD_DIR
+
+pushd $BUILD_DIR
+rsync -avu --progress --delete $SRC_DIR/Grid/ $BUILD_DIR/$grid/
+
+cp $grid/HMC/Nf2p1p1.cc $grid/HMC/Nf2p1p1.cc.bk
+cp {{ nf2p1p1_src }} $grid/HMC/Nf2p1p1.cc
+
+pushd $grid
+./bootstrap.sh
+
+./configure CC={{ cray_pe_cc }} CXX=nvcc MPICXX=CC \
+    CXXFLAGS="-ccbin CC -gencode arch=compute_80,code=sm_80 -std=c++17 -cudart shared" \
+    LDFLAGS="-cudart shared" \
+    --enable-comms=mpi --enable-simd=GPU --enable-gen-simd-width=64 --enable-shm=nvlink \
+    --enable-accelerator=cuda --enable-unified=no --enable-setdevice --disable-fermion-reps --disable-gparity \
+    --with-gmp={{ gmp_prefix }} \
+    --with-mpfr={{ mpfr_prefix }} \
+    --prefix={{ install_prefix }}
+
+make -j{{ parallel_jobs }}
+cd HMC
+cp {{ make_inc_src }} Make.inc
+make -j{{ parallel_jobs }}
+make install
+popd
+popd
+
+$PERM_FIX $BUILD_DIR/$grid
+$PERM_FIX {{ install_prefix }}

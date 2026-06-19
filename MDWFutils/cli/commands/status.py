@@ -367,6 +367,15 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
         if hmc_paths.get('bind_script_cpu'):
             print(f"  bind_script_cpu = {hmc_paths['bind_script_cpu']}")
 
+    grid_build = ensemble.get('grid_build', {})
+    if grid_build and any(v for v in grid_build.values() if v not in (None, [], '')):
+        print("\nGrid build:")
+        for key in ('beta_line', 'light_mass', 'nlvl1', 'eofa_integrator_level'):
+            if grid_build.get(key) is not None:
+                print(f"  {key:24s} = {grid_build.get(key)}")
+        if grid_build.get('hasenbusch'):
+            print(f"  hasenbusch               = {grid_build.get('hasenbusch')}")
+
     # Measurements summary
     config_set = set(cfg.get('config_list', []))
     therm_cfg = cfg.get('thermalized')

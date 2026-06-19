@@ -1,0 +1,67 @@
+#!/usr/bin/bash
+{{ provenance }}set -euo pipefail
+
+{% include 'build/common/env_gpu.j2' %}
+
+export BASE={{ base }}
+export SOURCE_DIR={{ source_dir }}
+export BUILD_DIR={{ build_dir }}
+export INSTALL_DIR={{ install_gpu_dir }}
+export PERM_FIX={{ perm_fix }}
+
+{% include 'build/common/build_status_start.j2' %}
+
+PKG={{ pkg }}
+if [[ ! -d $SOURCE_DIR/$PKG ]]; then
+    pushd $SOURCE_DIR
+    git clone --recursive --branch {{ git_branch }} {{ git_url }} ${PKG}
+    popd
+fi
+
+$PERM_FIX ${SOURCE_DIR}/${PKG}
+
+{% if clean_install %}
+if [[ -d $BUILD_DIR/$PKG ]]; then rm -rf $BUILD_DIR/$PKG; fi
+if [[ -d $INSTALL_DIR/$PKG ]]; then rm -rf $INSTALL_DIR/$PKG; fi
+{% endif %}
+
+mkdir -p $BUILD_DIR/$PKG
+pushd $BUILD_DIR/$PKG
+
+cmake -GNinja -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR/$PKG \
+      -DCMAKE_BUILD_TYPE=RELEASE \
+      -DCMAKE_C_COMPILER=${CC} \
+      -DCMAKE_C_FLAGS="${C_FLAGS}" \
+      -DCMAKE_CXX_COMPILER=${CXX} \
+      -DCMAKE_CXX_FLAGS="${CXX_FLAGS}" \
+      -DQUDA_GPU_ARCH={{ gpu_arch }} \
+      -DQUDA_MPI=OFF \
+      -DQUDA_DOWNLOAD_EIGEN=ON \
+      -DQUDA_DOWNLOAD_USQCD=ON \
+      -DQUDA_QMP=ON \
+      -DQUDA_QIO=OFF \
+      -DQUDA_INTERFACE_QDP=ON \
+      -DQUDA_QDPJIT=OFF \
+      -DQUDA_DIRAC_WILSON=ON \
+      -DQUDA_DIRAC_CLOVER=OFF \
+      -DQUDA_DIRAC_CLOVER_HASENBUSCH=OFF \
+      -DQUDA_CLOVER_DYNAMIC=OFF \
+      -DQUDA_CLOVER_RECONSTRUCT=OFF \
+      -DQUDA_MULTIGRID=OFF \
+      -DQUDA_INTERFACE_MILC=OFF \
+      -DQUDA_DIRAC_STAGGERED=OFF \
+      -DQUDA_DIRAC_NDEG_TWISTED_MASS=OFF \
+      -DQUDA_DIRAC_NDEG_TWISTED_CLOVER=OFF \
+      -DQUDA_DIRAC_TWISTED_MASS=OFF \
+      -DQUDA_DIRAC_TWISTED_CLOVER=OFF \
+      -DQUDA_DIRAC_DOMAIN_WALL=ON \
+      -DQUDA_BUILD_SHAREDLIB=OFF \
+      $SOURCE_DIR/$PKG
+
+ninja
+cmake --install .
+
+popd
+
+$PERM_FIX ${BUILD_DIR}/${PKG}
+$PERM_FIX ${INSTALL_DIR}/${PKG}
