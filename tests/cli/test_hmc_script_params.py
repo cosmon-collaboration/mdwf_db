@@ -9,6 +9,7 @@ from MDWFutils.cli.command import resolve_command_schemas
 from MDWFutils.cli.commands.hmc_script import HMCGPUCommand
 from MDWFutils.cli.main import main
 from MDWFutils.exceptions import ValidationError
+from MDWFutils.jobs.schema import _deduplicate_schema, resolve_param_aliases
 
 
 def test_hmc_script_gpu_params_lists_run_settings_under_input(capsys):
@@ -29,7 +30,9 @@ def test_hmc_script_gpu_params_lists_run_settings_under_input(capsys):
     assert "n_trajec" in out
     assert "trajL" in out
     assert "lvl_sizes" in out
-    assert "Trajectories" in out
+    input_section = out.split("Input parameters (-i")[1].split("Job parameters (-j")[0]
+    assert "\n  Trajectories " not in input_section
+    assert "\n  StartTrajectory " not in input_section
     assert "Job parameters (-j" in out
     assert "nodes" in out
     job_section = out.split("Job parameters (-j")[1].split("Usage example:")[0]
@@ -41,10 +44,25 @@ def test_hmc_script_gpu_missing_n_trajec_reports_input_flag():
     input_schema, _ = resolve_command_schemas(cmd)
     with pytest.raises(ValidationError, match=r"pass with -i"):
         cmd.help_gen.apply_defaults_and_validate(
-            {"trajL": "0.75", "lvl_sizes": "9,1,1", "Trajectories": "100"},
+            {"trajL": "0.75", "lvl_sizes": "9,1,1"},
             input_schema,
             "input",
         )
+
+
+def test_trajectories_alias_satisfies_n_trajec():
+    cmd = HMCGPUCommand()
+    input_schema, _ = resolve_command_schemas(cmd)
+    full_input_schema = _deduplicate_schema(
+        (cmd.input_builder_class.input_params_schema or [])
+        + (cmd.job_builder_class.input_params_schema or [])
+    )
+    merged = resolve_param_aliases(
+        {"trajL": "0.75", "lvl_sizes": "9,1,1", "Trajectories": "100"},
+        full_input_schema,
+    )
+    typed = cmd.help_gen.apply_defaults_and_validate(merged, input_schema, "input")
+    assert typed["n_trajec"] == 100
 
 
 def test_hmc_script_gpu_cli_params(monkeypatch, capsys):

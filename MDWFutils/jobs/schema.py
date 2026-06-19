@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -33,6 +33,51 @@ class ContextParam:
     default: Optional[Any] = None
     help: str = ""
     choices: Optional[List[Any]] = None
+    aliases: List[str] = field(default_factory=list)
+
+
+def resolve_param_aliases(params: Dict[str, Any], schema: List[ContextParam]) -> Dict[str, Any]:
+    """Map alias keys onto canonical parameter names when the canonical is unset."""
+    if not schema:
+        return dict(params)
+
+    resolved = dict(params)
+    for definition in schema:
+        if definition.name in resolved and resolved[definition.name] is not None:
+            continue
+        for alias in definition.aliases:
+            if alias in resolved and resolved[alias] is not None:
+                resolved[definition.name] = resolved[alias]
+                break
+    return resolved
+
+
+def param_value(params: Dict[str, Any], definition: ContextParam) -> Any:
+    """Return a parameter value from its canonical name or any declared alias."""
+    if definition.name in params and params[definition.name] is not None:
+        return params[definition.name]
+    for alias in definition.aliases:
+        if alias in params and params[alias] is not None:
+            return params[alias]
+    return None
+
+
+def collapse_schema_aliases(schema: Optional[List[ContextParam]]) -> List[ContextParam]:
+    """Drop schema entries superseded by a later primary alias target."""
+    if not schema:
+        return []
+
+    index = {param.name: pos for pos, param in enumerate(schema)}
+    names = set(index)
+    result = []
+    for param in schema:
+        superseded = any(
+            alias in names and index[alias] > index[param.name]
+            for alias in param.aliases
+        )
+        if not superseded:
+            result.append(param)
+    return result
 
 
 def _deduplicate_schema(schema: Optional[List[ContextParam]]) -> List[ContextParam]:
@@ -141,14 +186,17 @@ class ContextBuilder(ABC):
         job_schema_deduped = _deduplicate_schema(self.job_params_schema)
         input_schema_deduped = _deduplicate_schema(self.input_params_schema)
 
+        resolved_job = resolve_param_aliases(job_params or {}, job_schema_deduped)
+        resolved_input = resolve_param_aliases(input_params or {}, input_schema_deduped)
+
         # Apply schema defaults + validation to job/input params
-        job_values = self._apply_schema(job_params or {}, job_schema_deduped, param_type="job", cast_to_str=False)
-        input_values = self._apply_schema(input_params or {}, input_schema_deduped, param_type="input", cast_to_str=True)
+        job_values = self._apply_schema(resolved_job, job_schema_deduped, param_type="job", cast_to_str=False)
+        input_values = self._apply_schema(resolved_input, input_schema_deduped, param_type="input", cast_to_str=True)
         
         # Let subclass build computed/special values
         computed_context = self._build_context(
             backend, ensemble_id, ensemble, physics, 
-            job_params or {}, input_params or {}
+            resolved_job, resolved_input
         )
         
         # Merge with precedence: schema+defaults, then computed (computed wins)
@@ -190,9 +238,9 @@ class ContextBuilder(ABC):
         missing: List[ContextParam] = []
 
         for definition in schema:
-            has_value = definition.name in params and params[definition.name] is not None
+            has_value = param_value(params, definition) is not None
             if has_value:
-                value = params[definition.name]
+                value = param_value(params, definition)
             elif definition.default is not None:
                 value = definition.default
             else:

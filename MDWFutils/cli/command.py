@@ -19,7 +19,13 @@ from .args import (
 )
 from .components import EnsembleResolver, ParameterManager, ScriptGenerator
 from .help_generator import HelpGenerator
-from ..jobs.schema import ContextParam, ContextBuilder, _deduplicate_schema
+from ..jobs.schema import (
+    ContextParam,
+    ContextBuilder,
+    _deduplicate_schema,
+    collapse_schema_aliases,
+    resolve_param_aliases,
+)
 
 
 def _load_default_backend():
@@ -41,6 +47,7 @@ def resolve_command_schemas(cmd) -> tuple[Optional[List], Optional[List]]:
             xml_input = cmd.input_builder_class.input_params_schema or []
             # Job-builder input params win on name collisions (e.g. HMC run settings).
             input_schema = _deduplicate_schema(xml_input + job_input)
+            input_schema = collapse_schema_aliases(input_schema)
         else:
             input_schema = _deduplicate_schema(job_input)
     elif cmd.input_builder_class is not None:
@@ -189,6 +196,12 @@ class BaseCommand:
 
             builder_input_schema, builder_job_schema = resolve_command_schemas(self)
 
+            if self.job_builder_class is not None and self.input_builder_class is not None:
+                job_input = self.job_builder_class.input_params_schema or []
+                xml_input = self.input_builder_class.input_params_schema or []
+                full_input_schema = _deduplicate_schema(xml_input + job_input)
+                merged_input = resolve_param_aliases(merged_input, full_input_schema)
+
             # Handle input params: use builder schema with defaults if available
             if builder_input_schema is not None:
                 typed_input = self.help_gen.apply_defaults_and_validate(
@@ -245,7 +258,10 @@ class BaseCommand:
                     input_content = generator.generate_input(
                         ensemble_id, self.input_type, typed_input, job_params=typed_job
                     )
-                input_path = self._write_file(ensemble, input_content, args.output_file, suffix=".in", context=input_context)
+                input_suffix = input_context.get("_output_suffix", ".in")
+                input_path = self._write_file(
+                    ensemble, input_content, args.output_file, suffix=input_suffix, context=input_context
+                )
                 
                 # Print friendly name
                 input_names = {
@@ -253,7 +269,12 @@ class BaseCommand:
                     "wit_input": "WIT",
                     "glu_input": "GLU"
                 }
-                display_name = input_names.get(self.input_type, self.input_type)
+                input_type_name = (
+                    self.input_builder_class.type_name
+                    if self.input_builder_class is not None
+                    else self.input_type
+                )
+                display_name = input_names.get(input_type_name, input_type_name)
                 print(f"Generated {display_name} input: {input_path}")
 
             # Generate job script if needed

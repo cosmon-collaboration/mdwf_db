@@ -26,7 +26,7 @@ HMC_MODE_CHOICES = ["tepid", "continue", "reseed"]
 def _hmc_run_input_params():
     """Executable/run parameters for HMC SLURM scripts (passed via -i)."""
     return [
-        ContextParam("n_trajec", int, required=True, help="Number of trajectories per job"),
+        ContextParam("n_trajec", int, required=True, aliases=["Trajectories"], help="Number of trajectories per job"),
         ContextParam("trajL", float, required=True, help="Trajectory length"),
         ContextParam("lvl_sizes", str, required=True, help="Level sizes (e.g., 9,1,1)"),
         ContextParam(
@@ -37,7 +37,7 @@ def _hmc_run_input_params():
             help="HMC mode (tepid/continue/reseed)",
         ),
         ContextParam("ensemble_relpath", str, default="", help="Ensemble relative path"),
-        ContextParam("config_start", int, help="First configuration (for output prefix)"),
+        ContextParam("config_start", int, aliases=["StartTrajectory"], help="First configuration (for output prefix)"),
         ContextParam("config_end", int, help="Last configuration (for output prefix)"),
     ]
 
@@ -80,21 +80,12 @@ class HMCGPUContextBuilder(ContextBuilder):
         """Return context for the GPU SLURM template."""
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
-        paths = ensemble.get("hmc_paths", {})
-        exec_path = (
-            job_params.get("exec_path")
-            or paths.get("exec_path")
-            or paths.get("hmc_exec_path")
-        )
+        paths = resolve_hmc_paths(ensemble.get("hmc_paths", {}))
+        exec_path = job_params.get("exec_path") or paths.get("exec_path")
         if not exec_path:
             raise ValidationError("exec_path is required (set via CLI or ensemble hmc_paths.exec_path)")
 
-        bind_script = (
-            job_params.get("bind_script")
-            or paths.get("bind_script_gpu")
-            or paths.get("hmc_bind_script_gpu")
-            or paths.get("hmc_bind_script")
-        )
+        bind_script = job_params.get("bind_script") or paths.get("bind_script_gpu")
         if not bind_script:
             raise ValidationError(
                 "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_gpu)"
@@ -177,20 +168,12 @@ class HMCCPUContextBuilder(ContextBuilder):
         """Return context for the CPU SLURM template."""
         ensure_keys(physics, ["L", "T", "beta", "b", "Ls", "ml", "ms", "mc"])
 
-        paths = ensemble.get("hmc_paths", {})
-        exec_path = (
-            job_params.get("exec_path")
-            or paths.get("exec_path")
-            or paths.get("hmc_exec_path")
-        )
+        paths = resolve_hmc_paths(ensemble.get("hmc_paths", {}))
+        exec_path = job_params.get("exec_path") or paths.get("exec_path")
         if not exec_path:
             raise ValidationError("exec_path is required (set via CLI or ensemble hmc_paths.exec_path)")
 
-        bind_script = (
-            job_params.get("bind_script")
-            or paths.get("bind_script_cpu")
-            or paths.get("hmc_bind_script_cpu")
-        )
+        bind_script = job_params.get("bind_script") or paths.get("bind_script_cpu")
         if not bind_script:
             raise ValidationError(
                 "bind_script is required (set via CLI or ensemble paths.hmc_bind_script_cpu)"
@@ -253,7 +236,13 @@ class HMCXMLContextBuilder(ContextBuilder):
             help="HMC start mode (tepid/continue/reseed)",
         ),
         ContextParam("Seed", int, help="Random seed (optional)"),
-        ContextParam("Trajectories", int, required=True, help="Number of trajectories"),
+        ContextParam(
+            "Trajectories",
+            int,
+            required=True,
+            aliases=["n_trajec"],
+            help="Number of trajectories (HMC XML tag)",
+        ),
         ContextParam("trajL", float, required=True, help="Trajectory length"),
         ContextParam("MDsteps", int, help="MD steps"),
         ContextParam("md_name", str, help="MD integrator names (comma-separated)"),
@@ -261,28 +250,36 @@ class HMCXMLContextBuilder(ContextBuilder):
         ContextParam("NoMetropolisUntil", int, help="Trajectory to start Metropolis"),
         ContextParam("PerformRandomShift", str, help="Perform random shift (true/false)"),
         ContextParam("StartingType", str, help="Starting type override"),
-        ContextParam("StartTrajectory", int, help="Starting trajectory override"),
+        ContextParam(
+            "StartTrajectory",
+            int,
+            aliases=["config_start"],
+            help="Starting trajectory (HMC XML tag)",
+        ),
         ContextParam("lvl_sizes", str, help="Level sizes override (comma-separated)"),
     ]
     
     def _build_context(self, backend, ensemble_id: int, ensemble: Dict, physics: Dict,
                       job_params: Dict, input_params: Dict) -> Dict:
         """Build HMC XML. Schema params auto-merged."""
-        # Extract for processing
         mode = input_params["mode"]
         seed_override = input_params.get("Seed")  # optional, no default
         trajectories = input_params["Trajectories"]
         traj_l = input_params["trajL"]
-        
+
         tree, root = _make_default_tree(mode, _maybe_int(seed_override))
         overrides = {"Trajectories": trajectories, "trajL": traj_l}
+
+        start_traj = input_params.get("StartTrajectory")
+        if start_traj is not None:
+            overrides["StartTrajectory"] = start_traj
+
         for key in (
             "MDsteps",
             "MetropolisTest",
             "NoMetropolisUntil",
             "PerformRandomShift",
             "StartingType",
-            "StartTrajectory",
             "lvl_sizes",
         ):
             if key in input_params and input_params[key] is not None:
@@ -301,6 +298,7 @@ class HMCXMLContextBuilder(ContextBuilder):
             "xml": xml_string,
             "_output_dir": str(xml_dir),
             "_output_prefix": "HMCparameters",
+            "_output_suffix": ".xml",
         }
 
 
@@ -375,12 +373,23 @@ def _tree_to_string(tree: ET.ElementTree) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _hmc_parameters_element(root: ET.Element) -> Optional[ET.Element]:
+    """Return the HMCparameters element from a grid or HMCparameters root."""
+    if root.tag == "HMCparameters":
+        return root
+    return root.find("HMCparameters")
+
+
 def _apply_xml_overrides(root: ET.Element, overrides: Dict) -> None:
     """Apply user overrides to the HMC XML tree."""
+    hmc = _hmc_parameters_element(root)
+    if hmc is None:
+        return
+
     for key, value in overrides.items():
         text = str(value)
         if key == "md_name":
-            names = root.find("MD/name")
+            names = hmc.find("MD/name")
             if names is None:
                 continue
             names.clear()
@@ -388,7 +397,7 @@ def _apply_xml_overrides(root: ET.Element, overrides: Dict) -> None:
                 ET.SubElement(names, "elem").text = entry.strip()
             continue
         if key == "lvl_sizes":
-            levels = root.find("MD/lvl_sizes")
+            levels = hmc.find("MD/lvl_sizes")
             if levels is None:
                 continue
             levels.clear()
@@ -396,12 +405,12 @@ def _apply_xml_overrides(root: ET.Element, overrides: Dict) -> None:
                 ET.SubElement(levels, "elem").text = entry.strip()
             continue
 
-        node = root.find(key)
+        node = hmc.find(key)
         if node is not None:
             node.text = text
             continue
 
-        md_node = root.find(f"MD/{key}")
+        md_node = hmc.find(f"MD/{key}")
         if md_node is not None:
             md_node.text = text
 
@@ -438,6 +447,24 @@ def _resolve_job_name(job_params: Dict, ensemble_id: int) -> str:
     if job_params.get("nickname"):
         return f"HMC_{job_params['nickname']}"
     return f"HMC_e{ensemble_id}"
+
+
+def resolve_hmc_paths(paths: Optional[Dict]) -> Dict[str, Optional[str]]:
+    """Return canonical HMC paths, honoring legacy stored key names."""
+    paths = paths or {}
+    return {
+        "exec_path": paths.get("exec_path") or paths.get("hmc_exec_path"),
+        "bind_script_gpu": (
+            paths.get("bind_script_gpu")
+            or paths.get("hmc_bind_script_gpu")
+            or paths.get("hmc_bind_script")
+        ),
+        "bind_script_cpu": (
+            paths.get("bind_script_cpu")
+            or paths.get("hmc_bind_script_cpu")
+            or paths.get("hmc_bind_script")
+        ),
+    }
 
 
 def _require(params: Dict, key: str, message: str):

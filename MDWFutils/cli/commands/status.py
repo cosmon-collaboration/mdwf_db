@@ -6,6 +6,7 @@ import sys
 
 from ..ensemble_utils import add_ensemble_argument, resolve_ensemble_from_args, get_backend_for_args
 from ..formatting import print_table, format_float, safe_float, safe_int
+from ...jobs.hmc import resolve_hmc_paths
 
 
 def register(subparsers):
@@ -357,14 +358,14 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
             print("Config    = " + ", ".join(parts))
 
     # HMC paths
-    hmc_paths = ensemble.get('hmc_paths', {})
-    if hmc_paths and any(hmc_paths.values()):
+    hmc_paths = resolve_hmc_paths(ensemble.get("hmc_paths", {}))
+    if any(hmc_paths.values()):
         print("\nHMC paths:")
-        if hmc_paths.get('exec_path'):
+        if hmc_paths.get("exec_path"):
             print(f"  exec_path       = {hmc_paths['exec_path']}")
-        if hmc_paths.get('bind_script_gpu'):
+        if hmc_paths.get("bind_script_gpu"):
             print(f"  bind_script_gpu = {hmc_paths['bind_script_gpu']}")
-        if hmc_paths.get('bind_script_cpu'):
+        if hmc_paths.get("bind_script_cpu"):
             print(f"  bind_script_cpu = {hmc_paths['bind_script_cpu']}")
 
     grid_build = ensemble.get('grid_build', {})

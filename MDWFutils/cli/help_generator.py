@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 from ..exceptions import ValidationError
-from ..jobs.schema import ContextParam
+from ..jobs.schema import ContextParam, collapse_schema_aliases, param_value, resolve_param_aliases
 
 
 class HelpGenerator:
@@ -25,6 +25,8 @@ class HelpGenerator:
                 parts.append(f"[default: {param.default}]")
             if param.choices:
                 parts.append(f"[choices: {', '.join(map(str, param.choices))}]")
+            if param.aliases:
+                parts.append(f"[aliases: {', '.join(param.aliases)}]")
             lines.append(" ".join(parts))
         return "\n".join(lines)
 
@@ -93,9 +95,11 @@ class HelpGenerator:
         errors: List[str] = []
         missing_required: List = []
 
+        resolved = resolve_param_aliases(params, schema)
+
         for definition in schema:
             # Get value from params, or use schema default if not provided
-            value = params.get(definition.name)
+            value = param_value(resolved, definition)
             
             if value is None:
                 if definition.required:
@@ -205,6 +209,11 @@ class HelpGenerator:
                 if len(choices_str) > 30:
                     choices_str = choices_str[:27] + "..."
                 status += f" [choices: {choices_str}]"
+            if param.aliases:
+                alias_str = ", ".join(param.aliases)
+                if len(alias_str) > 30:
+                    alias_str = alias_str[:27] + "..."
+                status += f" [aliases: {alias_str}]"
             
             # Format: NAME  TYPE  STATUS  - HELP
             name_col = param.name.ljust(name_width)
