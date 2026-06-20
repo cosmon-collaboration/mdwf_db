@@ -91,14 +91,20 @@ class MongoDBBackend(DatabaseBackend):
     # ------------------------------------------------------------------
     @retry_on_error()
     def add_ensemble(self, directory: str, physics: Dict, **kwargs) -> int:
+        from pathlib import Path
+        resolved_dir = str(Path(directory).expanduser().resolve())
+
         validated = EnsembleCreate(
-            directory=directory,
+            directory=resolved_dir,
             physics=PhysicsParams(**physics),
             **kwargs,
         )
 
-        last = self.ensembles.find_one(sort=[("ensemble_id", DESCENDING)])
-        next_id = (last["ensemble_id"] + 1) if last else 1
+        pipeline = [
+            {"$group": {"_id": None, "maxId": {"$max": "$ensemble_id"}}}
+        ]
+        result = list(self.ensembles.aggregate(pipeline))
+        next_id = (result[0]["maxId"] + 1) if result else 1
 
         document = {
             "ensemble_id": next_id,
@@ -119,7 +125,14 @@ class MongoDBBackend(DatabaseBackend):
         try:
             self.ensembles.insert_one(document)
         except DuplicateKeyError as exc:
-            raise ValidationError(f"Ensemble already exists: {directory}") from exc
+            err_msg = str(exc)
+            if "directory" in err_msg:
+                raise ValidationError(f"Ensemble directory already exists: {resolved_dir}") from exc
+            if "nickname" in err_msg:
+                raise ValidationError(f"Ensemble nickname already exists: {kwargs.get('nickname')}") from exc
+            if "ensemble_id" in err_msg:
+                raise ValidationError(f"Ensemble ID collision occurred. Database consistency issue.") from exc
+            raise ValidationError(f"Ensemble already exists: {resolved_dir}") from exc
 
         return next_id
 
