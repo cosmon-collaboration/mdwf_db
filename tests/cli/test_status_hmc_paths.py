@@ -43,6 +43,19 @@ def test_status_prints_resolved_hmc_paths(capsys, fake_backend, sample_ensemble)
     out = capsys.readouterr().out
 
     assert "HMC paths:" in out
-    assert "exec_path       = /legacy/bin/Nf2p1p1" in out
-    assert "bind_script_gpu = /legacy/bind_gpu.sh" in out
-    assert "bind_script_cpu = /legacy/bind_cpu.sh" in out
+    assert "exec_path         = /legacy/bin/Nf2p1p1" in out
+    assert "bind_script_gpu   = /legacy/bind_gpu.sh" in out
+    assert "bind_script_cpu   = /legacy/bind_cpu.sh" in out
+
+
+def test_status_prints_none_for_missing_hmc_paths(capsys, fake_backend, sample_ensemble):
+    fake_backend.ensembles[1]["hmc_paths"] = {}
+
+    _print_ensemble_details(fake_backend, 1, fake_backend.ensembles[1])
+    out = capsys.readouterr().out
+
+    assert "HMC paths:" in out
+    assert "exec_path         = NONE" in out
+    assert "bind_script_gpu   = NONE" in out
+    assert "bind_script_cpu   = NONE" in out
+    assert "mdwf_db update -e ENSEMBLE -p hmc_paths.exec_path=" in out

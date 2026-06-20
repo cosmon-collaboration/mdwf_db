@@ -6,7 +6,7 @@ import sys
 
 from ..ensemble_utils import add_ensemble_argument, resolve_ensemble_from_args, get_backend_for_args
 from ..formatting import print_table, format_float, safe_float, safe_int
-from ...jobs.hmc import resolve_hmc_paths
+from ...jobs.hmc import format_hmc_path_status_value, resolve_hmc_paths, HMC_PATH_STATUS_FIELDS
 
 
 def register(subparsers):
@@ -28,7 +28,8 @@ MODES:
 
 2. Detail mode (with --ensemble specified):
    Shows complete information for one ensemble including physics parameters,
-   configuration details, HMC paths, measurement summaries, and operation history.
+   configuration details, HMC paths (exec_path, bind_script_gpu/cpu; NONE if not
+   stored in the database), measurement summaries, and operation history.
 
 3. Operation detail mode (with --ensemble and --op specified):
    Shows complete information for a specific operation including all timing,
@@ -357,16 +358,12 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
         if parts:
             print("Config    = " + ", ".join(parts))
 
-    # HMC paths
+    # HMC paths (always shown; NONE when not stored on the ensemble)
     hmc_paths = resolve_hmc_paths(ensemble.get("hmc_paths", {}))
-    if any(hmc_paths.values()):
-        print("\nHMC paths:")
-        if hmc_paths.get("exec_path"):
-            print(f"  exec_path       = {hmc_paths['exec_path']}")
-        if hmc_paths.get("bind_script_gpu"):
-            print(f"  bind_script_gpu = {hmc_paths['bind_script_gpu']}")
-        if hmc_paths.get("bind_script_cpu"):
-            print(f"  bind_script_cpu = {hmc_paths['bind_script_cpu']}")
+    print("\nHMC paths:")
+    for key, label in HMC_PATH_STATUS_FIELDS:
+        print(f"  {label:17s} = {format_hmc_path_status_value(hmc_paths.get(key))}")
+    print("  (set with: mdwf_db update -e ENSEMBLE -p hmc_paths.exec_path=... ...)")
 
     grid_build = ensemble.get('grid_build', {})
     if grid_build and any(v for v in grid_build.values() if v not in (None, [], '')):

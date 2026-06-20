@@ -467,6 +467,18 @@ def resolve_hmc_paths(paths: Optional[Dict]) -> Dict[str, Optional[str]]:
     }
 
 
+HMC_PATH_STATUS_FIELDS = (
+    ("exec_path", "exec_path"),
+    ("bind_script_gpu", "bind_script_gpu"),
+    ("bind_script_cpu", "bind_script_cpu"),
+)
+
+
+def format_hmc_path_status_value(value: Optional[str]) -> str:
+    """Format a stored HMC path for status output."""
+    return value if value else "NONE"
+
+
 def _require(params: Dict, key: str, message: str):
     value = params.get(key)
     if value in (None, ""):

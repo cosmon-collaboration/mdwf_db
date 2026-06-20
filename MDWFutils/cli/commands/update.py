@@ -12,14 +12,37 @@ def register(subparsers):
     p = subparsers.add_parser(
         'update',
         help='Create or update an operation record, or update ensemble properties',
-        description='Create a new operation entry or update an existing one (by ID or SLURM job ID). '
-                    'Or update ensemble properties by omitting -o/--operation-type and -s/--status.'
+        description="""
+Create or update an operation record (requires -o/--operation-type and -s/--status),
+or update ensemble document fields (omit -o and -s).
+
+ENSEMBLE UPDATES (omit -o and -s):
+  mdwf_db update -e . -p C_therm=500
+  mdwf_db update -e . -p configurations.thermalized=500
+
+HMC paths (stored on the ensemble; shown by mdwf_db status -e .):
+  These are not saved automatically by mdwf_db hmc-script; set them explicitly or
+  use build grid ... --register-paths for exec_path after a Grid GPU/CPU build.
+
+  mdwf_db update -e . -p hmc_paths.exec_path=/path/to/Nf2p1p1
+  mdwf_db update -e . -p hmc_paths.bind_script_gpu=/path/to/bind.sh
+  mdwf_db update -e . -p hmc_paths.bind_script_cpu=/path/to/bind_cpu.sh
+
+  mdwf_db build grid gpu -e . --register-paths   # sets hmc_paths.exec_path
+
+OPERATION UPDATES (require both -o and -s):
+  mdwf_db update -e . -o HMC_tepid -s RUNNING -p slurm_job_id=12345
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument('-e', '--ensemble', required=True, help='Ensemble identifier')
     p.add_argument('--operation-type', '-o', help='Operation type label (required for operation updates)')
     p.add_argument('--status', '-s', help='Operation status (required for operation updates)')
     p.add_argument('--operation-id', '-i', type=int, help='Existing operation ID to update')
-    p.add_argument('-p', '--params', default='', help='Key=val pairs (e.g. C_therm=500 for configurations.thermalized)')
+    p.add_argument(
+        '-p', '--params', default='',
+        help='Key=value pairs. Ensemble examples: C_therm=500, hmc_paths.exec_path=/path/to/Nf2p1p1',
+    )
     p.add_argument('-u', '--user', default=None, help='Override username associated with the operation')
     p.set_defaults(func=do_update)
 
@@ -91,7 +114,7 @@ def _update_ensemble(backend, ensemble_id, ensemble, param_dict):
     """Update ensemble properties."""
     if not param_dict:
         print("ERROR: No properties specified for ensemble update", file=sys.stderr)
-        print("Hint: Use -p key=value (e.g. -p configurations.thermalized=500 or -p C_therm=500)", file=sys.stderr)
+        print("Hint: Use -p key=value (e.g. -p C_therm=500 or -p hmc_paths.exec_path=/path/to/Nf2p1p1)", file=sys.stderr)
         return 1
     
     updates = {}
