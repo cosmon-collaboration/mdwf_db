@@ -111,7 +111,6 @@ class MongoDBBackend(DatabaseBackend):
             "directory": validated.directory,
             "status": validated.status,
             "description": validated.description,
-            "nickname": validated.nickname,
             "physics": validated.physics.dict(),
             "configurations": {},
             "hmc_paths": {},
@@ -121,6 +120,8 @@ class MongoDBBackend(DatabaseBackend):
             "notes": None,
             "created_at": datetime.utcnow(),
         }
+        if validated.nickname:
+            document["nickname"] = validated.nickname
 
         try:
             self.ensembles.insert_one(document)
