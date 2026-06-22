@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 from ..ensemble_utils import get_backend_for_args
-from ...exceptions import ValidationError
+from ...exceptions import ValidationError, EnsembleNotFoundError
 
 REQUIRED = ['beta','b','Ls','mc','ms','ml','L','T']
 
@@ -154,6 +154,22 @@ def do_add(args):
         )
         root = prod_root if args.status=='PRODUCTION' else tuning_root
         ens_dir = root / rel
+
+    # Check if ensemble already exists in DB before creating directories
+    try:
+        backend.resolve_ensemble_identifier(str(ens_dir))
+        print(f"ERROR: Ensemble already exists in database: {ens_dir}", file=sys.stderr)
+        return 1
+    except EnsembleNotFoundError:
+        pass
+
+    if args.nickname:
+        try:
+            backend.resolve_ensemble_identifier(args.nickname)
+            print(f"ERROR: Nickname '{args.nickname}' already exists in database", file=sys.stderr)
+            return 1
+        except EnsembleNotFoundError:
+            pass
 
     #create folders
     ens_dir.mkdir(parents=True, exist_ok=True)
