@@ -1,4 +1,7 @@
 # MDWFutils dependencies
+#
+# For uv users: these are derived from pyproject.toml [project].
+# Use `uv sync` instead of pip.
 
 # Database
 pymongo>=4.6

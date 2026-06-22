@@ -22,10 +22,10 @@ class SmearContextBuilder(ContextBuilder):
         # Override constraint for CPU jobs
         ContextParam("constraint", str, default="cpu", help="Node constraint"),
         # Smear-specific params
-        ContextParam("config_start", int, required=True, help="First configuration"),
-        ContextParam("config_end", int, required=True, help="Last configuration"),
+        ContextParam("config_start", int, required=True, storable=False, help="First configuration"),
+        ContextParam("config_end", int, required=True, storable=False, help="Last configuration"),
         ContextParam("config_inc", int, default=4, help="Configuration increment"),
-        ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
+        ContextParam("run_dir", str, storable=False, help="Working directory (defaults to ensemble directory)"),
         ContextParam("conda_env", str, default=DEFAULT_CONDA_ENV, help="Conda environment path"),
         ContextParam("config_prefix", str, default=DEFAULT_CONFIG_PREFIX, help="Configuration file prefix"),
         ContextParam("output_prefix", str, default=DEFAULT_OUTPUT_PREFIX, help="Output file prefix"),

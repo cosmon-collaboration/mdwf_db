@@ -1,7 +1,5 @@
 """Shared pytest fixtures for mdwf_db."""
 
-from __future__ import annotations
-
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -13,9 +11,10 @@ from MDWFutils.backends.base import DatabaseBackend
 from MDWFutils.build.operations import SITE_ENSEMBLE_NICKNAME
 from MDWFutils.exceptions import EnsembleNotFoundError
 
-
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-BUILD_FIXTURES_DIR = Path(__file__).resolve().parents[1] / "MDWFutils" / "build" / "fixtures"
+BUILD_FIXTURES_DIR = (
+    Path(__file__).resolve().parents[1] / "MDWFutils" / "build" / "fixtures"
+)
 
 
 def make_physics(**overrides) -> dict:
@@ -55,11 +54,14 @@ def make_ensemble(directory: Path, ensemble_id: int = 1, **kwargs) -> dict:
         "tags": [],
         "notes": None,
     }
-    doc.update({
-        k: v
-        for k, v in kwargs.items()
-        if k not in ("physics", "default_params", "nickname", "status", "grid_build")
-    })
+    doc.update(
+        {
+            k: v
+            for k, v in kwargs.items()
+            if k
+            not in ("physics", "default_params", "nickname", "status", "grid_build")
+        }
+    )
     return doc
 
 
@@ -75,6 +77,7 @@ class FakeBackend(DatabaseBackend):
         self.operations: List[dict] = []
         self.measurements: Dict[tuple, dict] = {}
         self.upsert_calls: List[dict] = []
+        self._ensemble_defaults: Dict[tuple, dict] = {}
 
         self._rebuild_indexes()
 
@@ -84,7 +87,9 @@ class FakeBackend(DatabaseBackend):
             for eid, doc in self.ensembles.items()
             if doc.get("nickname")
         }
-        self._by_directory = {doc["directory"]: eid for eid, doc in self.ensembles.items()}
+        self._by_directory = {
+            doc["directory"]: eid for eid, doc in self.ensembles.items()
+        }
 
     def add_ensemble(self, directory: str, physics: dict, **kwargs) -> int:
         eid = self._next_id
@@ -100,7 +105,9 @@ class FakeBackend(DatabaseBackend):
         return deepcopy(self.ensembles.get(ensemble_id))
 
     def resolve_ensemble_identifier(self, identifier) -> Tuple[int, dict]:
-        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+        if isinstance(identifier, int) or (
+            isinstance(identifier, str) and identifier.isdigit()
+        ):
             eid = int(identifier)
             doc = self.ensembles.get(eid)
             if doc:
@@ -143,13 +150,22 @@ class FakeBackend(DatabaseBackend):
         self._rebuild_indexes()
         return True
 
-    def get_default_params(self, ensemble_id: int, job_type: str, variant: str) -> Dict[str, str]:
+    def get_default_params(
+        self, ensemble_id: int, job_type: str, variant: str
+    ) -> Dict[str, str]:
         return deepcopy(
-            self.default_params.get((ensemble_id, job_type, variant), {"input_params": "", "job_params": ""})
+            self.default_params.get(
+                (ensemble_id, job_type, variant), {"input_params": "", "job_params": ""}
+            )
         )
 
     def set_default_params(
-        self, ensemble_id: int, job_type: str, variant: str, input_params: str, job_params: str
+        self,
+        ensemble_id: int,
+        job_type: str,
+        variant: str,
+        input_params: str,
+        job_params: str,
     ) -> bool:
         self.default_params[(ensemble_id, job_type, variant)] = {
             "input_params": input_params,
@@ -157,14 +173,77 @@ class FakeBackend(DatabaseBackend):
         }
         return True
 
-    def delete_default_params(self, ensemble_id: int, job_type: str, variant: str) -> bool:
-        return self.default_params.pop((ensemble_id, job_type, variant), None) is not None
+    def delete_default_params(
+        self, ensemble_id: int, job_type: str, variant: str
+    ) -> bool:
+        return (
+            self.default_params.pop((ensemble_id, job_type, variant), None) is not None
+        )
 
-    def add_operation(self, ensemble_id: int, operation_type: str, status: str, user: str, **params) -> int:
+    def get_ensemble_defaults(
+        self, ensemble_id: int, command: str, variant: str
+    ) -> Dict[str, Dict[str, str]]:
+        return deepcopy(
+            self._ensemble_defaults.get(
+                (ensemble_id, command, variant), {"input_params": {}, "job_params": {}}
+            )
+        )
+
+    def set_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+        input_params: Dict[str, str],
+        job_params: Dict[str, str],
+    ) -> bool:
+        self._ensemble_defaults[(ensemble_id, command, variant)] = {
+            "input_params": input_params,
+            "job_params": job_params,
+        }
+        return True
+
+    def delete_ensemble_defaults(
+        self, ensemble_id: int, command: str, variant: str
+    ) -> bool:
+        return (
+            self._ensemble_defaults.pop((ensemble_id, command, variant), None)
+            is not None
+        )
+
+    def list_ensemble_defaults(
+        self, ensemble_id: int, command: Optional[str] = None
+    ) -> List[Dict]:
+        result = []
+        for (eid, cmd, var), data in self._ensemble_defaults.items():
+            if eid != ensemble_id:
+                continue
+            if command and cmd != command:
+                continue
+            result.append(
+                {
+                    "command": cmd,
+                    "variant": var,
+                    "input_params": data["input_params"],
+                    "job_params": data["job_params"],
+                }
+            )
+        return result
+
+    def add_operation(
+        self, ensemble_id: int, operation_type: str, status: str, user: str, **params
+    ) -> int:
         op_id = self._next_op_id
         self._next_op_id += 1
         self.operations.append(
-            {"operation_id": op_id, "ensemble_id": ensemble_id, "operation_type": operation_type, "status": status, "user": user, **params}
+            {
+                "operation_id": op_id,
+                "ensemble_id": ensemble_id,
+                "operation_type": operation_type,
+                "status": status,
+                "user": user,
+                **params,
+            }
         )
         return op_id
 
@@ -177,7 +256,12 @@ class FakeBackend(DatabaseBackend):
         return False
 
     def update_operation_by_slurm_id(
-        self, slurm_job_id: str, status: str, ensemble_id: int, operation_type: str, **updates
+        self,
+        slurm_job_id: str,
+        status: str,
+        ensemble_id: int,
+        operation_type: str,
+        **updates,
     ) -> bool:
         for op in self.operations:
             if (
@@ -192,11 +276,15 @@ class FakeBackend(DatabaseBackend):
 
     def clear_ensemble_history(self, ensemble_id: int) -> int:
         before = len(self.operations)
-        self.operations = [op for op in self.operations if op["ensemble_id"] != ensemble_id]
+        self.operations = [
+            op for op in self.operations if op["ensemble_id"] != ensemble_id
+        ]
         return before - len(self.operations)
 
     def list_operations(self, ensemble_id: int) -> List[dict]:
-        return [deepcopy(op) for op in self.operations if op["ensemble_id"] == ensemble_id]
+        return [
+            deepcopy(op) for op in self.operations if op["ensemble_id"] == ensemble_id
+        ]
 
     def get_operation(self, ensemble_id: int, operation_id: int) -> Optional[dict]:
         for op in self.operations:
@@ -205,7 +293,12 @@ class FakeBackend(DatabaseBackend):
         return None
 
     def add_measurement(
-        self, ensemble_id: int, config_number: int, measurement_type: str, data: dict, metadata: Optional[dict] = None
+        self,
+        ensemble_id: int,
+        config_number: int,
+        measurement_type: str,
+        data: dict,
+        metadata: Optional[dict] = None,
     ) -> str:
         key = (ensemble_id, config_number, measurement_type)
         self.measurements[key] = {"data": data, "metadata": metadata or {}}
@@ -230,10 +323,19 @@ class FakeBackend(DatabaseBackend):
                 continue
             elif config_end is not None and cfg > config_end:
                 continue
-            results.append({"ensemble_id": eid, "config_number": cfg, "measurement_type": mtype, **payload})
+            results.append(
+                {
+                    "ensemble_id": eid,
+                    "config_number": cfg,
+                    "measurement_type": mtype,
+                    **payload,
+                }
+            )
         return results
 
-    def get_measured_configs(self, ensemble_id: int, measurement_type: str) -> List[int]:
+    def get_measured_configs(
+        self, ensemble_id: int, measurement_type: str
+    ) -> List[int]:
         return sorted(
             cfg
             for (eid, cfg, mtype) in self.measurements
@@ -241,7 +343,12 @@ class FakeBackend(DatabaseBackend):
         )
 
     def upsert_measurement(
-        self, ensemble_id: int, config_number: int, measurement_type: str, data: dict, metadata: Optional[dict] = None
+        self,
+        ensemble_id: int,
+        config_number: int,
+        measurement_type: str,
+        data: dict,
+        metadata: Optional[dict] = None,
     ) -> str:
         self.upsert_calls.append(
             {
@@ -252,10 +359,16 @@ class FakeBackend(DatabaseBackend):
                 "metadata": metadata,
             }
         )
-        return self.add_measurement(ensemble_id, config_number, measurement_type, data, metadata)
+        return self.add_measurement(
+            ensemble_id, config_number, measurement_type, data, metadata
+        )
 
     def delete_measurements(self, ensemble_id: int, measurement_type: str) -> int:
-        keys = [k for k in self.measurements if k[0] == ensemble_id and k[2] == measurement_type]
+        keys = [
+            k
+            for k in self.measurements
+            if k[0] == ensemble_id and k[2] == measurement_type
+        ]
         for key in keys:
             del self.measurements[key]
         return len(keys)
