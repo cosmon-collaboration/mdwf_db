@@ -26,8 +26,8 @@ class MresMQContextBuilder(WitGPUContextBuilder):
     ]
     
     input_params_schema = [
-        ContextParam("Configurations.first", int, required=True, help="First configuration"),
-        ContextParam("Configurations.last", int, required=True, help="Last configuration"),
+        ContextParam("Configurations.first", int, required=True, storable=False, help="First configuration"),
+        ContextParam("Configurations.last", int, required=True, storable=False, help="Last configuration"),
         ContextParam("Configurations.step", int, default=4, help="Configuration step"),
     ]
     

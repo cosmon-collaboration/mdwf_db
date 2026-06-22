@@ -63,8 +63,55 @@ class DatabaseBackend(ABC):
         """Persist default parameter strings for a job type/variant."""
 
     @abstractmethod
-    def delete_default_params(self, ensemble_id: int, job_type: str, variant: str) -> bool:
+    def delete_default_params(
+        self, ensemble_id: int, job_type: str, variant: str
+    ) -> bool:
         """Remove stored default params for a job type/variant."""
+
+    # ------------------------------------------------------------------
+    # Ensemble defaults (per-param, per-command storage)
+    # ------------------------------------------------------------------
+    @abstractmethod
+    def get_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+    ) -> Dict[str, Dict[str, str]]:
+        """Fetch per-param defaults for a command/variant.
+
+        Returns:
+            Dict with 'input_params' and 'job_params' keys, each mapping
+            param name to its string value.
+        """
+
+    @abstractmethod
+    def set_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+        input_params: Dict[str, str],
+        job_params: Dict[str, str],
+    ) -> bool:
+        """Upsert per-param defaults for a command/variant."""
+
+    @abstractmethod
+    def delete_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+    ) -> bool:
+        """Remove defaults for a command/variant."""
+
+    @abstractmethod
+    def list_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: Optional[str] = None,
+    ) -> List[Dict]:
+        """List all defaults for an ensemble, optionally filtered by command."""
 
     # ------------------------------------------------------------------
     # Operation tracking
@@ -136,7 +183,7 @@ class DatabaseBackend(ABC):
         config_numbers: Optional[Sequence[int]] = None,
     ) -> List[Dict]:
         """Query measurement documents by range or by explicit config list.
-        
+
         If config_numbers is given, only those configs are returned (range/start/end ignored).
         """
 
@@ -147,7 +194,7 @@ class DatabaseBackend(ABC):
         measurement_type: str,
     ) -> List[int]:
         """Return config numbers that have measurements of given type.
-        
+
         Uses distinct() for efficiency - returns only config numbers, not documents.
         """
 
@@ -169,9 +216,7 @@ class DatabaseBackend(ABC):
         measurement_type: str,
     ) -> int:
         """Delete all measurements of given type for an ensemble.
-        
+
         Returns:
             Number of documents deleted
         """
-
-

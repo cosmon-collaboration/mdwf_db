@@ -51,17 +51,30 @@ def add_output_file_arg(parser):
 def add_default_params_group(parser):
     group = parser.add_argument_group("Default parameter management")
     group.add_argument(
-        "--use-default-params",
+        "--no-defaults",
         action="store_true",
-        help="Load defaults stored in the database",
+        help="Do not load saved defaults from the database",
     )
     group.add_argument(
-        "--save-default-params",
+        "--update",
         action="store_true",
-        help="Persist current CLI parameters as defaults",
+        help="Save effective merged parameters back as new defaults",
     )
     group.add_argument(
         "--params-variant",
         help="Named variant when loading/saving defaults (e.g. stout8, gpu)",
     )
+    group.add_argument(
+        "--force",
+        action="store_true",
+        help="Suppress staleness warnings for job chains",
+    )
 
+
+def add_dry_run_flag(parser):
+    """Add --dry-run flag to preview parameters without writing files."""
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print effective parameters and target files without writing",
+    )

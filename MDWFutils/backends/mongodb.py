@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Sequence
 
-import time
 from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.errors import ConnectionFailure, DuplicateKeyError, PyMongoError
 
-from .base import DatabaseBackend
 from ..exceptions import (
     ConnectionError,
     DatabaseError,
@@ -17,6 +16,7 @@ from ..exceptions import (
     ValidationError,
 )
 from ..schemas.validators import EnsembleCreate, PhysicsParams
+from .base import DatabaseBackend
 
 
 def retry_on_error(max_tries: int = 3, delay: float = 1.0):
@@ -61,10 +61,11 @@ class MongoDBBackend(DatabaseBackend):
             raise ConnectionError(f"Cannot connect to MongoDB: {exc}") from exc
 
         self.db = self.client.get_database()
-        
+
         self.ensembles = self.db.ensembles
         self.operations = self.db.operations
         self.measurements = self.db.measurements
+        self.ensemble_defaults = self.db.ensemble_defaults
         self._ensure_indexes()
 
     def _ensure_indexes(self) -> None:
@@ -84,6 +85,15 @@ class MongoDBBackend(DatabaseBackend):
                 ("config_number", ASCENDING),
                 ("measurement_type", ASCENDING),
             ]
+        )
+
+        self.ensemble_defaults.create_index(
+            [
+                ("ensemble_id", ASCENDING),
+                ("command", ASCENDING),
+                ("variant", ASCENDING),
+            ],
+            unique=True,
         )
 
     # ------------------------------------------------------------------
@@ -173,7 +183,9 @@ class MongoDBBackend(DatabaseBackend):
 
     @retry_on_error()
     def update_ensemble(self, ensemble_id: int, **updates) -> bool:
-        result = self.ensembles.update_one({"ensemble_id": ensemble_id}, {"$set": updates})
+        result = self.ensembles.update_one(
+            {"ensemble_id": ensemble_id}, {"$set": updates}
+        )
         return result.modified_count > 0
 
     @retry_on_error()
@@ -219,11 +231,7 @@ class MongoDBBackend(DatabaseBackend):
         if not ensemble:
             raise EnsembleNotFoundError(ensemble_id)
 
-        defaults = (
-            ensemble.get("default_params", {})
-            .get(job_type, {})
-            .get(variant, {})
-        )
+        defaults = ensemble.get("default_params", {}).get(job_type, {}).get(variant, {})
         return {
             "input_params": defaults.get("input_params", ""),
             "job_params": defaults.get("job_params", ""),
@@ -251,7 +259,9 @@ class MongoDBBackend(DatabaseBackend):
         return result.modified_count > 0
 
     @retry_on_error()
-    def delete_default_params(self, ensemble_id: int, job_type: str, variant: str) -> bool:
+    def delete_default_params(
+        self, ensemble_id: int, job_type: str, variant: str
+    ) -> bool:
         update_path = f"default_params.{job_type}.{variant}"
         result = self.ensembles.update_one(
             {"ensemble_id": ensemble_id},
@@ -259,26 +269,112 @@ class MongoDBBackend(DatabaseBackend):
         )
         return result.modified_count > 0
 
-    def list_default_params(self, ensemble_id: int, job_type: Optional[str] = None) -> List[Dict]:
+    def list_default_params(
+        self, ensemble_id: int, job_type: Optional[str] = None
+    ) -> List[Dict]:
         """List all default parameters for an ensemble, optionally filtered by job_type."""
         ensemble = self.get_ensemble(ensemble_id)
         if not ensemble:
             raise EnsembleNotFoundError(ensemble_id)
-        
+
         defaults = ensemble.get("default_params", {})
         result = []
-        
+
         for jt, variants in defaults.items():
             if job_type and jt != job_type:
                 continue
             for variant_name, variant_data in variants.items():
-                result.append({
-                    "job_type": jt,
-                    "variant": variant_name,
-                    "input_params": variant_data.get("input_params", ""),
-                    "job_params": variant_data.get("job_params", ""),
-                })
-        
+                result.append(
+                    {
+                        "job_type": jt,
+                        "variant": variant_name,
+                        "input_params": variant_data.get("input_params", ""),
+                        "job_params": variant_data.get("job_params", ""),
+                    }
+                )
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Ensemble defaults (per-param, per-command storage)
+    # ------------------------------------------------------------------
+    @retry_on_error()
+    def get_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+    ) -> Dict[str, Dict[str, str]]:
+        """Fetch per-param defaults for a command/variant."""
+        doc = self.ensemble_defaults.find_one(
+            {"ensemble_id": ensemble_id, "command": command, "variant": variant}
+        )
+        if not doc:
+            return {"input_params": {}, "job_params": {}}
+        doc.pop("_id", None)
+        return {
+            "input_params": doc.get("input_params", {}),
+            "job_params": doc.get("job_params", {}),
+        }
+
+    @retry_on_error()
+    def set_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+        input_params: Dict[str, str],
+        job_params: Dict[str, str],
+    ) -> bool:
+        """Upsert per-param defaults for a command/variant."""
+        from datetime import datetime
+
+        result = self.ensemble_defaults.replace_one(
+            {"ensemble_id": ensemble_id, "command": command, "variant": variant},
+            {
+                "ensemble_id": ensemble_id,
+                "command": command,
+                "variant": variant,
+                "input_params": input_params,
+                "job_params": job_params,
+                "updated_at": datetime.utcnow(),
+            },
+            upsert=True,
+        )
+        return result.upserted_id is not None or result.modified_count > 0
+
+    @retry_on_error()
+    def delete_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+    ) -> bool:
+        """Remove defaults for a command/variant."""
+        result = self.ensemble_defaults.delete_one(
+            {"ensemble_id": ensemble_id, "command": command, "variant": variant}
+        )
+        return result.deleted_count > 0
+
+    def list_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: Optional[str] = None,
+    ) -> List[Dict]:
+        """List all defaults for an ensemble, optionally filtered by command."""
+        query: Dict = {"ensemble_id": ensemble_id}
+        if command:
+            query["command"] = command
+        result = []
+        for doc in self.ensemble_defaults.find(query).sort("command", ASCENDING):
+            entry = {
+                "command": doc.get("command"),
+                "variant": doc.get("variant"),
+                "input_params": doc.get("input_params", {}),
+                "job_params": doc.get("job_params", {}),
+                "updated_at": doc.get("updated_at"),
+            }
+            result.append(entry)
         return result
 
     # ------------------------------------------------------------------
@@ -350,7 +446,9 @@ class MongoDBBackend(DatabaseBackend):
         set_doc = {"status": status, "timing.update_time": datetime.utcnow()}
         for key, value in updates.items():
             set_doc[key] = value
-        result = self.operations.update_one({"operation_id": operation_id}, {"$set": set_doc})
+        result = self.operations.update_one(
+            {"operation_id": operation_id}, {"$set": set_doc}
+        )
         return result.modified_count > 0
 
     @retry_on_error()
@@ -365,14 +463,14 @@ class MongoDBBackend(DatabaseBackend):
         set_doc = {"status": status, "timing.update_time": datetime.utcnow()}
         for key, value in updates.items():
             set_doc[key] = value
-        
+
         # Match by slurm_job_id, ensemble_id, and operation_type
         query = {
             "slurm.job_id": slurm_job_id,
             "ensemble_id": ensemble_id,
-            "operation_type": operation_type
+            "operation_type": operation_type,
         }
-        
+
         result = self.operations.update_one(query, {"$set": set_doc})
         return result.modified_count > 0
 
@@ -385,7 +483,9 @@ class MongoDBBackend(DatabaseBackend):
     def list_operations(self, ensemble_id: int) -> List[Dict]:
         projection = {"_id": 0}
         rows = []
-        for doc in self.operations.find({"ensemble_id": ensemble_id}, projection).sort("operation_id", ASCENDING):
+        for doc in self.operations.find({"ensemble_id": ensemble_id}, projection).sort(
+            "operation_id", ASCENDING
+        ):
             rows.append(doc)
         return rows
 
@@ -394,8 +494,7 @@ class MongoDBBackend(DatabaseBackend):
         """Get a single operation by ensemble_id and operation_id."""
         projection = {"_id": 0}
         doc = self.operations.find_one(
-            {"ensemble_id": ensemble_id, "operation_id": operation_id},
-            projection
+            {"ensemble_id": ensemble_id, "operation_id": operation_id}, projection
         )
         return doc
 
@@ -456,7 +555,7 @@ class MongoDBBackend(DatabaseBackend):
         measurement_type: str,
     ) -> List[int]:
         """Return config numbers that have measurements of given type.
-        
+
         Uses distinct() for efficiency - returns only config numbers, not documents.
         """
         query = {"ensemble_id": ensemble_id, "measurement_type": measurement_type}
@@ -500,7 +599,7 @@ class MongoDBBackend(DatabaseBackend):
         measurement_type: str,
     ) -> int:
         """Delete all measurements of given type for an ensemble.
-        
+
         Returns:
             Number of documents deleted
         """
@@ -510,5 +609,3 @@ class MongoDBBackend(DatabaseBackend):
         }
         result = self.measurements.delete_many(query)
         return result.deleted_count
-
-

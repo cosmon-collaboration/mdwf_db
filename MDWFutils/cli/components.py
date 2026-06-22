@@ -30,7 +30,9 @@ class ParameterManager:
     def __init__(self, backend: DatabaseBackend):
         self.backend = backend
 
-    def load_defaults(self, ensemble_id: int, job_type: str, variant: str) -> Dict[str, str]:
+    def load_defaults(
+        self, ensemble_id: int, job_type: str, variant: str
+    ) -> Dict[str, str]:
         return self.backend.get_default_params(ensemble_id, job_type, variant)
 
     @staticmethod
@@ -66,7 +68,7 @@ class ParameterManager:
 
     def list_all_defaults(self, ensemble_id: int, job_type: str = None) -> List[Dict]:
         """List all saved defaults, optionally filtered by job_type."""
-        if hasattr(self.backend, 'list_default_params'):
+        if hasattr(self.backend, "list_default_params"):
             return self.backend.list_default_params(ensemble_id, job_type)
         # Fallback for backends that don't support this
         ensemble = self.backend.get_ensemble(ensemble_id)
@@ -78,17 +80,61 @@ class ParameterManager:
             if job_type and jt != job_type:
                 continue
             for variant_name, variant_data in variants.items():
-                result.append({
-                    "job_type": jt,
-                    "variant": variant_name,
-                    "input_params": variant_data.get("input_params", ""),
-                    "job_params": variant_data.get("job_params", ""),
-                })
+                result.append(
+                    {
+                        "job_type": jt,
+                        "variant": variant_name,
+                        "input_params": variant_data.get("input_params", ""),
+                        "job_params": variant_data.get("job_params", ""),
+                    }
+                )
         return result
 
     def delete_defaults(self, ensemble_id: int, job_type: str, variant: str) -> bool:
         """Delete a specific variant."""
         return self.backend.delete_default_params(ensemble_id, job_type, variant)
+
+    # ------------------------------------------------------------------
+    # New ensemble_defaults collection methods
+    # ------------------------------------------------------------------
+    def load_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+    ) -> Dict[str, Dict[str, str]]:
+        """Load per-param defaults from the ensemble_defaults collection."""
+        return self.backend.get_ensemble_defaults(ensemble_id, command, variant)
+
+    def save_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+        input_params: Dict[str, str],
+        job_params: Dict[str, str],
+    ) -> bool:
+        """Save per-param defaults to the ensemble_defaults collection."""
+        return self.backend.set_ensemble_defaults(
+            ensemble_id, command, variant, input_params, job_params
+        )
+
+    def delete_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str,
+        variant: str,
+    ) -> bool:
+        """Delete defaults for a command/variant."""
+        return self.backend.delete_ensemble_defaults(ensemble_id, command, variant)
+
+    def list_ensemble_defaults(
+        self,
+        ensemble_id: int,
+        command: str = None,
+    ) -> List[Dict]:
+        """List all defaults for an ensemble."""
+        return self.backend.list_ensemble_defaults(ensemble_id, command)
 
 
 class BuildScriptGenerator:
@@ -98,7 +144,15 @@ class BuildScriptGenerator:
         self.backend = backend
         self.renderer = TemplateRenderer(TemplateLoader())
 
-    def generate(self, type_name: str, ensemble_id: int, build_params: Dict, *, ensemble=None, command_line: str = "") -> str:
+    def generate(
+        self,
+        type_name: str,
+        ensemble_id: int,
+        build_params: Dict,
+        *,
+        ensemble=None,
+        command_line: str = "",
+    ) -> str:
         from ..build.registry import get_build_builder
 
         builder = get_build_builder(type_name)
@@ -120,7 +174,13 @@ class ScriptGenerator:
         self.backend = backend
         self.renderer = TemplateRenderer(TemplateLoader())
 
-    def generate_input(self, ensemble_id: int, input_type: str, params: Dict, job_params: Dict | None = None) -> str:
+    def generate_input(
+        self,
+        ensemble_id: int,
+        input_type: str,
+        params: Dict,
+        job_params: Dict | None = None,
+    ) -> str:
         builder = get_input_builder(input_type)
         context = builder.build(self.backend, ensemble_id, job_params or {}, params)
         return self.renderer.render(f"input/{input_type}.j2", context)
@@ -135,5 +195,3 @@ class ScriptGenerator:
         builder = get_job_builder(job_type)
         context = builder.build(self.backend, ensemble_id, job_params, input_params)
         return self.renderer.render(f"slurm/{job_type}.j2", context)
-
-

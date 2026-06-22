@@ -37,8 +37,8 @@ def _hmc_run_input_params():
             help="HMC mode (tepid/continue/reseed)",
         ),
         ContextParam("ensemble_relpath", str, default="", help="Ensemble relative path"),
-        ContextParam("config_start", int, aliases=["StartTrajectory"], help="First configuration (for output prefix)"),
-        ContextParam("config_end", int, help="Last configuration (for output prefix)"),
+        ContextParam("config_start", int, aliases=["StartTrajectory"], storable=False, help="First configuration (for output prefix)"),
+        ContextParam("config_end", int, storable=False, help="Last configuration (for output prefix)"),
     ]
 
 
@@ -62,13 +62,13 @@ class HMCGPUContextBuilder(ContextBuilder):
         ContextParam("ntasks_per_node", int, default=4, help="Tasks per node (legacy default 4)"),
         ContextParam("gpus_per_task", int, default=1, help="GPUs per task"),
         ContextParam("gpu_bind", str, default="none", help="GPU binding policy"),
-        ContextParam("gres", str, help="GPU resource specification (auto-generated if not provided)"),
+        ContextParam("gres", str, storable=False, help="GPU resource specification (auto-generated if not provided)"),
         # HMC-specific params
-        ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
-        ContextParam("exec_path", str, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
-        ContextParam("bind_script", str, help="CPU binding script (or set via ensemble paths.hmc_bind_script_gpu)"),
+        ContextParam("run_dir", str, storable=False, help="Working directory (defaults to ensemble directory)"),
+        ContextParam("exec_path", str, storable=False, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
+        ContextParam("bind_script", str, storable=False, help="CPU binding script (or set via ensemble paths.hmc_bind_script_gpu)"),
         ContextParam("mpi", str, default=DEFAULT_GPU_MPI, help="MPI configuration"),
-        ContextParam("cfg_max", int, help="Maximum configuration number"),
+        ContextParam("cfg_max", int, storable=False, help="Maximum configuration number"),
         ContextParam("conda_env", str, default=DEFAULT_CONDA_ENV, help="Conda environment path"),
         ContextParam("omp_num_threads", int, default=16, help="OpenMP threads"),
     ]
@@ -152,11 +152,11 @@ class HMCCPUContextBuilder(ContextBuilder):
         ContextParam("ntasks_per_node", int, default=1, help="Tasks per node"),
         ContextParam("cacheblocking", str, default=DEFAULT_CPU_CACHEBLOCKING, help="Cache blocking configuration"),
         # HMC-specific params
-        ContextParam("run_dir", str, help="Working directory (defaults to ensemble directory)"),
-        ContextParam("exec_path", str, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
-        ContextParam("bind_script", str, help="CPU binding script (or set via ensemble paths.hmc_bind_script_cpu)"),
+        ContextParam("run_dir", str, storable=False, help="Working directory (defaults to ensemble directory)"),
+        ContextParam("exec_path", str, storable=False, help="HMC executable path (or set via ensemble paths.hmc_exec_path)"),
+        ContextParam("bind_script", str, storable=False, help="CPU binding script (or set via ensemble paths.hmc_bind_script_cpu)"),
         ContextParam("mpi", str, default=DEFAULT_CPU_MPI, help="MPI configuration"),
-        ContextParam("cfg_max", int, help="Maximum configuration number"),
+        ContextParam("cfg_max", int, storable=False, help="Maximum configuration number"),
         ContextParam("conda_env", str, default=DEFAULT_CONDA_ENV, help="Conda environment path"),
         ContextParam("omp_num_threads", int, default=4, help="OpenMP threads"),
     ]

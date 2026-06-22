@@ -1,0 +1,41 @@
+[project]
+name = "MDWFutils"
+version = "1.0"
+description = "Database utilities for managing Domain Wall Fermion ensembles and operations"
+requires-python = ">=3.12"
+
+dependencies = [
+    "pymongo>=4.6",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "h5py>=3.0",
+    "numpy>=1.20",
+]
+
+[project.scripts]
+mdwf_db = "MDWFutils.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-mock>=3.12",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["MDWFutils", "MDWFutils.backends", "MDWFutils.cli", "MDWFutils.cli.commands", "MDWFutils.ingest", "MDWFutils.jobs", "MDWFutils.parsers", "MDWFutils.scanners", "MDWFutils.schemas", "MDWFutils.templates", "MDWFutils.build"]
+
+[tool.setuptools.package-data]
+MDWFutils = [
+    "templates/**/*.j2",
+    "build/grid_sources/*",
+    "build/fixtures/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
