@@ -114,9 +114,14 @@ class ParameterManager:
         input_params: Dict[str, str],
         job_params: Dict[str, str],
     ) -> bool:
-        """Save per-param defaults to the ensemble_defaults collection."""
+        """Save per-param defaults to the ensemble_defaults collection, merging with existing."""
+        existing = self.load_ensemble_defaults(ensemble_id, command, variant)
+        
+        merged_input = self.merge(existing.get("input_params", {}), input_params)
+        merged_job = self.merge(existing.get("job_params", {}), job_params)
+        
         return self.backend.set_ensemble_defaults(
-            ensemble_id, command, variant, input_params, job_params
+            ensemble_id, command, variant, merged_input, merged_job
         )
 
     def delete_ensemble_defaults(

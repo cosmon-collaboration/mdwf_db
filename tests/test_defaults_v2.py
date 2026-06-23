@@ -137,6 +137,30 @@ class TestParameterManagerDefaults:
         assert result["input_params"]["trajL"] == "0.5"
         assert result["job_params"]["nodes"] == "4"
 
+    def test_save_merges_with_existing(self):
+        fb = FakeBackend()
+        pm = ParameterManager(fb)
+        # First save
+        pm.save_ensemble_defaults(
+            1, "hmc-script", "gpu",
+            {"trajL": "0.5", "n_trajec": "10"},
+            {"nodes": "4"},
+        )
+        # Second save - update one, add one
+        pm.save_ensemble_defaults(
+            1, "hmc-script", "gpu",
+            {"trajL": "0.6", "lvl_sizes": "9,1,1"},
+            {"nodes": "8", "time_limit": "04:00:00"},
+        )
+        result = pm.load_ensemble_defaults(1, "hmc-script", "gpu")
+        # trajL updated, n_trajec preserved, lvl_sizes added
+        assert result["input_params"]["trajL"] == "0.6"
+        assert result["input_params"]["n_trajec"] == "10"
+        assert result["input_params"]["lvl_sizes"] == "9,1,1"
+        # nodes updated, time_limit added
+        assert result["job_params"]["nodes"] == "8"
+        assert result["job_params"]["time_limit"] == "04:00:00"
+
     def test_delete(self):
         fb = FakeBackend()
         pm = ParameterManager(fb)
