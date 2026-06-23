@@ -112,20 +112,23 @@ class HelpGenerator:
                     # No value and no default - skip this param
                     continue
 
+            # Type cast the value
+            try:
+                cast_value = definition.type(value)
+            except (TypeError, ValueError):
+                errors.append(f"{definition.name}: expected {definition.type.__name__}")
+                continue
+
             # Validate choices if specified
-            if definition.choices and value not in definition.choices:
+            if definition.choices and cast_value not in definition.choices:
                 errors.append(
                     f"{definition.name} must be one of: {', '.join(map(str, definition.choices))}"
                 )
                 continue
 
-            # Type cast the value
-            try:
-                typed[definition.name] = definition.type(value)
-            except (TypeError, ValueError):
-                errors.append(f"{definition.name}: expected {definition.type.__name__}")
+            typed[definition.name] = cast_value
 
-        if missing_required:
+        if missing_required and strict:
             flag = "-i" if param_type == "input" else "-j"
             msg = f"\nMissing required {param_type} parameters (pass with {flag}):\n"
             for param in missing_required:
@@ -134,7 +137,7 @@ class HelpGenerator:
             msg += f"\nExample: {flag} \"{examples}\""
             errors.append(msg)
 
-        if errors and strict:
+        if errors:
             raise ValidationError("\n".join(errors))
 
         return typed
@@ -222,5 +225,3 @@ class HelpGenerator:
             lines.append(f"  {name_col}  {type_col}  {status}{help_text}")
         
         return lines
-
-

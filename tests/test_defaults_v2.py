@@ -1,11 +1,35 @@
 """Tests for defaults v2: per-param storage, dry-run, update, staleness."""
 
-import pytest
-
 from MDWFutils.jobs.schema import ContextParam, storable_params
 from MDWFutils.cli.components import ParameterManager
 
 from tests.conftest import FakeBackend, make_ensemble
+
+
+def _command_args(**overrides):
+    from types import SimpleNamespace
+
+    args = {
+        "ensemble": 1,
+        "input_params": "",
+        "job_params": "",
+        "params": False,
+        "params_variant": None,
+        "no_defaults": False,
+        "dry_run": False,
+        "update": False,
+        "force": False,
+        "output_file": None,
+    }
+    args.update(overrides)
+    return SimpleNamespace(**args)
+
+
+def _param_line(output: str, name: str) -> str:
+    for line in output.splitlines():
+        if line.startswith(f"{name} "):
+            return line
+    raise AssertionError(f"No output row for {name!r}:\n{output}")
 
 
 # ---------------------------------------------------------------------------
@@ -157,19 +181,11 @@ class TestBaseCommandDefaults:
         """--dry-run should print param sources and exit 0."""
         fb = FakeBackend({1: self._make_ensemble(tmp_path)})
         cmd = self._make_cmd(fb)
-        from types import SimpleNamespace
 
-        args = SimpleNamespace(
-            ensemble=1,
+        args = _command_args(
             input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1",
             job_params="nodes=4",
-            params=False,
-            params_variant=None,
-            no_defaults=False,
             dry_run=True,
-            update=False,
-            force=False,
-            output_file=None,
         )
         result = cmd.execute(args)
         assert result == 0
@@ -183,19 +199,11 @@ class TestBaseCommandDefaults:
         # Pre-populate DB defaults
         fb.set_ensemble_defaults(1, "test-cmd", "gpu", {"trajL": "999"}, {})
         cmd = self._make_cmd(fb)
-        from types import SimpleNamespace
 
-        args = SimpleNamespace(
-            ensemble=1,
+        args = _command_args(
             input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1",
-            job_params="",
-            params=False,
-            params_variant=None,
             no_defaults=True,
             dry_run=True,
-            update=False,
-            force=False,
-            output_file=None,
         )
         result = cmd.execute(args)
         assert result == 0
@@ -209,20 +217,11 @@ class TestBaseCommandDefaults:
         ens["hmc_paths"] = {"exec_path": "/fake/hmc", "bind_script_gpu": "/fake/bind"}
         fb = FakeBackend({1: ens})
         cmd = self._make_cmd(fb)
-        from types import SimpleNamespace
-        import tempfile, os
 
-        args = SimpleNamespace(
-            ensemble=1,
+        args = _command_args(
             input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1",
             job_params="nodes=4",
-            params=False,
-            params_variant=None,
-            no_defaults=False,
-            dry_run=False,
             update=True,
-            force=False,
-            output_file=None,
         )
         # Write to temp dir to avoid ensemble dir issues
         result = cmd.execute(args)
@@ -238,19 +237,10 @@ class TestBaseCommandDefaults:
         fb = FakeBackend({1: self._make_ensemble(tmp_path)})
         fb.set_ensemble_defaults(1, "test-cmd", "gpu", {"trajL": "1.0"}, {})
         cmd = self._make_cmd(fb)
-        from types import SimpleNamespace
 
-        args = SimpleNamespace(
-            ensemble=1,
+        args = _command_args(
             input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1",
-            job_params="",
-            params=False,
-            params_variant=None,
-            no_defaults=False,
             dry_run=True,
-            update=False,
-            force=False,
-            output_file=None,
         )
         cmd.execute(args)
         out = capfd.readouterr()
@@ -262,19 +252,11 @@ class TestBaseCommandDefaults:
         fb = FakeBackend({1: self._make_ensemble(tmp_path)})
         fb.set_ensemble_defaults(1, "test-cmd", "gpu", {"trajL": "1.0"}, {})
         cmd = self._make_cmd(fb)
-        from types import SimpleNamespace
 
-        args = SimpleNamespace(
-            ensemble=1,
+        args = _command_args(
             input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1",
-            job_params="",
-            params=False,
-            params_variant=None,
-            no_defaults=False,
             dry_run=True,
-            update=False,
             force=True,
-            output_file=None,
         )
         cmd.execute(args)
         out = capfd.readouterr()
@@ -285,19 +267,10 @@ class TestBaseCommandDefaults:
         fb = FakeBackend({1: self._make_ensemble(tmp_path)})
         fb.set_ensemble_defaults(1, "test-cmd", "gpu", {"trajL": "1.0"}, {})
         cmd = self._make_cmd(fb)
-        from types import SimpleNamespace
 
-        args = SimpleNamespace(
-            ensemble=1,
+        args = _command_args(
             input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1",
-            job_params="",
-            params=False,
-            params_variant=None,
-            no_defaults=False,
-            dry_run=False,
             update=True,
-            force=False,
-            output_file=None,
         )
         cmd.execute(args)
         out = capfd.readouterr()
@@ -309,19 +282,11 @@ class TestBaseCommandDefaults:
         ens["hmc_paths"] = {"exec_path": "/fake/hmc", "bind_script_gpu": "/fake/bind"}
         fb = FakeBackend({1: ens})
         cmd = self._make_cmd(fb)
-        from types import SimpleNamespace
 
-        args = SimpleNamespace(
-            ensemble=1,
+        args = _command_args(
             input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1 config_start=5",
             job_params="nodes=4 gres=gpu:1",
-            params=False,
-            params_variant=None,
-            no_defaults=False,
-            dry_run=False,
             update=True,
-            force=False,
-            output_file=None,
         )
         cmd.execute(args)
         defaults = fb.get_ensemble_defaults(1, "test-cmd", "gpu")
@@ -332,6 +297,169 @@ class TestBaseCommandDefaults:
         # Storable params should be present
         assert defaults["input_params"]["trajL"] == "0.5"
         assert defaults["job_params"]["nodes"] == "4"
+
+    def test_dry_run_lists_missing_required_params(self, tmp_path, capsys):
+        """--dry-run should show missing required params instead of omitting them."""
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        cmd = self._make_cmd(fb)
+
+        result = cmd.execute(_command_args(dry_run=True))
+
+        assert result == 0
+        out = capsys.readouterr()
+        for name in ("n_trajec", "trajL", "lvl_sizes"):
+            line = _param_line(out.out, name)
+            assert "<required>" in line
+            assert "Missing required" in line
+
+    def test_dry_run_uses_alias_sources(self, tmp_path, capsys):
+        """A value supplied through an alias should still show as a CLI override."""
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        cmd = self._make_cmd(fb)
+
+        result = cmd.execute(
+            _command_args(
+                input_params="Trajectories=10 trajL=0.5 lvl_sizes=9,1,1",
+                dry_run=True,
+            )
+        )
+
+        assert result == 0
+        out = capsys.readouterr()
+        line = _param_line(out.out, "n_trajec")
+        assert "10" in line
+        assert "CLI override" in line
+
+    def test_staleness_warning_uses_aliases(self, tmp_path, capsys):
+        """Alias overrides should be compared to saved canonical defaults."""
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        fb.set_ensemble_defaults(1, "test-cmd", "gpu", {"n_trajec": "5"}, {})
+        cmd = self._make_cmd(fb)
+
+        result = cmd.execute(
+            _command_args(
+                input_params="Trajectories=10 trajL=0.5 lvl_sizes=9,1,1",
+                dry_run=True,
+            )
+        )
+
+        assert result == 0
+        out = capsys.readouterr()
+        assert "n_trajec: CLI=10, saved=5" in out.err
+
+    def test_dry_run_rejects_invalid_types_in_relaxed_mode(self, tmp_path, capsys):
+        """Relaxed dry-run should not hide type errors."""
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        cmd = self._make_cmd(fb)
+
+        result = cmd.execute(_command_args(job_params="nodes=bad", dry_run=True))
+
+        assert result == 1
+        out = capsys.readouterr()
+        assert "nodes: expected int" in out.err
+
+    def test_dry_run_rejects_invalid_choices_in_relaxed_mode(self, tmp_path, capsys):
+        """Relaxed dry-run should not hide choice errors."""
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        cmd = self._make_cmd(fb)
+
+        result = cmd.execute(_command_args(input_params="mode=bad", dry_run=True))
+
+        assert result == 1
+        out = capsys.readouterr()
+        assert "mode must be one of" in out.err
+
+    def test_dry_run_hmc_subcommand_loads_hmc_script_defaults(self, tmp_path, capsys):
+        """HMC variants should use hmc-script plus variant for defaults."""
+        from MDWFutils.cli.commands.hmc_script import HMCGPUCommand
+
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        fb.set_ensemble_defaults(
+            1,
+            "hmc-script",
+            "gpu",
+            {"n_trajec": "10", "trajL": "0.5", "lvl_sizes": "9,1,1"},
+            {"nodes": "4"},
+        )
+        cmd = HMCGPUCommand(fb)
+
+        result = cmd.execute(_command_args(dry_run=True))
+
+        assert result == 0
+        out = capsys.readouterr()
+        assert "Command: hmc-script" in out.out
+        assert "n_trajec" in out.out
+        assert "0.5" in out.out
+        assert "nodes" in out.out
+        assert "4" in out.out
+
+    def test_dry_run_hmc_subcommand_loads_legacy_builder_defaults(self, tmp_path, capsys):
+        """Existing hmc_gpu defaults should still load after canonicalization."""
+        from MDWFutils.cli.commands.hmc_script import HMCGPUCommand
+
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        fb.set_ensemble_defaults(
+            1,
+            "hmc_gpu",
+            "gpu",
+            {"n_trajec": "10", "trajL": "0.5", "lvl_sizes": "9,1,1"},
+            {"nodes": "4"},
+        )
+        cmd = HMCGPUCommand(fb)
+
+        result = cmd.execute(_command_args(dry_run=True))
+
+        assert result == 0
+        out = capsys.readouterr()
+        assert "Command: hmc-script" in out.out
+        assert "0.5" in out.out
+        assert "4" in out.out
+
+    def test_update_can_save_partial_defaults_without_generation(self, tmp_path):
+        """--update should save partial defaults when required params are missing."""
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        cmd = self._make_cmd(fb)
+
+        result = cmd.execute(_command_args(job_params="nodes=4", update=True))
+
+        assert result == 0
+        defaults = fb.get_ensemble_defaults(1, "test-cmd", "gpu")
+        assert defaults["job_params"]["nodes"] == "4"
+        assert "n_trajec" not in defaults["input_params"]
+
+    def test_update_saves_defaults_before_generation_validation(self, tmp_path):
+        """--update should persist params even if script generation later fails."""
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        cmd = self._make_cmd(fb)
+
+        result = cmd.execute(
+            _command_args(
+                input_params="trajL=0.5 n_trajec=10 lvl_sizes=9,1,1",
+                job_params="nodes=4",
+                update=True,
+            )
+        )
+
+        assert result == 1
+        defaults = fb.get_ensemble_defaults(1, "test-cmd", "gpu")
+        assert defaults["input_params"]["trajL"] == "0.5"
+        assert defaults["job_params"]["nodes"] == "4"
+
+    def test_wit_input_dry_run_lists_missing_required_params(self, tmp_path, capsys):
+        """Input-only commands should also show missing required dry-run rows."""
+        from MDWFutils.cli.commands.wit_input import WitInputCommand
+
+        fb = FakeBackend({1: self._make_ensemble(tmp_path)})
+        cmd = WitInputCommand(fb)
+
+        result = cmd.execute(_command_args(dry_run=True))
+
+        assert result == 0
+        out = capsys.readouterr()
+        for name in ("Configurations.first", "Configurations.last"):
+            line = _param_line(out.out, name)
+            assert "<required>" in line
+            assert "Missing required" in line
 # ---------------------------------------------------------------------------
 # default_params import subcommand
 # ---------------------------------------------------------------------------
