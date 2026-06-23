@@ -5,6 +5,7 @@ from ...jobs.hmc import HMCGPUContextBuilder, HMCCPUContextBuilder, HMCXMLContex
 
 
 class HMCGPUCommand(BaseCommand):
+    name = "hmc-script"
     help = "Generate GPU HMC script"
     job_builder_class = HMCGPUContextBuilder
     input_builder_class = HMCXMLContextBuilder
@@ -12,6 +13,7 @@ class HMCGPUCommand(BaseCommand):
 
 
 class HMCCPUCommand(BaseCommand):
+    name = "hmc-script"
     help = "Generate CPU HMC script"
     job_builder_class = HMCCPUContextBuilder
     input_builder_class = HMCXMLContextBuilder

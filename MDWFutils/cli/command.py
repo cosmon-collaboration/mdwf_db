@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Type
+from typing import Dict, List, Optional, Type
 
 from ..backends import get_backend
 from ..exceptions import ConnectionError, MDWFError
@@ -198,8 +198,8 @@ class BaseCommand:
             # Load DB defaults (default behavior; opt-out with --no-defaults)
             load_defaults = not getattr(args, "no_defaults", False)
             if load_defaults:
-                db_defaults = param_manager.load_ensemble_defaults(
-                    ensemble_id, command_name, variant
+                db_defaults = self._load_ensemble_defaults(
+                    param_manager, ensemble_id, command_name, variant
                 )
             else:
                 db_defaults = {"input_params": {}, "job_params": {}}
@@ -243,6 +243,11 @@ class BaseCommand:
             else:
                 typed_job = merged_job
 
+            missing_input = self._missing_required_params(
+                builder_input_schema, typed_input
+            )
+            missing_job = self._missing_required_params(builder_job_schema, typed_job)
+
             self.custom_validation(typed_input, typed_job, ensemble)
 
             # Determine source for each param (for dry-run and staleness)
@@ -259,7 +264,14 @@ class BaseCommand:
 
             # Check for CLI overrides of DB defaults (staleness warning)
             self._check_staleness(
-                args, db_defaults, cli_input, cli_job, command_name, variant
+                args,
+                db_defaults,
+                cli_input,
+                cli_job,
+                command_name,
+                variant,
+                builder_input_schema,
+                builder_job_schema,
             )
 
             # Dry-run: print effective params and exit
@@ -272,7 +284,27 @@ class BaseCommand:
                     typed_job,
                     input_sources,
                     job_sources,
+                    builder_input_schema,
+                    builder_job_schema,
                 )
+                return 0
+
+            if getattr(args, "update", False):
+                self._save_merged_defaults(
+                    param_manager,
+                    ensemble_id,
+                    command_name,
+                    variant,
+                    typed_input,
+                    typed_job,
+                    builder_input_schema,
+                    builder_job_schema,
+                )
+
+            # --update can be used to store partial defaults. If required
+            # generation params are still missing, skip file generation.
+            if getattr(args, "update", False) and (missing_input or missing_job):
+                self._print_update_skipped_generation(missing_input, missing_job)
                 return 0
 
             # Build job context
@@ -358,19 +390,6 @@ class BaseCommand:
                 )
                 print(f"Wrote SLURM script to {script_path}")
 
-            # Save merged defaults back if --update
-            if getattr(args, "update", False):
-                self._save_merged_defaults(
-                    param_manager,
-                    ensemble_id,
-                    command_name,
-                    variant,
-                    typed_input,
-                    typed_job,
-                    builder_input_schema,
-                    builder_job_schema,
-                )
-
             return 0
         except MDWFError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
@@ -379,6 +398,43 @@ class BaseCommand:
     # ------------------------------------------------------------------
     # Parameter source tracking
     # ------------------------------------------------------------------
+    def _load_ensemble_defaults(
+        self,
+        param_manager: ParameterManager,
+        ensemble_id: int,
+        command_name: str,
+        variant: str,
+    ) -> Dict[str, Dict[str, str]]:
+        """Load defaults, falling back to legacy builder-key storage."""
+        defaults = param_manager.load_ensemble_defaults(
+            ensemble_id, command_name, variant
+        )
+        if self._has_saved_defaults(defaults):
+            return defaults
+
+        legacy_name = self._legacy_defaults_command_name(command_name)
+        if not legacy_name:
+            return defaults
+
+        legacy_defaults = param_manager.load_ensemble_defaults(
+            ensemble_id, legacy_name, variant
+        )
+        if self._has_saved_defaults(legacy_defaults):
+            return legacy_defaults
+        return defaults
+
+    def _legacy_defaults_command_name(self, command_name: str) -> Optional[str]:
+        """Return the old storage key for commands whose canonical name changed."""
+        if self.job_type and self.job_type != command_name:
+            return self.job_type
+        return None
+
+    @staticmethod
+    def _has_saved_defaults(defaults: Dict[str, Dict[str, str]]) -> bool:
+        return bool(
+            defaults.get("input_params") or defaults.get("job_params")
+        )
+
     def _param_sources(
         self,
         schema: Optional[List[ContextParam]],
@@ -390,15 +446,47 @@ class BaseCommand:
         if not schema:
             return sources
         for param in schema:
-            if param.name in cli_overrides:
+            if self._param_has_value(cli_overrides, param):
                 sources[param.name] = "CLI override"
-            elif param.name in db_defaults:
+            elif self._param_has_value(db_defaults, param):
                 sources[param.name] = "DB default"
             elif param.default is not None:
                 sources[param.name] = "Schema default"
             else:
                 sources[param.name] = "Required"
         return sources
+
+    def _missing_required_params(
+        self,
+        schema: Optional[List[ContextParam]],
+        typed_params: Dict,
+    ) -> List[ContextParam]:
+        """Return required params that are absent after merge/default handling."""
+        if not schema:
+            return []
+        return [
+            param
+            for param in schema
+            if param.required and param.name not in typed_params
+        ]
+
+    @staticmethod
+    def _param_has_value(params: Dict, param: ContextParam) -> bool:
+        if param.name in params and params[param.name] is not None:
+            return True
+        return any(
+            alias in params and params[alias] is not None
+            for alias in param.aliases
+        )
+
+    @staticmethod
+    def _param_lookup(params: Dict, param: ContextParam):
+        if param.name in params and params[param.name] is not None:
+            return params[param.name]
+        for alias in param.aliases:
+            if alias in params and params[alias] is not None:
+                return params[alias]
+        return None
 
     def _check_staleness(
         self,
@@ -408,6 +496,8 @@ class BaseCommand:
         cli_job: Dict[str, str],
         command_name: str,
         variant: str,
+        input_schema: Optional[List[ContextParam]] = None,
+        job_schema: Optional[List[ContextParam]] = None,
     ):
         """Warn if CLI overrides differ from saved defaults."""
         if getattr(args, "force", False):
@@ -419,12 +509,10 @@ class BaseCommand:
         db_job = db_defaults.get("job_params", {})
 
         overrides = []
-        for name, value in cli_input.items():
-            if name in db_input and db_input[name] != value:
-                overrides.append(f"  {name}: CLI={value}, saved={db_input[name]}")
-        for name, value in cli_job.items():
-            if name in db_job and db_job[name] != value:
-                overrides.append(f"  {name}: CLI={value}, saved={db_job[name]}")
+        overrides.extend(
+            self._stale_param_overrides(db_input, cli_input, input_schema)
+        )
+        overrides.extend(self._stale_param_overrides(db_job, cli_job, job_schema))
 
         if overrides:
             print(
@@ -437,6 +525,36 @@ class BaseCommand:
                 f"Use --update to persist these changes to defaults.",
                 file=sys.stderr,
             )
+
+    def _stale_param_overrides(
+        self,
+        db_defaults: Dict[str, str],
+        cli_overrides: Dict[str, str],
+        schema: Optional[List[ContextParam]],
+    ) -> List[str]:
+        """Return stale override warning lines, honoring parameter aliases."""
+        warnings = []
+        consumed_cli = set()
+
+        for param in schema or []:
+            cli_value = self._param_lookup(cli_overrides, param)
+            db_value = self._param_lookup(db_defaults, param)
+            if cli_value is None:
+                continue
+            consumed_cli.add(param.name)
+            consumed_cli.update(param.aliases)
+            if db_value is not None and str(db_value) != str(cli_value):
+                warnings.append(
+                    f"  {param.name}: CLI={cli_value}, saved={db_value}"
+                )
+
+        for name, value in cli_overrides.items():
+            if name in consumed_cli:
+                continue
+            if name in db_defaults and str(db_defaults[name]) != str(value):
+                warnings.append(f"  {name}: CLI={value}, saved={db_defaults[name]}")
+
+        return warnings
 
     def _save_merged_defaults(
         self,
@@ -478,6 +596,8 @@ class BaseCommand:
         typed_job: Dict,
         input_sources: Dict[str, str],
         job_sources: Dict[str, str],
+        input_schema: Optional[List[ContextParam]] = None,
+        job_schema: Optional[List[ContextParam]] = None,
     ):
         """Print effective parameters and target files without writing."""
         ens_id = ensemble.get("ensemble_id", ensemble.get("id", "?"))
@@ -486,17 +606,65 @@ class BaseCommand:
         print(f"Command: {command_name}  Ensemble: {ens_label}  Variant: {variant}")
         print()
 
+        input_table, input_table_sources = self._dry_run_table_data(
+            input_schema, typed_input, input_sources
+        )
+        job_table, job_table_sources = self._dry_run_table_data(
+            job_schema, typed_job, job_sources
+        )
+
         # Input params table
-        if typed_input:
+        if input_table:
             print("Input Parameters:")
-            self._print_param_table(typed_input, input_sources)
+            self._print_param_table(input_table, input_table_sources)
             print()
 
         # Job params table
-        if typed_job:
+        if job_table:
             print("Job Parameters:")
-            self._print_param_table(typed_job, job_sources)
+            self._print_param_table(job_table, job_table_sources)
             print()
+
+    def _dry_run_table_data(
+        self,
+        schema: Optional[List[ContextParam]],
+        typed_params: Dict,
+        sources: Dict[str, str],
+    ) -> tuple[Dict, Dict[str, str]]:
+        """Build ordered dry-run rows from the full schema plus typed values."""
+        table = {}
+        table_sources = {}
+
+        if schema:
+            for param in schema:
+                if param.name in typed_params:
+                    table[param.name] = typed_params[param.name]
+                    table_sources[param.name] = sources.get(param.name, "unknown")
+                elif param.required:
+                    table[param.name] = "<required>"
+                    table_sources[param.name] = "Missing required"
+                else:
+                    table[param.name] = "<unset>"
+                    table_sources[param.name] = "Unset optional"
+
+        for name, value in typed_params.items():
+            if name not in table:
+                table[name] = value
+                table_sources[name] = sources.get(name, "unknown")
+
+        return table, table_sources
+
+    def _print_update_skipped_generation(
+        self,
+        missing_input: List[ContextParam],
+        missing_job: List[ContextParam],
+    ) -> None:
+        names = [p.name for p in missing_input + missing_job]
+        joined = ", ".join(names)
+        print(
+            "Skipped file generation because required parameters are missing: "
+            f"{joined}"
+        )
 
     def _print_param_table(self, params: Dict, sources: Dict[str, str]):
         """Print a formatted table of parameters with sources."""
