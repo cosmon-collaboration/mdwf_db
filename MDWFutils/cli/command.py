@@ -227,16 +227,18 @@ class BaseCommand:
                 merged_input = resolve_param_aliases(merged_input, full_input_schema)
 
             # Apply schema defaults and validate
+            # Relax validation for --update and --dry-run (partial defaults)
+            relaxed = getattr(args, "update", False) or getattr(args, "dry_run", False)
             if builder_input_schema is not None:
                 typed_input = self.help_gen.apply_defaults_and_validate(
-                    merged_input, builder_input_schema, "input"
+                    merged_input, builder_input_schema, "input", strict=not relaxed
                 )
             else:
                 typed_input = merged_input
 
             if builder_job_schema is not None:
                 typed_job = self.help_gen.apply_defaults_and_validate(
-                    merged_job, builder_job_schema, "job"
+                    merged_job, builder_job_schema, "job", strict=not relaxed
                 )
             else:
                 typed_job = merged_job

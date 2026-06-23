@@ -77,7 +77,7 @@ class HelpGenerator:
         return typed
 
     @staticmethod
-    def apply_defaults_and_validate(params: Dict[str, str], schema: List, param_type: str = "parameter") -> Dict:
+    def apply_defaults_and_validate(params: Dict[str, str], schema: List, param_type: str = "parameter", strict: bool = True) -> Dict:
         """Apply schema defaults and validate parameters.
         
         Unlike validate_and_cast(), this method DOES apply defaults from the schema.
@@ -134,7 +134,7 @@ class HelpGenerator:
             msg += f"\nExample: {flag} \"{examples}\""
             errors.append(msg)
 
-        if errors:
+        if errors and strict:
             raise ValidationError("\n".join(errors))
 
         return typed
