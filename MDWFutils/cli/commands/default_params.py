@@ -122,6 +122,18 @@ def do_default_params(args):
     if args.action == "set":
         input_params = ParameterManager.parse(args.input)
         job_params = ParameterManager.parse(args.job)
+        # Inherit exec_path and bind_script from ensemble hmc_paths if not provided
+        hmc_paths = ensemble.get("hmc_paths", {}) if ensemble else {}
+        # exec_path inheritance
+        if "exec_path" not in job_params and hmc_paths.get("exec_path"):
+            job_params["exec_path"] = hmc_paths["exec_path"]
+        # bind_script inheritance (GPU variant default key)
+        if "bind_script" not in job_params and hmc_paths.get("bind_script_gpu"):
+            job_params["bind_script"] = hmc_paths["bind_script_gpu"]
+        # Also consider legacy bind_script_cpu for completeness
+        if "bind_script" not in job_params and hmc_paths.get("bind_script_cpu"):
+            job_params["bind_script"] = hmc_paths["bind_script_cpu"]
+        
         param_manager.save_ensemble_defaults(
             ensemble_id, command, variant, input_params, job_params
         )
