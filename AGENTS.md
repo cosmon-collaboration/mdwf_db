@@ -154,9 +154,7 @@ Most script/input generators should subclass `BaseCommand` from
 
 - `-e/--ensemble` resolution by ID, path, nickname, or current directory.
 - `-i/--input-params` and `-j/--job-params` parsing.
-- schema default application and validation.
-- saved defaults via `--use-default-params`, `--save-default-params`, and
-  `--params-variant`.
+- saved defaults via `--no-defaults`, `--update`, `--dry-run`, and `--params-variant`.
 - file writing and executable bit handling for generated scripts.
 
 Custom commands such as `query`, `ingest`, `status`, `scan`, `build`, and ensemble
@@ -188,12 +186,13 @@ Generated files usually land under ensemble-owned directories:
 
 ## Database Model
 
-The MongoDB backend manages three collections:
+The MongoDB backend manages four collections:
 
 - `ensembles`: ensemble metadata, physics parameters, configuration ranges,
-  HMC paths, `grid_build` params, nicknames, tags, notes, and saved default params.
+  HMC paths, `grid_build` params, nicknames, tags, and notes.
 - `operations`: operation history and SLURM tracking.
 - `measurements`: ingested measurement documents by ensemble/config/type.
+- `ensemble_defaults`: per-param default storage by ensemble/command/variant.
 
 Important behavior:
 
@@ -264,3 +263,13 @@ within the current turn whenever feasible.
   real workflows need MongoDB and representative ensemble directories.
 - Binary parser coverage depends on an external `Creader` executable.
 - Actual compilation on Perlmutter is not covered by unit tests.
+## Defaults Workflow
+
+Defaults are stored in the `ensemble_defaults` collection as structured dicts
+keyed by `(ensemble_id, command, variant)`. Each param declares `storable=True`
+by default; ephemeral params (config ranges, computed values) are `storable=False`.
+
+Loading: defaults load automatically on every command. `--no-defaults` opts out.
+Saving: `--update` persists merged effective params back to DB (storable only).
+Partial defaults: `--update` and `--dry-run` relax required-param validation.
+Migrating: `mdwf_db default_params import` reads legacy YAML files.

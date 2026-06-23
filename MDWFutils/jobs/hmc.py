@@ -249,7 +249,6 @@ class HMCXMLContextBuilder(ContextBuilder):
         ContextParam("MetropolisTest", str, help="Metropolis test (true/false)"),
         ContextParam("NoMetropolisUntil", int, help="Trajectory to start Metropolis"),
         ContextParam("PerformRandomShift", str, help="Perform random shift (true/false)"),
-        ContextParam("StartingType", str, help="Starting type override"),
         ContextParam(
             "StartTrajectory",
             int,
@@ -273,13 +272,11 @@ class HMCXMLContextBuilder(ContextBuilder):
         start_traj = input_params.get("StartTrajectory")
         if start_traj is not None:
             overrides["StartTrajectory"] = start_traj
-
         for key in (
             "MDsteps",
             "MetropolisTest",
             "NoMetropolisUntil",
             "PerformRandomShift",
-            "StartingType",
             "lvl_sizes",
         ):
             if key in input_params and input_params[key] is not None:
