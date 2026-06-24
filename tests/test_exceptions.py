@@ -1,7 +1,7 @@
 """Tests for custom exception hierarchy."""
 
 from MDWFutils.exceptions import (
-    ConnectionError,
+    DatabaseConnectionError,
     DatabaseError,
     EnsembleNotFoundError,
     MDWFError,
@@ -13,7 +13,7 @@ from MDWFutils.exceptions import (
 def test_exception_hierarchy():
     assert issubclass(EnsembleNotFoundError, MDWFError)
     assert issubclass(ValidationError, MDWFError)
-    assert issubclass(ConnectionError, DatabaseError)
+    assert issubclass(DatabaseConnectionError, DatabaseError)
     assert issubclass(TemplateError, MDWFError)
 
 

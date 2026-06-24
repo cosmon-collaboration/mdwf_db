@@ -25,7 +25,7 @@ class DatabaseError(MDWFError):
     """Raised when database operation fails."""
 
 
-class ConnectionError(DatabaseError):
+class DatabaseConnectionError(DatabaseError):
     """Raised when database connection fails."""
 
 

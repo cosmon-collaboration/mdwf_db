@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 
-def add_ensemble_arg(parser, required: bool = True):
+def add_ensemble_arg(parser, required: bool = True, help_text: str | None = None):
     """Add ensemble argument. Set required=False when --params flag is present."""
     parser.add_argument(
         "-e",
         "--ensemble",
         required=required,
-        help="Ensemble ID, directory path, or nickname",
+        help=help_text or "Ensemble ID, directory path, or nickname",
     )
 
 

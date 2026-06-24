@@ -176,6 +176,56 @@ class TestParameterManagerDefaults:
         results = pm.list_ensemble_defaults(1, "hmc-script")
         assert len(results) == 1
         assert results[0]["command"] == "hmc-script"
+
+    def test_new_defaults_win_over_legacy(self):
+        """New ensemble_defaults should take precedence over legacy default_params."""
+        fb = FakeBackend()
+        # Set new defaults
+        fb.set_ensemble_defaults(1, "hmc-script", "gpu", {"trajL": "0.5"}, {})
+        # Set legacy defaults with different value
+        fb.default_params[(1, "hmc-script", "gpu")] = {
+            "input_params": "trajL=999",
+            "job_params": "",
+        }
+        pm = ParameterManager(fb)
+        result = pm.load_ensemble_defaults(1, "hmc-script", "gpu")
+        assert result["input_params"]["trajL"] == "0.5"
+
+    def test_legacy_defaults_parsed_when_new_empty(self):
+        """Legacy string values should be parsed when ensemble_defaults is empty."""
+        fb = FakeBackend()
+        fb.default_params[(1, "hmc-script", "gpu")] = {
+            "input_params": "trajL=0.5 n_trajec=10",
+            "job_params": "nodes=4 time_limit=04:00:00",
+        }
+        pm = ParameterManager(fb)
+        result = pm.load_ensemble_defaults(1, "hmc-script", "gpu")
+        assert result["input_params"]["trajL"] == "0.5"
+        assert result["input_params"]["n_trajec"] == "10"
+        assert result["job_params"]["nodes"] == "4"
+        assert result["job_params"]["time_limit"] == "04:00:00"
+
+    def test_legacy_builder_type_fallback(self, tmp_path, capsys):
+        """Builder type fallback should find legacy key hmc_gpu for hmc-script gpu."""
+        from MDWFutils.cli.commands.hmc_script import HMCGPUCommand
+
+        fb = FakeBackend({1: make_ensemble(tmp_path)})
+        # Store defaults under legacy builder key
+        fb.set_ensemble_defaults(
+            1,
+            "hmc_gpu",
+            "gpu",
+            {"n_trajec": "10", "trajL": "0.5", "lvl_sizes": "9,1,1"},
+            {"nodes": "4"},
+        )
+        cmd = HMCGPUCommand(fb)
+
+        args = _command_args(dry_run=True)
+        result = cmd.execute(args)
+        assert result == 0
+        out = capsys.readouterr()
+        assert "0.5" in out.out
+        assert "4" in out.out
 # ---------------------------------------------------------------------------
 # BaseCommand execute flow: dry-run, update, staleness, no-defaults
 # ---------------------------------------------------------------------------

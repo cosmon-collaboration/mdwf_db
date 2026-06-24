@@ -28,7 +28,6 @@ _SKIP_MODULES = {
     "utils",
     "__init__",
     "hmc_helpers",
-    "hmc_resubmit",
 }
 
 

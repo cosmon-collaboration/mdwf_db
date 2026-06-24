@@ -6,7 +6,7 @@ from typing import Dict, List
 
 from ..backends.base import DatabaseBackend
 from ..exceptions import EnsembleNotFoundError
-from ..jobs.registry import get_input_builder, get_job_builder
+from ..jobs.registry import get_input_builder
 from ..templates.loader import TemplateLoader
 from ..templates.renderer import TemplateRenderer
 
@@ -25,15 +25,10 @@ class EnsembleResolver:
 
 
 class ParameterManager:
-    """Load, merge, and persist parameter strings."""
+    """Load, merge, and persist parameter dicts."""
 
     def __init__(self, backend: DatabaseBackend):
         self.backend = backend
-
-    def load_defaults(
-        self, ensemble_id: int, job_type: str, variant: str
-    ) -> Dict[str, str]:
-        return self.backend.get_default_params(ensemble_id, job_type, variant)
 
     @staticmethod
     def parse(param_string: str) -> Dict[str, str]:
@@ -50,52 +45,8 @@ class ParameterManager:
         merged.update(overrides)
         return merged
 
-    def save_defaults(
-        self,
-        ensemble_id: int,
-        job_type: str,
-        variant: str,
-        input_params: str,
-        job_params: str,
-    ) -> bool:
-        return self.backend.set_default_params(
-            ensemble_id,
-            job_type,
-            variant,
-            input_params,
-            job_params,
-        )
-
-    def list_all_defaults(self, ensemble_id: int, job_type: str = None) -> List[Dict]:
-        """List all saved defaults, optionally filtered by job_type."""
-        if hasattr(self.backend, "list_default_params"):
-            return self.backend.list_default_params(ensemble_id, job_type)
-        # Fallback for backends that don't support this
-        ensemble = self.backend.get_ensemble(ensemble_id)
-        if not ensemble:
-            return []
-        defaults = ensemble.get("default_params", {})
-        result = []
-        for jt, variants in defaults.items():
-            if job_type and jt != job_type:
-                continue
-            for variant_name, variant_data in variants.items():
-                result.append(
-                    {
-                        "job_type": jt,
-                        "variant": variant_name,
-                        "input_params": variant_data.get("input_params", ""),
-                        "job_params": variant_data.get("job_params", ""),
-                    }
-                )
-        return result
-
-    def delete_defaults(self, ensemble_id: int, job_type: str, variant: str) -> bool:
-        """Delete a specific variant."""
-        return self.backend.delete_default_params(ensemble_id, job_type, variant)
-
     # ------------------------------------------------------------------
-    # New ensemble_defaults collection methods
+    # Ensemble defaults (per-param, per-command storage)
     # ------------------------------------------------------------------
     def load_ensemble_defaults(
         self,
@@ -103,8 +54,28 @@ class ParameterManager:
         command: str,
         variant: str,
     ) -> Dict[str, Dict[str, str]]:
-        """Load per-param defaults from the ensemble_defaults collection."""
-        return self.backend.get_ensemble_defaults(ensemble_id, command, variant)
+        """Load per-param defaults, falling back to legacy string storage."""
+        defaults = self.backend.get_ensemble_defaults(ensemble_id, command, variant)
+        if defaults.get("input_params") or defaults.get("job_params"):
+            return defaults
+
+        # Try legacy nested defaults if backend supports it
+        if hasattr(self.backend, "get_legacy_default_params"):
+            try:
+                legacy = self.backend.get_legacy_default_params(
+                    ensemble_id, command, variant
+                )
+                input_raw = legacy.get("input_params", "")
+                job_raw = legacy.get("job_params", "")
+                if input_raw or job_raw:
+                    return {
+                        "input_params": self.parse(input_raw),
+                        "job_params": self.parse(job_raw),
+                    }
+            except EnsembleNotFoundError:
+                pass
+
+        return {"input_params": {}, "job_params": {}}
 
     def save_ensemble_defaults(
         self,
@@ -173,7 +144,7 @@ class BuildScriptGenerator:
 
 
 class ScriptGenerator:
-    """Generate input files and SLURM scripts using templates."""
+    """Generate input files using templates."""
 
     def __init__(self, backend: DatabaseBackend):
         self.backend = backend
@@ -190,13 +161,3 @@ class ScriptGenerator:
         context = builder.build(self.backend, ensemble_id, job_params or {}, params)
         return self.renderer.render(f"input/{input_type}.j2", context)
 
-    def generate_slurm(
-        self,
-        ensemble_id: int,
-        job_type: str,
-        job_params: Dict,
-        input_params: Dict,
-    ) -> str:
-        builder = get_job_builder(job_type)
-        context = builder.build(self.backend, ensemble_id, job_params, input_params)
-        return self.renderer.render(f"slurm/{job_type}.j2", context)

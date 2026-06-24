@@ -118,7 +118,7 @@ def test_hmc_xml_builder_requires_trajectory_count(fake_backend):
 def test_hmc_script_gpu_writes_xml_with_overrides(hmc_ens_dir, hmc_backend, monkeypatch):
     monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
     monkeypatch.setattr(
-        "MDWFutils.cli.command.get_backend",
+        "MDWFutils.cli.runtime.get_backend",
         lambda _url: hmc_backend,
     )
 
@@ -145,7 +145,7 @@ def test_hmc_script_gpu_writes_xml_with_overrides(hmc_ens_dir, hmc_backend, monk
 def test_hmc_script_accepts_xml_alias_names_and_optional_overrides(hmc_ens_dir, hmc_backend, monkeypatch):
     monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
     monkeypatch.setattr(
-        "MDWFutils.cli.command.get_backend",
+        "MDWFutils.cli.runtime.get_backend",
         lambda _url: hmc_backend,
     )
 
@@ -173,7 +173,7 @@ def test_hmc_script_accepts_xml_alias_names_and_optional_overrides(hmc_ens_dir, 
 def test_hmc_script_prefers_n_trajec_when_both_alias_names_given(hmc_ens_dir, hmc_backend, monkeypatch):
     monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
     monkeypatch.setattr(
-        "MDWFutils.cli.command.get_backend",
+        "MDWFutils.cli.runtime.get_backend",
         lambda _url: hmc_backend,
     )
 
@@ -215,7 +215,7 @@ def test_hmc_xml_alias_paths(
 ):
     monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
     monkeypatch.setattr(
-        "MDWFutils.cli.command.get_backend",
+        "MDWFutils.cli.runtime.get_backend",
         lambda _url: hmc_backend,
     )
 
@@ -227,3 +227,29 @@ def test_hmc_xml_alias_paths(
     vals = _hmc_vals(xml_path.read_text())
     for key, value in expected.items():
         assert vals[key] == value
+
+
+def test_hmc_gpu_script_includes_resubmit_template(hmc_ens_dir, hmc_backend, monkeypatch):
+    """HMC GPU script should include hmc_resubmit.j2 template, not source Python module."""
+    monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
+    monkeypatch.setattr(
+        "MDWFutils.cli.runtime.get_backend",
+        lambda _url: hmc_backend,
+    )
+
+    xml_path = _run_hmc_command(
+        HMCGPUCommand(backend=hmc_backend),
+        hmc_ens_dir,
+        input_params="n_trajec=15 trajL=2.6 mode=reseed config_start=0 lvl_sizes=9,1,1",
+        job_params="exec_path=/bin/Nf2p1p1 bind_script=/bind/gpu.sh cfg_max=100",
+    )
+    assert xml_path.is_file()
+
+    script = next((hmc_ens_dir / "cnfg" / "slurm").glob("hmc_gpu_*.sh")).read_text()
+
+    # Template should be included inline
+    assert "hmc_auto_resubmit" in script
+    assert 'sbatch --dependency=afterok:$SLURM_JOBID "$batch"' in script
+
+    # Should NOT contain the old Python source command
+    assert "python -m MDWFutils.jobs.hmc_resubmit" not in script
