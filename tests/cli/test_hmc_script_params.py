@@ -65,8 +65,9 @@ def test_trajectories_alias_satisfies_n_trajec():
     assert typed["n_trajec"] == 100
 
 
+
 def test_hmc_script_gpu_cli_params(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv", ["mdwf_db", "hmc-script", "gpu", "--params"])
+    monkeypatch.setattr(sys, "argv", ["mdwf_db", "hmc", "gpu", "--params"])
     rc = main()
     assert rc == 0
     assert "n_trajec" in capsys.readouterr().out

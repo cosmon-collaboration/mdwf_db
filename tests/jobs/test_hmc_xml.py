@@ -125,7 +125,7 @@ def test_hmc_script_gpu_writes_xml_with_overrides(hmc_ens_dir, hmc_backend, monk
     xml_path = _run_hmc_command(
         HMCGPUCommand(backend=hmc_backend),
         hmc_ens_dir,
-        input_params="n_trajec=15 trajL=2.6 mode=reseed config_start=0 lvl_sizes=9,1,1",
+        input_params="n_trajec=15 trajL=2.6 mode=tepid config_start=0 lvl_sizes=9,1,1",
         job_params="exec_path=/bin/Nf2p1p1 bind_script=/bind/gpu.sh",
     )
     assert xml_path.is_file()
@@ -240,7 +240,7 @@ def test_hmc_gpu_script_includes_resubmit_template(hmc_ens_dir, hmc_backend, mon
     xml_path = _run_hmc_command(
         HMCGPUCommand(backend=hmc_backend),
         hmc_ens_dir,
-        input_params="n_trajec=15 trajL=2.6 mode=reseed config_start=0 lvl_sizes=9,1,1",
+        input_params="n_trajec=15 trajL=2.6 mode=tepid config_start=0 lvl_sizes=9,1,1",
         job_params="exec_path=/bin/Nf2p1p1 bind_script=/bind/gpu.sh cfg_max=100",
     )
     assert xml_path.is_file()
