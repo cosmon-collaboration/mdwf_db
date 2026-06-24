@@ -1,16 +1,14 @@
-"""Template renderer with optional validation."""
+"""Template renderer."""
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Type
+from typing import Dict
 
-from pydantic import BaseModel, ValidationError as PydanticValidationError
-
-from ..exceptions import TemplateError, ValidationError
+from ..exceptions import TemplateError
 
 
 class TemplateRenderer:
-    """Render templates with optional Pydantic validation."""
+    """Render templates."""
 
     def __init__(self, loader):
         self.loader = loader
@@ -19,15 +17,8 @@ class TemplateRenderer:
         self,
         template_name: str,
         context: Dict,
-        schema: Optional[Type[BaseModel]] = None,
     ) -> str:
         """Render a template to a string."""
-        if schema:
-            try:
-                schema(**context)
-            except PydanticValidationError as exc:
-                raise ValidationError(str(exc)) from exc
-
         try:
             template = self.loader.load(template_name)
             return template.render(**context)

@@ -63,7 +63,7 @@ fi
 echo "Self-Resubmission Check:"
 echo "------------------------"
 if [[ -n "$cfg_max" ]]; then
-    source <(python -m MDWFutils.jobs.hmc_resubmit)
+    {% include "common/hmc_resubmit.j2" %}
     hmc_auto_resubmit
 else
     echo "cfg_max not set - no automatic resubmission"

@@ -5,12 +5,10 @@ ensemble_utils.py
 Common utilities for CLI commands that work with ensembles.
 """
 
-import os
 import sys
-
-from MDWFutils.backends import get_backend
-from MDWFutils.exceptions import ConnectionError, EnsembleNotFoundError
 from .components import EnsembleResolver
+from ..exceptions import EnsembleNotFoundError
+from .runtime import load_default_backend
 
 
 def add_ensemble_argument(parser, help_text=None, required=True):
@@ -22,13 +20,8 @@ def add_ensemble_argument(parser, help_text=None, required=True):
         help_text: Custom help text (optional)
         required: Whether the argument is required (default: True)
     """
-    default_help = ('Ensemble identifier: either ensemble ID (integer) or path to ensemble directory')
-    
-    parser.add_argument(
-        '-e', '--ensemble',
-        required=required,
-        help=help_text or default_help
-    )
+    from .args import add_ensemble_arg
+    add_ensemble_arg(parser, required=required, help_text=help_text)
 
 
 def resolve_ensemble_from_args(args):
@@ -47,29 +40,9 @@ def resolve_ensemble_from_args(args):
         return None, None
 
 
-def migrate_ensemble_id_argument(parser):
-    """
-    Update existing --ensemble-id arguments to use the new flexible --ensemble argument.
-    This is for backward compatibility during migration.
-    
-    Args:
-        parser: ArgumentParser to update
-    """
-    # Remove the old ensemble-id argument if it exists and add the new one
-    for action in parser._actions[:]:
-        if hasattr(action, 'dest') and action.dest == 'ensemble_id':
-            parser._remove_action(action)
-            break
-    
-    add_ensemble_argument(parser) 
-
-
 def get_backend_for_args(args):
     """Resolve backend connection using environment variables only (MongoDB required)."""
-    connection = os.getenv("MDWF_DB_URL")
-    if not connection:
-        raise ConnectionError("MDWF_DB_URL environment variable not set")
-    return get_backend(connection)
+    return load_default_backend()
 
 
 def _backend_from_args(args):

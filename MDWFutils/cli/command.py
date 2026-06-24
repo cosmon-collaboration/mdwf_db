@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Type
 
-from ..backends import get_backend
-from ..exceptions import ConnectionError, MDWFError
+from ..exceptions import MDWFError
 from ..jobs.schema import (
     ContextBuilder,
     ContextParam,
@@ -28,13 +26,7 @@ from .args import (
 )
 from .components import EnsembleResolver, ParameterManager, ScriptGenerator
 from .help_generator import HelpGenerator
-
-
-def _load_default_backend():
-    connection = os.getenv("MDWF_DB_URL")
-    if not connection:
-        raise ConnectionError("MDWF_DB_URL environment variable not set")
-    return get_backend(connection)
+from .runtime import load_default_backend
 
 
 def resolve_command_schemas(cmd) -> tuple[Optional[List], Optional[List]]:
@@ -54,14 +46,6 @@ def resolve_command_schemas(cmd) -> tuple[Optional[List], Optional[List]]:
             input_schema = _deduplicate_schema(job_input)
     elif cmd.input_builder_class is not None:
         input_schema = _deduplicate_schema(cmd.input_builder_class.input_params_schema)
-    elif cmd.job_type:
-        from ..jobs.registry import get_job_schema
-
-        job_schema, input_schema = get_job_schema(cmd.job_type)
-    elif cmd.input_type:
-        from ..jobs.registry import get_input_schema
-
-        input_schema = get_input_schema(cmd.input_type)
 
     return input_schema, job_schema
 
@@ -75,25 +59,17 @@ def _resolve_input_schema(command: "BaseCommand") -> Optional[List[ContextParam]
 class BaseCommand:
     """Template method implementation for CLI commands.
 
-    Commands can specify builders two ways:
-    1. Direct class references (preferred): job_builder_class, input_builder_class
-    2. String names (legacy): job_type, input_type
-
-    Direct class references provide IDE support (autocomplete, go-to-definition)
-    and eliminate magic naming.
+    Commands specify builders via direct class references:
+    job_builder_class, input_builder_class
     """
 
     name: Optional[str] = None
     help: Optional[str] = None
     aliases: list[str] = []
 
-    # New: Direct builder class references (preferred)
+    # Direct builder class references
     job_builder_class: Optional[Type[ContextBuilder]] = None
     input_builder_class: Optional[Type[ContextBuilder]] = None
-
-    # Legacy: String-based type names (for backward compatibility)
-    _job_type: Optional[str] = None
-    _input_type: Optional[str] = None
 
     default_variant: str = "default"
 
@@ -103,27 +79,15 @@ class BaseCommand:
 
     @property
     def job_type(self) -> Optional[str]:
-        """Get job type name from builder class or legacy attribute."""
         if self.job_builder_class is not None:
             return self.job_builder_class.type_name
-        return self._job_type
-
-    @job_type.setter
-    def job_type(self, value: Optional[str]):
-        """Allow setting job_type for backward compatibility."""
-        self._job_type = value
+        return None
 
     @property
     def input_type(self) -> Optional[str]:
-        """Get input type name from builder class or legacy attribute."""
         if self.input_builder_class is not None:
             return self.input_builder_class.type_name
-        return self._input_type
-
-    @input_type.setter
-    def input_type(self, value: Optional[str]):
-        """Allow setting input_type for backward compatibility."""
-        self._input_type = value
+        return None
 
     # ------------------------------------------------------------------
     # Argparse registration helpers
@@ -314,23 +278,11 @@ class BaseCommand:
                 job_context = job_builder.build(
                     backend, ensemble_id, typed_job, typed_input
                 )
-            elif self.job_type:
-                from ..jobs.registry import get_job_builder
-
-                job_builder = get_job_builder(self.job_type)
-                job_context = job_builder.build(
-                    backend, ensemble_id, typed_job, typed_input
-                )
 
             # Generate input file if needed
             input_path = None
-            if self.input_builder_class is not None or self.input_type:
-                if self.input_builder_class is not None:
-                    input_builder = self.input_builder_class()
-                else:
-                    from ..jobs.registry import get_input_builder
-
-                    input_builder = get_input_builder(self.input_type)
+            if self.input_builder_class is not None:
+                input_builder = self.input_builder_class()
 
                 input_context = input_builder.build(
                     backend, ensemble_id, typed_job, typed_input
@@ -343,15 +295,10 @@ class BaseCommand:
                             "_input_output_prefix"
                         ]
 
-                if self.input_builder_class is not None:
-                    input_content = generator.renderer.render(
-                        f"input/{input_builder.type_name}.j2",
-                        input_context,
-                    )
-                else:
-                    input_content = generator.generate_input(
-                        ensemble_id, self.input_type, typed_input, job_params=typed_job
-                    )
+                input_content = generator.renderer.render(
+                    f"input/{input_builder.type_name}.j2",
+                    input_context,
+                )
                 input_suffix = input_context.get("_output_suffix", ".in")
                 input_path = self._write_file(
                     ensemble,
@@ -366,19 +313,15 @@ class BaseCommand:
                     "wit_input": "WIT",
                     "glu_input": "GLU",
                 }
-                input_type_name = (
-                    self.input_builder_class.type_name
-                    if self.input_builder_class is not None
-                    else self.input_type
-                )
+                input_type_name = self.input_builder_class.type_name
                 display_name = input_names.get(input_type_name, input_type_name)
                 print(f"Generated {display_name} input: {input_path}")
 
             # Generate job script if needed
             script_path = None
-            if self.job_builder_class is not None or self.job_type:
-                script_content = generator.generate_slurm(
-                    ensemble_id, self.job_type, typed_job, typed_input
+            if self.job_builder_class is not None:
+                script_content = generator.renderer.render(
+                    f"slurm/{self.job_type}.j2", job_context
                 )
                 script_path = self._write_file(
                     ensemble,
@@ -704,7 +647,7 @@ class BaseCommand:
     def _resolve_backend(self, args):
         if self._backend_override is not None:
             return self._backend_override
-        return _load_default_backend()
+        return load_default_backend()
 
     def _write_file(
         self,

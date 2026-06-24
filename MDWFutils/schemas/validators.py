@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class PhysicsParams(BaseModel):
@@ -33,7 +33,8 @@ class GridBuildParams(BaseModel):
     eofa_hs_extra: Optional[float] = None
     notes: Optional[str] = None
 
-    @validator("hasenbusch")
+    @field_validator("hasenbusch")
+    @classmethod
     def _positive_masses(cls, value):
         if not value or any(m <= 0 for m in value):
             raise ValueError("hasenbusch must be a non-empty list of positive masses")

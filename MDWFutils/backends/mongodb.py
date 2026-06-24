@@ -10,7 +10,7 @@ from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.errors import ConnectionFailure, DuplicateKeyError, PyMongoError
 
 from ..exceptions import (
-    ConnectionError,
+    DatabaseConnectionError,
     DatabaseError,
     EnsembleNotFoundError,
     ValidationError,
@@ -31,11 +31,11 @@ def retry_on_error(max_tries: int = 3, delay: float = 1.0):
                 except ConnectionFailure as exc:
                     last_exc = exc
                     if attempt == max_tries - 1:
-                        raise ConnectionError(str(exc)) from exc
+                        raise DatabaseConnectionError(str(exc)) from exc
                     time.sleep(delay * (2**attempt))
                 except PyMongoError as exc:
                     raise DatabaseError(str(exc)) from exc
-            raise ConnectionError(str(last_exc)) from last_exc
+            raise DatabaseConnectionError(str(last_exc)) from last_exc
 
         return wrapper
 
@@ -58,7 +58,7 @@ class MongoDBBackend(DatabaseBackend):
             )
             self.client.server_info()
         except ConnectionFailure as exc:
-            raise ConnectionError(f"Cannot connect to MongoDB: {exc}") from exc
+            raise DatabaseConnectionError(f"Cannot connect to MongoDB: {exc}") from exc
 
         self.db = self.client.get_database()
 
@@ -121,7 +121,7 @@ class MongoDBBackend(DatabaseBackend):
             "directory": validated.directory,
             "status": validated.status,
             "description": validated.description,
-            "physics": validated.physics.dict(),
+            "physics": validated.physics.model_dump(),
             "configurations": {},
             "hmc_paths": {},
             "grid_build": {},
@@ -218,82 +218,25 @@ class MongoDBBackend(DatabaseBackend):
         return ens_result.deleted_count > 0
 
     # ------------------------------------------------------------------
-    # Default parameter operations
+    # Legacy default parameter operations (read-only compatibility)
     # ------------------------------------------------------------------
     @retry_on_error()
-    def get_default_params(
+    def get_legacy_default_params(
         self,
         ensemble_id: int,
-        job_type: str,
+        command: str,
         variant: str,
     ) -> Dict[str, str]:
+        """Fetch legacy nested default parameters stored in ensemble document."""
         ensemble = self.get_ensemble(ensemble_id)
         if not ensemble:
             raise EnsembleNotFoundError(ensemble_id)
 
-        defaults = ensemble.get("default_params", {}).get(job_type, {}).get(variant, {})
+        defaults = ensemble.get("default_params", {}).get(command, {}).get(variant, {})
         return {
             "input_params": defaults.get("input_params", ""),
             "job_params": defaults.get("job_params", ""),
         }
-
-    @retry_on_error()
-    def set_default_params(
-        self,
-        ensemble_id: int,
-        job_type: str,
-        variant: str,
-        input_params: str,
-        job_params: str,
-    ) -> bool:
-        update_path = f"default_params.{job_type}.{variant}"
-        result = self.ensembles.update_one(
-            {"ensemble_id": ensemble_id},
-            {
-                "$set": {
-                    f"{update_path}.input_params": input_params,
-                    f"{update_path}.job_params": job_params,
-                }
-            },
-        )
-        return result.modified_count > 0
-
-    @retry_on_error()
-    def delete_default_params(
-        self, ensemble_id: int, job_type: str, variant: str
-    ) -> bool:
-        update_path = f"default_params.{job_type}.{variant}"
-        result = self.ensembles.update_one(
-            {"ensemble_id": ensemble_id},
-            {"$unset": {update_path: ""}},
-        )
-        return result.modified_count > 0
-
-    def list_default_params(
-        self, ensemble_id: int, job_type: Optional[str] = None
-    ) -> List[Dict]:
-        """List all default parameters for an ensemble, optionally filtered by job_type."""
-        ensemble = self.get_ensemble(ensemble_id)
-        if not ensemble:
-            raise EnsembleNotFoundError(ensemble_id)
-
-        defaults = ensemble.get("default_params", {})
-        result = []
-
-        for jt, variants in defaults.items():
-            if job_type and jt != job_type:
-                continue
-            for variant_name, variant_data in variants.items():
-                result.append(
-                    {
-                        "job_type": jt,
-                        "variant": variant_name,
-                        "input_params": variant_data.get("input_params", ""),
-                        "job_params": variant_data.get("job_params", ""),
-                    }
-                )
-
-        return result
 
     # ------------------------------------------------------------------
     # Ensemble defaults (per-param, per-command storage)

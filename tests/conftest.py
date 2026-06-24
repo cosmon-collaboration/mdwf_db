@@ -150,34 +150,13 @@ class FakeBackend(DatabaseBackend):
         self._rebuild_indexes()
         return True
 
-    def get_default_params(
-        self, ensemble_id: int, job_type: str, variant: str
+    def get_legacy_default_params(
+        self, ensemble_id: int, command: str, variant: str
     ) -> Dict[str, str]:
         return deepcopy(
             self.default_params.get(
-                (ensemble_id, job_type, variant), {"input_params": "", "job_params": ""}
+                (ensemble_id, command, variant), {"input_params": "", "job_params": ""}
             )
-        )
-
-    def set_default_params(
-        self,
-        ensemble_id: int,
-        job_type: str,
-        variant: str,
-        input_params: str,
-        job_params: str,
-    ) -> bool:
-        self.default_params[(ensemble_id, job_type, variant)] = {
-            "input_params": input_params,
-            "job_params": job_params,
-        }
-        return True
-
-    def delete_default_params(
-        self, ensemble_id: int, job_type: str, variant: str
-    ) -> bool:
-        return (
-            self.default_params.pop((ensemble_id, job_type, variant), None) is not None
         )
 
     def get_ensemble_defaults(
@@ -443,7 +422,5 @@ def mock_db(monkeypatch, fake_backend: FakeBackend):
     def _get_backend(conn):
         return fake_backend
 
-    monkeypatch.setattr("MDWFutils.backends.get_backend", _get_backend)
-    monkeypatch.setattr("MDWFutils.cli.build_command.get_backend", _get_backend)
-    monkeypatch.setattr("MDWFutils.cli.ensemble_utils.get_backend", _get_backend)
+    monkeypatch.setattr("MDWFutils.cli.runtime.get_backend", _get_backend)
     return fake_backend

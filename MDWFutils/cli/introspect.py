@@ -193,13 +193,6 @@ def _get_schemas_from_command(cmd) -> tuple:
         role = "job" if cmd.job_builder_class is not None else "input"
         return (input_schema, job_schema, builder, f"{role}:{builder}")
 
-    # Fall back to legacy string-based lookup via registry
-    if cmd.job_type:
-        builder = cmd.job_type
-        return (input_schema, job_schema, builder, f"job:{builder}")
-    if cmd.input_type:
-        builder = cmd.input_type
-        return (input_schema, job_schema, builder, f"input:{builder}")
 
     return (None, None, None, None)
 

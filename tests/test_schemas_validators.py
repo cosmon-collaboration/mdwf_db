@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
-from MDWFutils.schemas.validators import EnsembleCreate, PhysicsParams
+from MDWFutils.schemas.validators import EnsembleCreate, GridBuildParams, PhysicsParams
 
 
 def test_physics_params_valid():
@@ -22,3 +22,35 @@ def test_ensemble_create_status_pattern():
 
     with pytest.raises(PydanticValidationError):
         EnsembleCreate(directory="/tmp/e", physics=PhysicsParams(beta=4.0, b=1.75, Ls=10, mc=0.85, ms=0.07, ml=0.02, L=32, T=64), status="INVALID")
+
+def test_grid_build_params_accepts_positive_hasenbusch():
+    params = GridBuildParams(
+        beta_line="default",
+        light_mass=0.003,
+        hasenbusch=[0.5, 1.0],
+        nlvl1=1,
+        eofa_integrator_level=1,
+    )
+    assert params.hasenbusch == [0.5, 1.0]
+
+
+def test_grid_build_params_rejects_empty_hasenbusch():
+    with pytest.raises(PydanticValidationError):
+        GridBuildParams(
+            beta_line="default",
+            light_mass=0.003,
+            hasenbusch=[],
+            nlvl1=1,
+            eofa_integrator_level=1,
+        )
+
+
+def test_grid_build_params_rejects_nonpositive_mass():
+    with pytest.raises(PydanticValidationError):
+        GridBuildParams(
+            beta_line="default",
+            light_mass=0.003,
+            hasenbusch=[0.5, -1.0],
+            nlvl1=1,
+            eofa_integrator_level=1,
+        )

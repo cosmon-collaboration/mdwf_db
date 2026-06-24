@@ -32,21 +32,6 @@ def format_float(value: Any) -> str:
         return str(value)
 
 
-def format_sci(value: Any) -> str:
-    """Format a float in scientific notation for correlator values."""
-    if value is None:
-        return ''
-    try:
-        if math.isnan(value):
-            return 'NaN'
-        # Use scientific notation for very small/large values
-        if abs(value) < 1e-3 or abs(value) > 1e5:
-            return f"{value:.4e}"
-        return f"{value:.6f}".rstrip('0').rstrip('.')
-    except (TypeError, ValueError):
-        return str(value)
-
-
 def print_table(headers: List[str], rows: List[Union[Dict, List]]) -> None:
     """Print a formatted table with proper column alignment.
     

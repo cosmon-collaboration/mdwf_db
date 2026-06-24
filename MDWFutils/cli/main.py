@@ -2,18 +2,8 @@
 import argparse
 import pkgutil
 import importlib
-import os
 import sys
-
-
-def get_default_db_connection():
-    """
-    Get default database connection string (MongoDB only).
-
-    Returns:
-        str: MongoDB connection string if MDWF_DB_URL is set
-    """
-    return os.getenv('MDWF_DB_URL')
+from .runtime import get_default_db_connection
 
 def main():
     # Create parser WITHOUT epilog initially

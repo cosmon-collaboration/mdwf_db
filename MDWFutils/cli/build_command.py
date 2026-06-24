@@ -2,27 +2,20 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from ..backends import get_backend
 from ..build.registry import get_build_builder, get_build_schema
 from ..build.schema import parse_build_params
 from ..build.site import resolve_site_profile
-from ..exceptions import ConnectionError, MDWFError
+from ..exceptions import MDWFError
 from .args import add_output_file_arg
 from .components import BuildScriptGenerator, EnsembleResolver
 from .help_generator import HelpGenerator
+from .runtime import load_default_backend
 from ..jobs.schema import _deduplicate_schema
 
-
-def _load_backend():
-    connection = os.getenv("MDWF_DB_URL")
-    if not connection:
-        raise ConnectionError("MDWF_DB_URL environment variable not set")
-    return get_backend(connection)
 
 
 def write_build_artifact(content: str, context: Dict, output_file: Optional[str] = None) -> Path:
@@ -87,7 +80,7 @@ class BuildCommand:
         if getattr(args, "show_params", False):
             return self._print_params()
         try:
-            backend = self._backend_override or _load_backend()
+            backend = self._backend_override or load_default_backend()
             build_params = parse_build_params(args.params or "")
             ensemble_id, ensemble = self._resolve_ensemble(backend, args)
             generator = BuildScriptGenerator(backend)

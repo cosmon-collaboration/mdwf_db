@@ -12,9 +12,10 @@ from ...build.operations import SITE_ENSEMBLE_NICKNAME
 from ...build.site import DEFAULT_SOFTWARE_ROOT, resolve_site_profile
 from ...exceptions import MDWFError
 from ...schemas.validators import GridBuildParams
-from ..build_command import _load_backend, write_build_artifact
+from ..build_command import write_build_artifact
 from ..components import BuildScriptGenerator, EnsembleResolver
-from ..ensemble_utils import get_backend_for_args, resolve_ensemble_from_args
+from ..ensemble_utils import resolve_ensemble_from_args
+from ..runtime import load_default_backend
 from ...templates.loader import TemplateLoader
 from ...templates.renderer import TemplateRenderer
 
@@ -78,7 +79,7 @@ def _generate_build(args) -> int:
         print(HelpGenerator().format_params_detailed([], schema, command_name=args.build_type))
         return 0
     try:
-        backend = _load_backend()
+        backend = load_default_backend()
         build_type = args.build_type
         from ...build.schema import parse_build_params
 
@@ -120,7 +121,7 @@ def _register_hmc_paths(backend, ensemble_id: int, context: dict) -> None:
 
 
 def _init_site(args) -> int:
-    backend = get_backend_for_args(args)
+    backend = load_default_backend()
     site = resolve_site_profile()
     renderer = TemplateRenderer(TemplateLoader())
     perm_content = renderer.render(
@@ -160,7 +161,7 @@ def _init_site(args) -> int:
 
 
 def _grid_init(args) -> int:
-    backend = get_backend_for_args(args)
+    backend = load_default_backend()
     ensemble_id, ensemble = resolve_ensemble_from_args(args)
     if not ensemble:
         return 1

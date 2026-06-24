@@ -40,33 +40,21 @@ class DatabaseBackend(ABC):
         """Delete an ensemble and related records."""
 
     # ------------------------------------------------------------------
-    # Default parameter operations
+    # Legacy default parameter operations (read-only compatibility)
     # ------------------------------------------------------------------
-    @abstractmethod
-    def get_default_params(
+    def get_legacy_default_params(
         self,
         ensemble_id: int,
-        job_type: str,
+        command: str,
         variant: str,
     ) -> Dict[str, str]:
-        """Fetch default parameters for a job type/variant."""
+        """Fetch legacy nested default parameters for a command/variant.
 
-    @abstractmethod
-    def set_default_params(
-        self,
-        ensemble_id: int,
-        job_type: str,
-        variant: str,
-        input_params: str,
-        job_params: str,
-    ) -> bool:
-        """Persist default parameter strings for a job type/variant."""
-
-    @abstractmethod
-    def delete_default_params(
-        self, ensemble_id: int, job_type: str, variant: str
-    ) -> bool:
-        """Remove stored default params for a job type/variant."""
+        Returns the old string payload shape exactly as
+        ``{"input_params": str, "job_params": str}``.
+        Returns empty strings when no legacy defaults exist.
+        """
+        return {"input_params": "", "job_params": ""}
 
     # ------------------------------------------------------------------
     # Ensemble defaults (per-param, per-command storage)
