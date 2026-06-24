@@ -249,7 +249,7 @@ def test_hmc_gpu_script_includes_resubmit_template(hmc_ens_dir, hmc_backend, mon
 
     # Template should be included inline
     assert "hmc_auto_resubmit" in script
-    assert 'sbatch --dependency=afterok:$SLURM_JOBID "$batch"' in script
+    assert 'sbatch --dependency=afterok:$current_job_id "$batch"' in script
 
     # Should NOT contain the old Python source command
     assert "python -m MDWFutils.jobs.hmc_resubmit" not in script
