@@ -49,7 +49,7 @@ OPERATION UPDATES (require both -o and -s):
 
 def do_update(args):
     backend = get_backend_for_args(args)
-    ensemble_id, ensemble = resolve_ensemble_from_args(args)
+    ensemble_id, ensemble = resolve_ensemble_from_args(args, backend=backend)
     if ensemble_id is None:
         return 1
 

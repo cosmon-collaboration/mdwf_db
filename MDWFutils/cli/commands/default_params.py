@@ -57,7 +57,7 @@ def _add_common_args(parser):
 
 def do_default_params(args):
     backend = get_backend_for_args(args)
-    ensemble_id, ensemble = resolve_ensemble_from_args(args)
+    ensemble_id, ensemble = resolve_ensemble_from_args(args, backend=backend)
     if not ensemble:
         return 1
 

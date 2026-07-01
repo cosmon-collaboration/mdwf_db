@@ -45,8 +45,16 @@ def retry_on_error(max_tries: int = 3, delay: float = 1.0):
 class MongoDBBackend(DatabaseBackend):
     """MongoDB-based implementation of the DatabaseBackend interface."""
 
-    def __init__(self, connection_string: str):
+    def __init__(
+        self,
+        connection_string: str,
+        *,
+        validate_connection: bool = True,
+        ensure_indexes: bool = True,
+    ):
         super().__init__(connection_string)
+        self._closed = False
+        self._indexes_ensured = False
 
         # Connect to MongoDB
         try:
@@ -56,7 +64,8 @@ class MongoDBBackend(DatabaseBackend):
                 serverSelectionTimeoutMS=5000,
                 retryWrites=True,
             )
-            self.client.server_info()
+            if validate_connection:
+                self.validate_connection()
         except ConnectionFailure as exc:
             raise DatabaseConnectionError(f"Cannot connect to MongoDB: {exc}") from exc
 
@@ -66,7 +75,26 @@ class MongoDBBackend(DatabaseBackend):
         self.operations = self.db.operations
         self.measurements = self.db.measurements
         self.ensemble_defaults = self.db.ensemble_defaults
+        if ensure_indexes:
+            self.ensure_indexes()
+
+    def close(self) -> None:
+        """Close the underlying MongoClient once."""
+        if self._closed:
+            return
+        self.client.close()
+        self._closed = True
+
+    def validate_connection(self) -> None:
+        """Verify MongoDB connectivity."""
+        self.client.server_info()
+
+    def ensure_indexes(self) -> None:
+        """Create required MongoDB indexes."""
+        if self._indexes_ensured:
+            return
         self._ensure_indexes()
+        self._indexes_ensured = True
 
     def _ensure_indexes(self) -> None:
         """Create MongoDB indexes."""
@@ -101,6 +129,7 @@ class MongoDBBackend(DatabaseBackend):
     # ------------------------------------------------------------------
     @retry_on_error()
     def add_ensemble(self, directory: str, physics: Dict, **kwargs) -> int:
+        self.ensure_indexes()
         from pathlib import Path
         resolved_dir = str(Path(directory).expanduser().resolve())
 
@@ -270,6 +299,7 @@ class MongoDBBackend(DatabaseBackend):
         job_params: Dict[str, str],
     ) -> bool:
         """Upsert per-param defaults for a command/variant."""
+        self.ensure_indexes()
         from datetime import datetime
 
         result = self.ensemble_defaults.replace_one(

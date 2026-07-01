@@ -25,7 +25,7 @@ def register(subparsers):
 
 def do_promote(args):
     backend = get_backend_for_args(args)
-    ensemble_id, ensemble = resolve_ensemble_from_args(args)
+    ensemble_id, ensemble = resolve_ensemble_from_args(args, backend=backend)
     if not ensemble:
         return 1
 

@@ -162,7 +162,7 @@ def _init_site(args) -> int:
 
 def _grid_init(args) -> int:
     backend = load_default_backend()
-    ensemble_id, ensemble = resolve_ensemble_from_args(args)
+    ensemble_id, ensemble = resolve_ensemble_from_args(args, backend=backend)
     if not ensemble:
         return 1
     existing = ensemble.get("grid_build") or {}

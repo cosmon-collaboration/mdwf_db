@@ -24,11 +24,11 @@ def add_ensemble_argument(parser, help_text=None, required=True):
     add_ensemble_arg(parser, required=required, help_text=help_text)
 
 
-def resolve_ensemble_from_args(args):
+def resolve_ensemble_from_args(args, backend=None):
     """
     Resolve ensemble from CLI arguments using the backend abstraction.
     """
-    backend = _backend_from_args(args)
+    backend = backend or _backend_from_args(args)
     resolver = EnsembleResolver(backend)
     try:
         return resolver.resolve(args.ensemble)

@@ -417,10 +417,14 @@ def tmp_software_root(tmp_path, monkeypatch) -> Path:
 @pytest.fixture
 def mock_db(monkeypatch, fake_backend: FakeBackend):
     """Patch get_backend imports used by CLI modules."""
+    from MDWFutils.cli import runtime
+
+    runtime.close_default_backends()
     monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
 
-    def _get_backend(conn):
+    def _get_backend(conn, **kwargs):
         return fake_backend
 
     monkeypatch.setattr("MDWFutils.cli.runtime.get_backend", _get_backend)
-    return fake_backend
+    yield fake_backend
+    runtime.close_default_backends()

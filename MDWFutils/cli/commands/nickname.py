@@ -40,7 +40,7 @@ def register(subparsers: argparse._SubParsersAction):
 
 def do_nickname(args):
     backend = get_backend_for_args(args)
-    ensemble_id, ensemble = resolve_ensemble_from_args(args)
+    ensemble_id, ensemble = resolve_ensemble_from_args(args, backend=backend)
     if ensemble_id is None:
         return 1
 
@@ -78,5 +78,4 @@ def do_nickname(args):
     except Exception as e:
         print(f"ERROR: Failed to set nickname: {e}", file=sys.stderr)
         return 1
-
 

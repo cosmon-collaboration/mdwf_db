@@ -4,7 +4,7 @@
 import argparse
 from pathlib import Path
 
-from ..ensemble_utils import get_backend_for_args
+from ..runtime import load_default_backend
 
 
 def register(subparsers):
@@ -24,7 +24,7 @@ def do_init(args):
         path.mkdir(parents=True, exist_ok=True)
         print(f"Ensured directory: {path}")
 
-    backend = get_backend_for_args(args)
+    backend = load_default_backend(validate_connection=True, ensure_indexes=True)
     # Trigger a simple call to ensure connection/indexes are ready
     backend.list_ensembles(detailed=False)
     print("Database connection OK")

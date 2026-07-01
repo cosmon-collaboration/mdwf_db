@@ -61,7 +61,7 @@ EXAMPLES:
 
 def do_remove(args):
     backend = get_backend_for_args(args)
-    ensemble_id, ens = resolve_ensemble_from_args(args)
+    ensemble_id, ens = resolve_ensemble_from_args(args, backend=backend)
     if not ens:
         return 1
 

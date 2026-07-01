@@ -136,7 +136,7 @@ def do_status(args):
             self.ensemble = ensemble_value
     
     temp_args = SingleEnsembleArgs(ensemble_arg)
-    ensemble_id, ensemble = resolve_ensemble_from_args(temp_args)
+    ensemble_id, ensemble = resolve_ensemble_from_args(temp_args, backend=backend)
     if not ensemble:
         return 1
 

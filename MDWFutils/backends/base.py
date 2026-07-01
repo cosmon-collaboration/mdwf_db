@@ -12,6 +12,15 @@ class DatabaseBackend(ABC):
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
 
+    def close(self) -> None:
+        """Release backend resources."""
+
+    def validate_connection(self) -> None:
+        """Verify backend connectivity."""
+
+    def ensure_indexes(self) -> None:
+        """Ensure backend indexes or schema setup exist."""
+
     # ------------------------------------------------------------------
     # Ensemble operations
     # ------------------------------------------------------------------
