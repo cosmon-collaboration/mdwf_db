@@ -3,7 +3,7 @@ import argparse
 import pkgutil
 import importlib
 import sys
-from .runtime import get_default_db_connection
+from .runtime import close_default_backends, get_default_db_connection
 
 def main():
     # Create parser WITHOUT epilog initially
@@ -53,8 +53,11 @@ Ensemble identifiers: use ID (-e 1), path (-e ./path), or current dir (-e .)
             print("Hint: Set MDWF_DB_URL environment variable (MongoDB).")
             return 1
 
-    # every module must set args.func to its handler in register()
-    return args.func(args)
+    try:
+        # every module must set args.func to its handler in register()
+        return args.func(args)
+    finally:
+        close_default_backends()
 
 if __name__=='__main__':
     sys.exit(main())

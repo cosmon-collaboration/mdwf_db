@@ -68,3 +68,38 @@ def test_get_physics_params_and_backend_resolution(tmp_path):
 
     doc = get_ensemble_doc(backend, 1)
     assert get_physics_params(doc)["L"] == 32
+
+
+def test_connection_string_backend_resolution_reuses_and_closes(monkeypatch, tmp_path):
+    import MDWFutils.jobs.utils as job_utils
+
+    class ClosableFakeBackend(FakeBackend):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.close_count = 0
+
+        def close(self):
+            self.close_count += 1
+
+    ens = make_ensemble(tmp_path)
+    backend = ClosableFakeBackend({1: ens})
+    calls = []
+
+    def get_backend(conn):
+        calls.append(conn)
+        return backend
+
+    job_utils.close_cached_backends()
+    monkeypatch.setattr(job_utils, "get_backend", get_backend)
+
+    first = job_utils.get_ensemble_doc("mongodb://fake/test", 1)
+    second = job_utils.get_ensemble_doc("mongodb://fake/test", 1)
+
+    assert first["ensemble_id"] == 1
+    assert second["ensemble_id"] == 1
+    assert calls == ["mongodb://fake/test"]
+
+    job_utils.close_cached_backends()
+    job_utils.close_cached_backends()
+
+    assert backend.close_count == 1

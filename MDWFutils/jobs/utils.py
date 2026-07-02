@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
+import atexit
 from typing import Iterable, List, Sequence
 
 from MDWFutils.backends import get_backend
@@ -10,10 +10,33 @@ from MDWFutils.backends.base import DatabaseBackend
 from MDWFutils.exceptions import ValidationError
 
 
-@lru_cache(maxsize=None)
+_BACKEND_CACHE: dict[str, DatabaseBackend] = {}
+_CLEANUP_REGISTERED = False
+
+
 def _cached_backend(connection_string: str) -> DatabaseBackend:
     """Return a cached backend instance for legacy callers."""
-    return get_backend(connection_string)
+    _register_cleanup()
+    backend = _BACKEND_CACHE.get(connection_string)
+    if backend is None:
+        backend = get_backend(connection_string)
+        _BACKEND_CACHE[connection_string] = backend
+    return backend
+
+
+def close_cached_backends() -> None:
+    """Close cached legacy helper backends."""
+    for backend in list(_BACKEND_CACHE.values()):
+        backend.close()
+    _BACKEND_CACHE.clear()
+
+
+def _register_cleanup() -> None:
+    global _CLEANUP_REGISTERED
+    if _CLEANUP_REGISTERED:
+        return
+    atexit.register(close_cached_backends)
+    _CLEANUP_REGISTERED = True
 
 
 def _resolve_backend(source) -> DatabaseBackend:

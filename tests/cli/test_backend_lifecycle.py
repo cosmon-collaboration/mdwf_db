@@ -5,7 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from MDWFutils.cli import runtime
-from MDWFutils.cli.commands import init_db, status, update
+from MDWFutils.cli.main import main
+from MDWFutils.cli.commands import ingest, init_db, scan_configs, status, update
 from tests.conftest import FakeBackend, make_ensemble
 
 
@@ -172,3 +173,66 @@ def test_status_detail_command_uses_one_backend_instance(monkeypatch, tmp_path, 
     assert len(calls) == 1
 
     runtime.close_default_backends()
+
+
+def test_scan_command_uses_one_backend_instance(monkeypatch, tmp_path):
+    ensemble = make_ensemble(tmp_path)
+    backend = ClosableFakeBackend({1: ensemble})
+    calls = []
+
+    def get_backend(conn, *, validate_connection=True, ensure_indexes=True):
+        calls.append((conn, validate_connection, ensure_indexes))
+        return backend
+
+    runtime.close_default_backends()
+    monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
+    monkeypatch.setattr(runtime, "get_backend", get_backend)
+
+    args = SimpleNamespace(ensemble="1", force=False)
+
+    assert scan_configs.do_scan(args) == 0
+    assert len(calls) == 1
+
+    runtime.close_default_backends()
+
+
+def test_ingest_gauge_obs_command_uses_one_backend_instance(monkeypatch, tmp_path):
+    ensemble = make_ensemble(tmp_path)
+    backend = ClosableFakeBackend({1: ensemble})
+    calls = []
+
+    def get_backend(conn, *, validate_connection=True, ensure_indexes=True):
+        calls.append((conn, validate_connection, ensure_indexes))
+        return backend
+
+    runtime.close_default_backends()
+    monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
+    monkeypatch.setattr(runtime, "get_backend", get_backend)
+
+    args = SimpleNamespace(
+        ensemble="1",
+        overwrite=False,
+        clear=False,
+        dry_run=True,
+    )
+
+    assert ingest.IngestGaugeObsCommand().execute(args) == 0
+    assert len(calls) == 1
+
+    runtime.close_default_backends()
+
+
+def test_cli_main_closes_cached_backend(monkeypatch, tmp_path):
+    ensemble = make_ensemble(tmp_path)
+    backend = ClosableFakeBackend({1: ensemble})
+
+    def get_backend(conn, *, validate_connection=True, ensure_indexes=True):
+        return backend
+
+    runtime.close_default_backends()
+    monkeypatch.setenv("MDWF_DB_URL", "mongodb://fake/test")
+    monkeypatch.setattr(runtime, "get_backend", get_backend)
+    monkeypatch.setattr("sys.argv", ["mdwf_db", "status", "-e", "1", "--dir"])
+
+    assert main() == 0
+    assert backend.close_count == 1
