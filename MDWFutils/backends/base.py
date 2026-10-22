@@ -196,6 +196,10 @@ class DatabaseBackend(ABC):
         """
 
     @abstractmethod
+    def list_measurement_types(self, ensemble_id: int) -> List[str]:
+        """Return distinct measurement type strings stored for an ensemble."""
+
+    @abstractmethod
     def upsert_measurement(
         self,
         ensemble_id: int,

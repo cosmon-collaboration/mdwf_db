@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .base import BaseParser
+from ..scanners.meson2pt import Meson2ptVariant
 
 
 class Meson2ptParser(BaseParser):
@@ -19,11 +20,18 @@ class Meson2ptParser(BaseParser):
     # Default creader path for NERSC
     NERSC_CREADER = '/global/cfs/cdirs/m2986/cosmon/mdwf/software/build/wit_cpu/devel/extractor/Creader'
     
-    def __init__(self, creader_path: Optional[str] = None):
+    def __init__(
+        self,
+        creader_path: Optional[str] = None,
+        ensemble_physics: Optional[Dict[str, float]] = None,
+        variant: Optional[Meson2ptVariant] = None,
+    ):
         """Initialize parser.
         
         Args:
             creader_path: Path to creader binary (or use MDWF_CREADER_PATH env var, or NERSC default)
+            ensemble_physics: Physics parameters dict with ml, ms, mc keys
+            variant: Folder variant whose label overrides provide effective masses
         """
         self.creader_path = creader_path or os.getenv('MDWF_CREADER_PATH')
         
@@ -33,6 +41,22 @@ class Meson2ptParser(BaseParser):
         
         if not self.creader_path:
             raise ValueError("creader path not specified. Set MDWF_CREADER_PATH environment variable.")
+        self.ensemble_physics = ensemble_physics or {}
+        self.variant = variant
+
+        label = variant.name if variant else "meson2pt"
+        overrides = variant.overrides if variant else {}
+        self.masses = {}
+        for k in ("ml", "ms", "mc"):
+            if overrides.get(k) is not None:
+                self.masses[k] = float(overrides[k])
+            elif self.ensemble_physics.get(k) is not None:
+                self.masses[k] = float(self.ensemble_physics[k])
+            else:
+                raise ValueError(
+                    f"Cannot resolve {k} for variant '{label}': "
+                    f"missing from folder label and ensemble physics"
+                )
     
     def parse(self, file_path: Path, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Parse meson2pt files for a config.
@@ -71,6 +95,9 @@ class Meson2ptParser(BaseParser):
         if 'metadata' not in metadata:
             metadata['metadata'] = {}
         metadata['metadata']['source_files'] = source_files
+
+        metadata['metadata']['masses'] = dict(self.masses)
+        metadata['metadata']['variant'] = self.variant.name if self.variant else "meson2pt"
         
         return {
             'mesons': mesons,

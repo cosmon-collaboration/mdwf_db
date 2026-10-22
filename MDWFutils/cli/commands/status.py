@@ -6,6 +6,7 @@ import sys
 
 from ..ensemble_utils import add_ensemble_argument, resolve_ensemble_from_args, get_backend_for_args
 from ..formatting import print_table, format_float, safe_float, safe_int
+from ...scanners.meson2pt import make_measurement_type, parse_variant_label
 from ...jobs.hmc import format_hmc_path_status_value, resolve_hmc_paths, HMC_PATH_STATUS_FIELDS
 
 
@@ -59,6 +60,7 @@ EXAMPLES:
   mdwf_db status -e 5 --op 147      # Show operation 147 details
   mdwf_db status -e 5 --missing gauge_obs  # Configs missing gauge_obs
   mdwf_db status -e 5 --measured meson2pt  # Config numbers with meson2pt in DB (one per line)
+  mdwf_db status -e 5 --measured meson2pt --variant ml0.0004_mc0.1234  # Mass-variant configs
   mdwf_db status -e 5 --missing meson2pt --cfg-range 100 500  # Missing in [100,500] ∩ config_list
   mdwf_db status --measurements all  # Show all measurement types for all ensembles
   mdwf_db status --measurements gauge_obs mres  # Show only gauge_obs and mres
@@ -89,6 +91,8 @@ EXAMPLES:
     p.add_argument('--measurements', nargs='*', metavar='TYPE',
                    choices=['all', 'gauge_obs', 'mres', 'meson2pt'],
                    help='Show measurement counts table. Use "all" for all types, or specify: gauge_obs mres meson2pt. Use with -e to filter by ensemble(s).')
+    p.add_argument('--variant', metavar='LABEL', default='unitary',
+                   help="For meson2pt: 'unitary' (default) or a mass-variant label like 'ml0.0004_mc0.1234' (default: unitary)")
     p.set_defaults(func=do_status)
 
 
@@ -144,15 +148,29 @@ def do_status(args):
         print(ensemble['directory'])
         return 0
 
+    # Effective measurement type for --measured/--missing (supports meson2pt variants)
+    effective_variant = None
+    if getattr(args, 'variant', 'unitary') != 'unitary':
+        if getattr(args, 'measured', None) or args.missing:
+            target = getattr(args, 'measured', None) or args.missing
+            if target != 'meson2pt':
+                print("ERROR: --variant only applies to meson2pt", file=sys.stderr)
+                return 1
+            overrides = parse_variant_label(f"meson2pt_{args.variant}")
+            if overrides is None:
+                print(f"ERROR: invalid --variant label '{args.variant}'; expected e.g. ml0.0004_mc0.1234", file=sys.stderr)
+                return 1
+            effective_variant = make_measurement_type(overrides)
+
     # Measured configs in DB (one per line)
     if getattr(args, 'measured', None):
-        return _show_measured_configs(backend, ensemble_id, args.measured)
+        return _show_measured_configs(backend, ensemble_id, effective_variant or args.measured)
 
     # Missing measurements mode - show configs missing a measurement type
     if args.missing:
         cfg_range = tuple(args.cfg_range) if args.cfg_range is not None else None
         return _show_missing_measurements(
-            backend, ensemble_id, ensemble, args.missing, cfg_range=cfg_range,
+            backend, ensemble_id, ensemble, effective_variant or args.missing, cfg_range=cfg_range,
         )
 
     # Operation detail mode - show specific operation
@@ -410,6 +428,13 @@ def _print_ensemble_details(backend, ensemble_id, ensemble):
     print("  meson2pt:")
     _print_measurement_summary(meson2pt_configs, config_set, therm_cfg)
 
+    # Meson 2pt mass-variant folders
+    for mtype in [t for t in backend.list_measurement_types(ensemble_id)
+                  if t.startswith('meson2pt_')]:
+        variant_configs = set(backend.get_measured_configs(ensemble_id, mtype))
+        print(f"  {mtype}:")
+        _print_measurement_summary(variant_configs, config_set, therm_cfg)
+
     # Operations summary table
     print('\nOperations:')
     ops = backend.list_operations(ensemble_id)
@@ -623,8 +648,8 @@ def _resolve_ensembles(backend, ensemble_args):
 
 def _show_measurements_table(backend, args):
     """Print measurement counts table for ensembles."""
-    # Determine which measurement types to show
-    if not args.measurements or 'all' in args.measurements:
+    expand_meson2pt = not args.measurements or 'all' in args.measurements
+    if expand_meson2pt:
         measurement_types = ['gauge_obs', 'mres', 'meson2pt']
     else:
         measurement_types = [m for m in args.measurements if m != 'all']
@@ -644,6 +669,20 @@ def _show_measurements_table(backend, args):
     if not ensembles:
         print('No ensembles found')
         return 0
+
+    # Expand meson2pt with stored mass-variant types across displayed ensembles
+    if expand_meson2pt:
+        variant_types = set()
+        for ensemble_id, _ensemble in ensembles:
+            variant_types.update(
+                t for t in backend.list_measurement_types(ensemble_id)
+                if t.startswith('meson2pt_')
+            )
+        measurement_types = (
+            [m for m in measurement_types if m != 'meson2pt']
+            + ['meson2pt']
+            + sorted(variant_types)
+        )
     
     # Build table rows - one row per ensemble
     rows = []

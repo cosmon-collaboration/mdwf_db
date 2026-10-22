@@ -321,6 +321,15 @@ class FakeBackend(DatabaseBackend):
             if eid == ensemble_id and mtype == measurement_type
         )
 
+    def list_measurement_types(self, ensemble_id: int) -> List[str]:
+        return sorted(
+            {
+                mtype
+                for (eid, _cfg, mtype) in self.measurements
+                if eid == ensemble_id
+            }
+        )
+
     def upsert_measurement(
         self,
         ensemble_id: int,

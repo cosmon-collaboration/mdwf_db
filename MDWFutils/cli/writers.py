@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 
+from ..scanners.meson2pt import Meson2ptScanner
+
 try:
     import h5py
     HAS_H5PY = True
@@ -22,6 +24,32 @@ MRES_CORRELATORS = ['PP', 'MP']
 
 MESON_ORDER = ['pion', 'kaon', 'eta_s', 'D', 'Ds', 'eta_c']
 MESON_CORRELATORS = ['PP', 'AP']
+
+# Export names keyed by mass-rank pair (ranks 1=lightest), per LO chiPT
+RANK_PAIR_NAMES = {
+    (1, 1): "pion",
+    (1, 2): "kaon",
+    (2, 2): "eta_s",
+    (1, 3): "D",
+    (2, 3): "Ds",
+    (3, 3): "eta_c",
+}
+
+
+def slot_display_name(meson_name: str, masses: Dict[str, float]) -> str:
+    """Map a slot-content meson name to its mass-rank-ordered export name.
+
+    Slots index propagators (0=ml, 1=ms, 2=mc); the lightest valence pair
+    becomes 'pion', and so on via RANK_PAIR_NAMES.
+    """
+    code = Meson2ptScanner.MESONS[meson_name]
+    slots = (int(code[0]), int(code[1]))
+    rank = [0, 0, 0]
+    for pos, (_mass, slot) in enumerate(
+        sorted(((masses["ml"], 0), (masses["ms"], 1), (masses["mc"], 2)))
+    ):
+        rank[slot] = pos + 1
+    return RANK_PAIR_NAMES[tuple(sorted((rank[slots[0]], rank[slots[1]])))]
 
 
 def _get_int_dtype(values):
@@ -204,9 +232,13 @@ def _write_ensemble_hdf5(
             _write_gauge_obs_hdf5(f5, ensemble_name, gauge_data)
     
     if measurement_type in ('meson2pt', 'all'):
-        meson_data = ensemble_data.get('meson2pt', {})
-        if meson_data:
-            _write_meson2pt_hdf5(f5, ensemble_name, meson_data)
+        for mtype in sorted(
+            k for k in ensemble_data
+            if k == 'meson2pt' or k.startswith('meson2pt_')
+        ):
+            meson_data = ensemble_data[mtype]
+            if meson_data:
+                _write_meson2pt_hdf5(f5, ensemble_name, meson_data, mtype)
     
     if measurement_type in ('mres', 'all'):
         mres_data = ensemble_data.get('mres', {})
@@ -237,13 +269,19 @@ def _write_gauge_obs_hdf5(f5: 'h5py.File', ensemble_name: str, data: Dict[str, A
             f5.create_dataset(f"{ensemble_name}/{field}", data=np.array(data[field]))
 
 
-def _write_meson2pt_hdf5(f5: 'h5py.File', ensemble_name: str, data: Dict[str, Any]) -> None:
+def _write_meson2pt_hdf5(
+    f5: 'h5py.File',
+    ensemble_name: str,
+    data: Dict[str, Any],
+    mtype: str = "meson2pt",
+) -> None:
     """Write meson 2pt correlators to HDF5.
     
     Format: /{ensemble}/unitary/cfgs, pion_PP, pion_AP, kaon_PP, ...
-    Also writes ensemble_config_list if available at /{ensemble}/unitary/config_list
+    Variants land at /{ensemble}/{measurement_type} instead of unitary.
+    Also writes ensemble_config_list if available at /{ensemble}/{type}/config_list
     """
-    base_path = f"{ensemble_name}/unitary"
+    base_path = f"{ensemble_name}/unitary" if mtype == "meson2pt" else f"{ensemble_name}/{mtype}"
     cfgs = data.get('cfgs', [])
     
     # Delete existing cfgs if present
@@ -253,6 +291,11 @@ def _write_meson2pt_hdf5(f5: 'h5py.File', ensemble_name: str, data: Dict[str, An
     # Write config numbers with appropriate dtype
     cfg_dtype = _get_int_dtype(cfgs)
     f5.create_dataset(f"{base_path}/cfgs", data=np.array(cfgs, dtype=cfg_dtype))
+
+    # Record effective masses as group attributes
+    if data.get('masses'):
+        for k, v in data['masses'].items():
+            f5[base_path].attrs[k] = float(v)
     
     # Write ensemble config_list if available
     if 'ensemble_config_list' in data:
@@ -328,27 +371,38 @@ def write_csv(
                     rows.append(row)
         
         if measurement_type in ('meson2pt', 'all'):
-            meson_data = ensemble_data.get('meson2pt', {})
-            if meson_data:
+            for mtype in sorted(
+                k for k in ensemble_data
+                if k == 'meson2pt' or k.startswith('meson2pt_')
+            ):
+                meson_data = ensemble_data[mtype]
+                if not meson_data:
+                    continue
                 cfgs = meson_data.get('cfgs', [])
-                # Determine T extent (skip cfgs and ensemble_config_list)
+                # Determine T extent (skip bookkeeping keys)
                 t_extent = 0
                 for key in meson_data:
-                    if key not in ('cfgs', 'ensemble_config_list') and isinstance(meson_data[key], (list, np.ndarray)):
+                    if key not in ('cfgs', 'ensemble_config_list', 'masses') and isinstance(meson_data[key], (list, np.ndarray)):
                         if len(meson_data[key]) > 0:
-                            # Check if it's a 2D array (list of lists)
-                            if isinstance(meson_data[key][0], (list, np.ndarray)):
+                            # 2D array with data (empty slots hold [])
+                            if isinstance(meson_data[key][0], (list, np.ndarray)) and len(meson_data[key][0]) > 0:
                                 t_extent = len(meson_data[key][0])
                                 break
-                
+
                 for i, cfg in enumerate(cfgs):
                     for t in range(t_extent):
-                        row = {'ensemble': ensemble_name, 'cfg': cfg, 't': t}
-                        for meson in MESON_ORDER:
-                            for corr in MESON_CORRELATORS:
-                                key = f"{meson}_{corr}"
-                                if key in meson_data and i < len(meson_data[key]):
-                                    row[key] = meson_data[key][i][t] if t < len(meson_data[key][i]) else ''
+                        row = {
+                            'ensemble': ensemble_name,
+                            'cfg': cfg,
+                            'variant': 'unitary' if mtype == 'meson2pt' else mtype,
+                            't': t,
+                        }
+                        for key in sorted(
+                            k for k in meson_data
+                            if k not in ('cfgs', 'ensemble_config_list', 'masses')
+                        ):
+                            if i < len(meson_data[key]) and t < len(meson_data[key][i]):
+                                row[key] = meson_data[key][i][t]
                         rows.append(row)
         
         if measurement_type in ('mres', 'all'):
@@ -376,7 +430,11 @@ def write_csv(
         return
     
     # Write CSV
-    fieldnames = list(rows[0].keys())
+    fieldnames = []
+    for row in rows:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
     with open(output_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -442,6 +500,7 @@ def prepare_meson2pt_data(
     measurements: List[Dict[str, Any]],
     physics: Dict[str, Any],
     fields: Optional[Set[str]] = None,
+    rank_names: bool = False,
 ) -> Dict[str, Any]:
     """Prepare meson2pt measurements for export.
     
@@ -449,6 +508,7 @@ def prepare_meson2pt_data(
         measurements: List of measurement documents
         physics: Physics parameters (for mass values)
         fields: Set of field names to include (e.g., {'pion_PP', 'kaon_AP'})
+        rank_names: Export slot-content mesons under mass-rank-ordered names
         
     Returns:
         Dict with cfgs and correlator arrays
@@ -466,15 +526,31 @@ def prepare_meson2pt_data(
         result['cfgs'].append(m.get('config_number', 0))
         data = m.get('data', {})
         mesons = data.get('mesons', {})
-        
+
+        masses = None
+        if rank_names:
+            doc_masses = (m.get('metadata') or {}).get('masses')
+            if doc_masses:
+                masses = doc_masses
+                if 'masses' not in result:
+                    result['masses'] = dict(doc_masses)
+            else:
+                try:
+                    masses = {k: physics[k] for k in ("ml", "ms", "mc")}
+                except KeyError:
+                    masses = None
+
+        values = {field: [] for field in fields}
+        for slot, corr_data in mesons.items():
+            name = slot
+            if masses is not None and slot in Meson2ptScanner.MESONS:
+                name = slot_display_name(slot, masses)
+            for corr in MESON_CORRELATORS:
+                field = f"{name}_{corr}"
+                if field in fields and corr in corr_data:
+                    values[field] = corr_data[corr]
         for field in fields:
-            parts = field.rsplit('_', 1)
-            if len(parts) == 2:
-                meson, corr = parts
-                if meson in mesons and corr in mesons[meson]:
-                    result[field].append(mesons[meson][corr])
-                else:
-                    result[field].append([])
+            result[field].append(values[field])
     
     return result
 

@@ -4,10 +4,74 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .base import BaseScanner, ScanResult
+
+
+_NUM = r'(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
+_TOKEN_RE = re.compile(rf'^(ml|ms|mc)({_NUM})$')
+_FOLDER_RE = re.compile(rf'^meson2pt(?:_(?:ml|ms|mc){_NUM})*$')
+
+
+def parse_variant_label(name: str) -> Optional[Dict[str, float]]:
+    """Parse a meson2pt folder label into its mass overrides.
+
+    Returns None for names that are not valid variant folder names,
+    {} for the plain 'meson2pt' folder, and {key: float} otherwise.
+    """
+    if not _FOLDER_RE.match(name):
+        return None
+    parts = name.split('_')
+    overrides: Dict[str, float] = {}
+    for token in parts[1:]:
+        match = _TOKEN_RE.match(token)
+        if not match or match.group(1) in overrides:
+            return None
+        overrides[match.group(1)] = float(match.group(2))
+    return overrides
+
+
+def make_measurement_type(overrides: Dict[str, float]) -> str:
+    """Build the measurement_type string for a set of mass overrides."""
+    if not overrides:
+        return "meson2pt"
+    return "meson2pt_" + "_".join(
+        f"{k}{overrides[k]}" for k in ("ml", "ms", "mc")
+        if overrides.get(k) is not None
+    )
+
+
+@dataclass
+class Meson2ptVariant:
+    """A discovered meson2pt measurement folder."""
+    name: str
+    dir: Path
+    overrides: Dict[str, float] = field(default_factory=dict)
+
+
+def discover_variants(ensemble_path: Path) -> List[Meson2ptVariant]:
+    """Find meson2pt and meson2pt_* variant folders with a DATA/ subdir."""
+    variants: List[Meson2ptVariant] = []
+    try:
+        entries = list(ensemble_path.iterdir())
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.is_dir():
+            continue
+        if entry.name != 'meson2pt' and not _FOLDER_RE.match(entry.name):
+            continue
+        if not (entry / 'DATA').is_dir():
+            continue
+        overrides = parse_variant_label(entry.name)
+        if overrides is None:
+            continue
+        variants.append(Meson2ptVariant(name=entry.name, dir=entry, overrides=overrides))
+    variants.sort(key=lambda v: (v.name != 'meson2pt', v.name))
+    return variants
 
 
 class Meson2ptScanner(BaseScanner):
@@ -31,6 +95,16 @@ class Meson2ptScanner(BaseScanner):
     
     # Reverse mapping: code to name
     CODE_TO_MESON = {v: k for k, v in MESONS.items()}
+
+    def __init__(self, variant_dir: Optional[Path] = None):
+        """Initialize scanner.
+
+        Args:
+            variant_dir: Variant folder (e.g. meson2pt_ml0.0004_mc0.1234) whose
+                DATA/ subdirectory to scan; defaults to 'meson2pt'.
+        """
+        self.variant_dir = variant_dir
+
     
     def scan(self, ensemble_path: Path) -> List[ScanResult]:
         """Find all meson2pt files and group by config.
@@ -41,7 +115,7 @@ class Meson2ptScanner(BaseScanner):
         Returns:
             List of ScanResult objects, one per config with at least one meson file
         """
-        meson_dir = ensemble_path / 'meson2pt' / 'DATA'
+        meson_dir = (self.variant_dir or ensemble_path / 'meson2pt') / 'DATA'
         if not meson_dir.exists():
             return []
         

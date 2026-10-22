@@ -8,7 +8,11 @@ from ...parsers.gauge_obs import GaugeObsParser
 from ...parsers.meson2pt import Meson2ptParser
 from ...parsers.mres import MresParser
 from ...scanners.gauge_obs import GaugeObsScanner
-from ...scanners.meson2pt import Meson2ptScanner
+from ...scanners.meson2pt import (
+    Meson2ptScanner,
+    discover_variants,
+    make_measurement_type,
+)
 from ...scanners.mres import MresScanner
 from ..ensemble_utils import add_ensemble_argument, get_backend_for_args
 
@@ -134,12 +138,13 @@ class IngestMresCommand:
 
 
 class IngestMeson2ptCommand:
-    """Command to ingest unitary meson 2pt measurements."""
+    """Command to ingest unitary and mass-variant meson 2pt measurements."""
     
-    help = "Ingest meson 2pt correlators from meson2pt/DATA/Meson_2pt_*.bin files"
+    help = "Ingest meson 2pt correlators from meson2pt*/DATA/Meson_2pt_*.bin (mass-variant folders like meson2pt_ml0.0004_mc0.1234 included)"
     
     def register(self, parser: argparse.ArgumentParser):
         """Register arguments for this command."""
+        parser.description = self.help
         add_ensemble_argument(parser)
         parser.add_argument(
             '--creader',
@@ -167,28 +172,52 @@ class IngestMeson2ptCommand:
         ensemble_id, ensemble = backend.resolve_ensemble_identifier(args.ensemble)
         if ensemble_id is None:
             return 1
-        
-        scanner = Meson2ptScanner()
-        parser = Meson2ptParser(creader_path=args.creader)
-        ingestor = MeasurementIngestor(backend, scanner, parser, "meson2pt")
-        
+
         ensemble_path = Path(ensemble['directory'])
-        result = ingestor.ingest(
-            ensemble_id,
-            ensemble_path,
-            overwrite=args.overwrite,
-            clear=args.clear,
-            dry_run=args.dry_run,
-        )
-        
+        variants = discover_variants(ensemble_path)
+        if not variants:
+            print("No meson2pt/DATA or meson2pt_* variant directories found")
+            return 1
+
+        total_ingested = 0
+        total_skipped = 0
+        for variant in variants:
+            mtype = make_measurement_type(variant.overrides)
+            try:
+                scanner = Meson2ptScanner(variant_dir=variant.dir)
+                parser = Meson2ptParser(
+                    creader_path=args.creader,
+                    ensemble_physics=ensemble.get('physics', {}),
+                    variant=variant,
+                )
+            except ValueError as e:
+                print(f"  Skipping {variant.name}: {e}")
+                continue
+
+            ingestor = MeasurementIngestor(backend, scanner, parser, mtype)
+            result = ingestor.ingest(
+                ensemble_id,
+                ensemble_path,
+                overwrite=args.overwrite,
+                clear=args.clear,
+                dry_run=args.dry_run,
+            )
+
+            if args.dry_run:
+                print(f"  {mtype}: would ingest {result.would_ingest}, skip {result.skipped}")
+            else:
+                print(f"  {mtype}: ingested {result.ingested}, skipped {result.skipped}")
+                if result.errors:
+                    error_configs = [str(cfg) for cfg, _ in result.errors]
+                    print(f"    Errors on {len(result.errors)} configs: {', '.join(error_configs[:10])}")
+                total_ingested += result.ingested
+                total_skipped += result.skipped
+
         if args.dry_run:
-            print(f"Would ingest {result.would_ingest} configs, skip {result.skipped}")
+            print("Total: dry run")
         else:
-            print(f"Ingested {result.ingested} configs, skipped {result.skipped}")
-            if result.errors:
-                error_configs = [str(cfg) for cfg, _ in result.errors]
-                print(f"Errors on {len(result.errors)} configs: {', '.join(error_configs[:10])}")
-        
+            print(f"Total: ingested {total_ingested}, skipped {total_skipped}")
+
         return 0
 
 
@@ -258,7 +287,7 @@ class IngestAllCommand:
             total_errors = 0
             total_would_ingest = 0
             
-            for measurement_type, scanner, parser in self._get_ingestors(ensemble_physics, getattr(args, 'creader', None)):
+            for measurement_type, scanner, parser in self._get_ingestors(ensemble_physics, getattr(args, 'creader', None), ensemble_path):
                 ingestor = MeasurementIngestor(backend, scanner, parser, measurement_type)
                 result = ingestor.ingest(
                     ensemble_id,
@@ -293,7 +322,7 @@ class IngestAllCommand:
         
         return 0
     
-    def _get_ingestors(self, ensemble_physics, creader_path=None):
+    def _get_ingestors(self, ensemble_physics, creader_path=None, ensemble_path=None):
         """Generate ingestors, skipping those with missing dependencies."""
         yield ("gauge_obs", GaugeObsScanner(), GaugeObsParser())
         # mres and meson2pt require creader - skip if not available
@@ -302,7 +331,16 @@ class IngestAllCommand:
         except ValueError as e:
             print(f"  Skipping mres: {e}")
         try:
-            yield ("meson2pt", Meson2ptScanner(), Meson2ptParser(creader_path=creader_path))
+            for variant in discover_variants(ensemble_path):
+                yield (
+                    make_measurement_type(variant.overrides),
+                    Meson2ptScanner(variant_dir=variant.dir),
+                    Meson2ptParser(
+                        creader_path=creader_path,
+                        ensemble_physics=ensemble_physics,
+                        variant=variant,
+                    ),
+                )
         except ValueError as e:
             print(f"  Skipping meson2pt: {e}")
 
@@ -337,6 +375,7 @@ EXAMPLES:
   mdwf_db ingest all --dry-run           # Preview what would be ingested
   mdwf_db ingest all --overwrite         # Re-parse existing measurements
   mdwf_db ingest all --clear             # Delete existing before ingesting
+  mdwf_db ingest meson2pt -e 5   # unitary + all meson2pt_* variant folders
 """,
         )
         # Add dummy -e argument at parent level so argparse doesn't confuse it with subcommand

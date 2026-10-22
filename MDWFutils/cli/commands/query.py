@@ -21,6 +21,7 @@ from ..writers import (
     MESON_ORDER,
     MESON_CORRELATORS,
 )
+from ...scanners.meson2pt import make_measurement_type, parse_variant_label
 
 
 # =============================================================================
@@ -487,32 +488,156 @@ class QueryMresCommand(BaseQueryCommand):
 
 
 class QueryMeson2ptCommand(BaseQueryCommand):
-    """Export meson 2pt correlators."""
+    """Export meson 2pt correlators, including mass-variant folders."""
     
     measurement_type = "meson2pt"
     help = "Export meson 2pt correlators (PP, AP for pion/kaon/eta_s/D/Ds/eta_c)"
     
-    def prepare_data(self, measurements, physics, fields):
-        return prepare_meson2pt_data(measurements, physics, fields)
+    def register(self, parser: argparse.ArgumentParser) -> None:
+        super().register(parser)
+        parser.add_argument(
+            '--variant',
+            metavar='LABEL',
+            default='unitary',
+            help="meson2pt measurement variant: 'unitary' (default), 'all', "
+                 "or a mass-variant label like 'ml0.0004_mc0.1234'",
+        )
+        parser.add_argument(
+            '--content-names',
+            action='store_true',
+            help="export variants with slot-content names (00='pion' etc.) "
+                 "instead of names ordered by quark mass (lightest pair = pion)",
+        )
+        parser.description += """
+VARIANTS: mass-variant folders (meson2pt_ml..._mc...) are stored under
+measurement_type 'meson2pt_ml..._mc...'. Default exports unitary only.
+"""
+    
+    def prepare_data(self, measurements, physics, fields, rank_names=False):
+        return prepare_meson2pt_data(measurements, physics, fields, rank_names=rank_names)
+    
+    def _resolve_types(self, backend, ens_id, variant):
+        """Resolve the measurement types to export, or None for an invalid label."""
+        if variant == 'unitary':
+            return ["meson2pt"]
+        if variant == 'all':
+            types = [
+                t for t in backend.list_measurement_types(ens_id)
+                if t == 'meson2pt' or t.startswith('meson2pt_')
+            ]
+            return ['meson2pt'] + sorted(t for t in types if t != 'meson2pt')
+        overrides = parse_variant_label(f"meson2pt_{variant}")
+        if overrides is None:
+            return None
+        return [make_measurement_type(overrides)]
+    
+    def execute(self, args) -> int:
+        """Execute the meson2pt query with variant selection."""
+        if getattr(args, 'list_fields', False):
+            print(generate_fields_help(self.measurement_type))
+            return 0
+        
+        if not args.ensemble:
+            print("ERROR: -e/--ensemble is required", file=sys.stderr)
+            print("Hint: Use --list-fields to see available fields without an ensemble", file=sys.stderr)
+            return 1
+        
+        backend = get_backend_for_args(args)
+        ensembles = _resolve_ensembles(backend, args.ensemble)
+        
+        if not ensembles:
+            print("No ensembles found", file=sys.stderr)
+            return 1
+        
+        variant = getattr(args, 'variant', 'unitary')
+        fields = expand_fields(args.fields, self.measurement_type) if args.fields else None
+        stride = getattr(args, 'cfg_inc', None)
+        cfg_list = getattr(args, 'cfg_list', None)
+        output_data = {}
+        
+        for ens_id, ensemble in ensembles:
+            mtypes = self._resolve_types(backend, ens_id, variant)
+            if mtypes is None:
+                print(f"ERROR: invalid --variant label '{variant}'; expected e.g. ml0.0004_mc0.1234", file=sys.stderr)
+                return 1
+            
+            ens_name = get_ensemble_name(ensemble)
+            physics = ensemble.get('physics', {})
+            ens_data = {}
+            
+            for mtype in mtypes:
+                if cfg_list is not None:
+                    measurements = backend.query_measurements(
+                        ens_id, mtype,
+                        config_numbers=cfg_list,
+                    )
+                    measurements = _sort_by_config_list(measurements, cfg_list)
+                else:
+                    config_start, config_end = _get_config_filter(
+                        ensemble, args.cfg_range, args.include_pretherm
+                    )
+                    measurements = backend.query_measurements(
+                        ens_id, mtype,
+                        config_start=config_start,
+                        config_end=config_end,
+                    )
+                    measurements = _apply_stride(measurements, stride, config_start)
+                
+                if not measurements:
+                    continue
+                
+                rank_names = mtype != 'meson2pt' and not args.content_names
+                data = self.prepare_data(measurements, physics, fields, rank_names=rank_names)
+                config_list = ensemble.get('configurations', {}).get('config_list')
+                if config_list:
+                    data['ensemble_config_list'] = config_list
+                ens_data[mtype] = data
+            
+            if ens_data:
+                output_data[ens_name] = ens_data
+        
+        if not output_data:
+            print(f"No {self.measurement_type} data found", file=sys.stderr)
+            return 0
+        
+        if args.output:
+            write_data(output_data, args.output, self.measurement_type)
+            print(f"Wrote {len(output_data)} ensemble(s) to {args.output}")
+        else:
+            self.print_stdout(output_data, fields)
+        
+        return 0
     
     def print_stdout(self, data, fields):
         for ens_name, ens_data in data.items():
-            meson_data = ens_data.get('meson2pt', {})
-            cfgs = meson_data.get('cfgs', [])
+            mtypes = sorted(
+                k for k in ens_data
+                if k == 'meson2pt' or k.startswith('meson2pt_')
+            )
+            if 'meson2pt' in mtypes:
+                mtypes.remove('meson2pt')
+                mtypes.insert(0, 'meson2pt')
             
-            mesons_present = []
-            for m in MESON_ORDER:
-                if any(f"{m}_{c}" in meson_data for c in MESON_CORRELATORS):
-                    mesons_present.append(m)
-            
-            print(f"\nMeson 2pt for {ens_name}: {len(cfgs)} configs")
-            print(f"  Mesons: {', '.join(mesons_present)}")
-            
-            if cfgs:
-                print(f"  Config range: {min(cfgs)} - {max(cfgs)}")
-                print("  Configs:", ", ".join(str(c) for c in cfgs[:20]))
-                if len(cfgs) > 20:
-                    print(f"  ... and {len(cfgs) - 20} more")
+            for mtype in mtypes:
+                meson_data = ens_data[mtype]
+                cfgs = meson_data.get('cfgs', [])
+                
+                mesons_present = []
+                for m in MESON_ORDER:
+                    if any(f"{m}_{c}" in meson_data for c in MESON_CORRELATORS):
+                        mesons_present.append(m)
+                
+                print(f"\nMeson 2pt for {ens_name} [{mtype}]: {len(cfgs)} configs")
+                if meson_data.get('masses'):
+                    mm = meson_data['masses']
+                    print(f"  Masses: ml={mm.get('ml')} ms={mm.get('ms')} mc={mm.get('mc')}")
+                print(f"  Mesons: {', '.join(mesons_present)}")
+                
+                if cfgs:
+                    print(f"  Config range: {min(cfgs)} - {max(cfgs)}")
+                    print("  Configs:", ", ".join(str(c) for c in cfgs[:20]))
+                    if len(cfgs) > 20:
+                        print(f"  ... and {len(cfgs) - 20} more")
 
 
 # =============================================================================
@@ -718,6 +843,8 @@ EXAMPLES:
   mdwf_db query meson2pt -e a05m364 --cfg-range 0 240 --cfg-inc 20  # Configs 0,20,...,240
   mdwf_db query meson2pt -e 5 --cfg-list 20 40 100 500  # Explicit config list
   mdwf_db query meson2pt -e 5 --cfg-list $(seq 0 20 240) -o out.h5  # Every 20 from 0 to 240
+  mdwf_db query meson2pt -e 5 --variant ml0.0004_mc0.1234 -o v.h5   # mass-variant export
+  mdwf_db query meson2pt -e 5 --variant all --content-names -o all.h5
   mdwf_db query gauge_obs --list-fields     # Show available fields
 """,
         )
