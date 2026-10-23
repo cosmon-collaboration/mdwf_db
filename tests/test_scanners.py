@@ -72,7 +72,7 @@ def test_make_measurement_type_roundtrip():
         assert make_measurement_type(parse_variant_label(label)) == label
 
 
-def test_discover_variants_prefers_unitary_and_requires_data(tmp_path):
+def test_discover_variants_prefers_plain_and_requires_data(tmp_path):
     (tmp_path / "meson2pt" / "DATA").mkdir(parents=True)
     (tmp_path / "meson2pt_ml0.0004_mc0.1234" / "DATA").mkdir(parents=True)
     (tmp_path / "meson2pt_ml0.02").mkdir()  # job workdir without DATA

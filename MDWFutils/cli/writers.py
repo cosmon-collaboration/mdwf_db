@@ -278,7 +278,8 @@ def _write_meson2pt_hdf5(
     """Write meson 2pt correlators to HDF5.
     
     Format: /{ensemble}/unitary/cfgs, pion_PP, pion_AP, kaon_PP, ...
-    Variants land at /{ensemble}/{measurement_type} instead of unitary.
+    Variants land at /{ensemble}/{measurement_type} instead of the legacy
+    'unitary' group.
     Also writes ensemble_config_list if available at /{ensemble}/{type}/config_list
     """
     base_path = f"{ensemble_name}/unitary" if mtype == "meson2pt" else f"{ensemble_name}/{mtype}"
@@ -394,7 +395,7 @@ def write_csv(
                         row = {
                             'ensemble': ensemble_name,
                             'cfg': cfg,
-                            'variant': 'unitary' if mtype == 'meson2pt' else mtype,
+                            'variant': 'ensemble' if mtype == 'meson2pt' else mtype,
                             't': t,
                         }
                         for key in sorted(

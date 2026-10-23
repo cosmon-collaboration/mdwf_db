@@ -138,7 +138,7 @@ class IngestMresCommand:
 
 
 class IngestMeson2ptCommand:
-    """Command to ingest unitary and mass-variant meson 2pt measurements."""
+    """Command to ingest ensemble-mass and mass-variant meson 2pt measurements."""
     
     help = "Ingest meson 2pt correlators from meson2pt*/DATA/Meson_2pt_*.bin (mass-variant folders like meson2pt_ml0.0004_mc0.1234 included)"
     
@@ -375,7 +375,7 @@ EXAMPLES:
   mdwf_db ingest all --dry-run           # Preview what would be ingested
   mdwf_db ingest all --overwrite         # Re-parse existing measurements
   mdwf_db ingest all --clear             # Delete existing before ingesting
-  mdwf_db ingest meson2pt -e 5   # unitary + all meson2pt_* variant folders
+  mdwf_db ingest meson2pt -e 5   # ensemble-mass + all meson2pt_* variant folders
 """,
         )
         # Add dummy -e argument at parent level so argparse doesn't confuse it with subcommand
