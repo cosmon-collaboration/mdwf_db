@@ -13,7 +13,34 @@ from .base import BaseScanner, ScanResult
 
 _NUM = r'(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
 _TOKEN_RE = re.compile(rf'^(ml|ms|mc)({_NUM})$')
-_FOLDER_RE = re.compile(rf'^meson2pt(?:_(?:ml|ms|mc){_NUM})*$')
+_SET_PATTERN = r'(?:l|s|c|ls|lc|sc)'
+_SET_RE = re.compile(rf'^{_SET_PATTERN}$')
+_FOLDER_RE = re.compile(rf'^meson2pt(?:_{_SET_PATTERN})?(?:_(?:ml|ms|mc){_NUM})*$')
+
+QUARK_ORDER = ("l", "s", "c")
+QUARK_TO_MASS_KEY = {"l": "ml", "s": "ms", "c": "mc"}
+
+
+def _parse_variant_tokens(name: str):
+    """Return (quarks, overrides) for a folder name, or None if invalid."""
+    if not _FOLDER_RE.match(name):
+        return None
+    quarks = list(QUARK_ORDER)
+    overrides: Dict[str, float] = {}
+    for token in name.split('_')[1:]:
+        match = _TOKEN_RE.match(token)
+        if match:
+            if match.group(1) in overrides:
+                return None
+            overrides[match.group(1)] = float(match.group(2))
+            continue
+        if len(token) <= 3 and _SET_RE.match(token) and quarks == list(QUARK_ORDER) and not overrides:
+            quarks = [ch for ch in token]
+            continue
+        return None
+    if any(key not in {QUARK_TO_MASS_KEY[q] for q in quarks} for key in overrides):
+        return None
+    return quarks, overrides
 
 
 def parse_variant_label(name: str) -> Optional[Dict[str, float]]:
@@ -22,26 +49,31 @@ def parse_variant_label(name: str) -> Optional[Dict[str, float]]:
     Returns None for names that are not valid variant folder names,
     {} for the plain 'meson2pt' folder, and {key: float} otherwise.
     """
-    if not _FOLDER_RE.match(name):
-        return None
-    parts = name.split('_')
-    overrides: Dict[str, float] = {}
-    for token in parts[1:]:
-        match = _TOKEN_RE.match(token)
-        if not match or match.group(1) in overrides:
-            return None
-        overrides[match.group(1)] = float(match.group(2))
-    return overrides
+    parsed = _parse_variant_tokens(name)
+    return None if parsed is None else parsed[1]
 
 
-def make_measurement_type(overrides: Dict[str, float]) -> str:
-    """Build the measurement_type string for a set of mass overrides."""
-    if not overrides:
-        return "meson2pt"
-    return "meson2pt_" + "_".join(
-        f"{k}{overrides[k]}" for k in ("ml", "ms", "mc")
-        if overrides.get(k) is not None
-    )
+def parse_variant_quarks(name: str) -> Optional[List[str]]:
+    """Parse the run-set from a meson2pt folder label; full l/s/c when absent."""
+    parsed = _parse_variant_tokens(name)
+    return None if parsed is None else parsed[0]
+
+
+def make_measurement_type(overrides: Dict[str, float], quarks: Optional[List[str]] = None) -> str:
+    """Build the measurement_type string for a run-set and mass overrides.
+
+    The set token appears only for proper subsets, before the mass tokens,
+    mirroring the folder label produced by meson2pt-script.
+    """
+    parts = []
+    if quarks is not None:
+        canonical = [q for q in QUARK_ORDER if q in set(quarks)]
+        if canonical and len(canonical) < 3:
+            parts.append("".join(canonical))
+    for k in ("ml", "ms", "mc"):
+        if overrides.get(k) is not None:
+            parts.append(f"{k}{overrides[k]}")
+    return "meson2pt" if not parts else "meson2pt_" + "_".join(parts)
 
 
 @dataclass
@@ -50,6 +82,7 @@ class Meson2ptVariant:
     name: str
     dir: Path
     overrides: Dict[str, float] = field(default_factory=dict)
+    quarks: List[str] = field(default_factory=lambda: list(QUARK_ORDER))
 
 
 def discover_variants(ensemble_path: Path) -> List[Meson2ptVariant]:
@@ -66,19 +99,22 @@ def discover_variants(ensemble_path: Path) -> List[Meson2ptVariant]:
             continue
         if not (entry / 'DATA').is_dir():
             continue
-        overrides = parse_variant_label(entry.name)
-        if overrides is None:
+        parsed = _parse_variant_tokens(entry.name)
+        if parsed is None:
             continue
-        variants.append(Meson2ptVariant(name=entry.name, dir=entry, overrides=overrides))
+        quarks, overrides = parsed
+        variants.append(Meson2ptVariant(
+            name=entry.name, dir=entry, overrides=overrides, quarks=quarks,
+        ))
     variants.sort(key=lambda v: (v.name != 'meson2pt', v.name))
     return variants
 
 
 class Meson2ptScanner(BaseScanner):
-    """Scanner for unitary meson 2pt measurement files.
+    """Scanner for meson 2pt measurement files (unitary or quark-subset runs).
     
-    Finds files matching: meson2pt/DATA/Meson_2pt_{qq}ckn{cfg}.bin
-    where {qq} is the quark pair code.
+    Finds files matching: {variant_dir or meson2pt}/DATA/Meson_2pt_{qq}ckn{cfg}.bin
+    where {qq} is the quark pair code indexing the run-set positionally.
     
     Returns one ScanResult per config that has at least one meson file.
     """
@@ -93,17 +129,38 @@ class Meson2ptScanner(BaseScanner):
         'eta_c': '22',   # charm-charm
     }
     
-    # Reverse mapping: code to name
+    # Reverse mapping: code to name (full unitary run)
     CODE_TO_MESON = {v: k for k, v in MESONS.items()}
 
-    def __init__(self, variant_dir: Optional[Path] = None):
+    # Canonical quark pair to meson name
+    PAIR_TO_MESON = {
+        ('l', 'l'): 'pion',
+        ('l', 's'): 'kaon',
+        ('s', 's'): 'eta_s',
+        ('l', 'c'): 'D',
+        ('s', 'c'): 'Ds',
+        ('c', 'c'): 'eta_c',
+    }
+
+    def __init__(self, variant_dir: Optional[Path] = None, quarks: Optional[List[str]] = None):
         """Initialize scanner.
 
         Args:
-            variant_dir: Variant folder (e.g. meson2pt_ml0.0004_mc0.1234) whose
+            variant_dir: Variant folder (e.g. meson2pt_ls_ml0.0004) whose
                 DATA/ subdirectory to scan; defaults to 'meson2pt'.
+            quarks: Run-set ('l','s','c' subset) the pair codes index
+                positionally; defaults to the full unitary set.
         """
         self.variant_dir = variant_dir
+        self.quarks = list(quarks) if quarks else list(QUARK_ORDER)
+
+    def _code_to_meson(self, code: str) -> Optional[str]:
+        """Map a pair code to its meson name using the run-set slot order."""
+        digits = [int(ch) for ch in code]
+        if any(d >= len(self.quarks) for d in digits):
+            return None
+        pair = tuple(sorted((self.quarks[d] for d in digits), key=QUARK_ORDER.index))
+        return self.PAIR_TO_MESON.get(pair)
 
     
     def scan(self, ensemble_path: Path) -> List[ScanResult]:
@@ -134,8 +191,8 @@ class Meson2ptScanner(BaseScanner):
                 quark_code = match.group(1)
                 cfg_num = int(match.group(2))
                 
-                # Convert quark code to meson name
-                meson_name = self.CODE_TO_MESON.get(quark_code)
+                # Convert pair code via the run-set slot order
+                meson_name = self._code_to_meson(quark_code)
                 if meson_name:
                     files_by_config[cfg_num][meson_name] = file_path
         

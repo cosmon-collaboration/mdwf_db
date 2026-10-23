@@ -9,6 +9,7 @@ from MDWFutils.exceptions import ValidationError
 
 from .schema import WitGPUContextBuilder, ContextParam, common_wit_gpu_params, DEFAULT_WIT_ENV
 from .utils import compute_kappa
+from .wit import QUARK_KEYS, normalize_quarks, require_quark_overrides
 
 DEFAULT_WIT_EXEC = "/global/cfs/cdirs/m2986/cosmon/mdwf/software/install_gpu/wit/bin/Meson"
 
@@ -25,6 +26,7 @@ class Meson2ptContextBuilder(WitGPUContextBuilder):
         ContextParam("ml", float, help="Light quark mass override (creates meson2pt_ml<value>/ workdir)"),
         ContextParam("ms", float, help="Strange quark mass override (creates meson2pt_ms<value>/ workdir)"),
         ContextParam("mc", float, help="Charm quark mass override (creates meson2pt_mc<value>/ workdir)"),
+        ContextParam("quarks", str, help="Run only these propagators: l|s|c or light/strange/charm, comma-separated (e.g. quarks=l, quarks=light,strange); creates meson2pt_<set>/ workdir"),
     ]
     
     input_params_schema = [
@@ -78,6 +80,8 @@ class Meson2ptContextBuilder(WitGPUContextBuilder):
 
 def resolve_meson2pt_masses(physics: Dict, job_params: Dict) -> tuple[float, float, float]:
     """Return effective ml/ms/mc after optional job-param overrides."""
+    selected = normalize_quarks(job_params.get("quarks"))
+    require_quark_overrides(selected, job_params)
     try:
         ml = float(physics["ml"])
         ms = float(physics["ms"])
@@ -92,8 +96,12 @@ def resolve_meson2pt_masses(physics: Dict, job_params: Dict) -> tuple[float, flo
 
 
 def meson2pt_workdir_subdir(physics: Dict, job_params: Dict) -> str:
-    """Workdir name: meson2pt/ by default, meson2pt_ml<X>_ms<Y>_mc<Z>/ when overridden."""
+    """Workdir name: meson2pt/ by default, meson2pt_<set>_ml<X>.../ when subset or overridden."""
+    selected = normalize_quarks(job_params.get("quarks"))
+    require_quark_overrides(selected, job_params)
     labels = []
+    if len(selected) < 3:
+        labels.append("".join(selected))
     for key in ("ml", "ms", "mc"):
         if job_params.get(key) is not None:
             value = _maybe_override(job_params[key], float(physics[key]), key)
@@ -101,14 +109,6 @@ def meson2pt_workdir_subdir(physics: Dict, job_params: Dict) -> str:
     if not labels:
         return "meson2pt"
     return "meson2pt_" + "_".join(labels)
-
-
-def _apply_meson_defaults(wit_params: Dict, kappa_l: float, kappa_s: float, kappa_c: float) -> None:
-    """Seed propagator sections with kappas mirroring the legacy script."""
-    for idx, kappa in enumerate((kappa_l, kappa_s, kappa_c)):
-        section = f"Propagator {idx}"
-        block = wit_params.setdefault(section, {})
-        block.setdefault("kappa", str(kappa))
 
 
 def _maybe_override(raw_value, current: float, label: str) -> float:

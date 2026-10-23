@@ -104,3 +104,14 @@ def test_write_data_hdf5_variant_group_with_mass_attrs(tmp_path):
         assert list(grp["cfgs"][:]) == [100, 200]
         assert grp.attrs["ml"] == 0.0004
         assert grp.attrs["mc"] == 0.1234
+
+
+def test_prepare_meson2pt_partial_masses_keeps_slot_names():
+    m = {
+        "config_number": 100,
+        "data": {"mesons": {"pion": {"PP": [3.0], "AP": [0.7]}}},
+        "metadata": {"masses": {"ms": 0.15}},  # subset run, unrun masses unresolvable
+    }
+    ranked = prepare_meson2pt_data([m], {}, None, rank_names=True)
+    assert ranked["pion_PP"] == [[3.0]]
+    assert "masses" not in ranked

@@ -182,9 +182,9 @@ class IngestMeson2ptCommand:
         total_ingested = 0
         total_skipped = 0
         for variant in variants:
-            mtype = make_measurement_type(variant.overrides)
+            mtype = make_measurement_type(variant.overrides, variant.quarks)
             try:
-                scanner = Meson2ptScanner(variant_dir=variant.dir)
+                scanner = Meson2ptScanner(variant_dir=variant.dir, quarks=variant.quarks)
                 parser = Meson2ptParser(
                     creader_path=args.creader,
                     ensemble_physics=ensemble.get('physics', {}),
@@ -333,8 +333,8 @@ class IngestAllCommand:
         try:
             for variant in discover_variants(ensemble_path):
                 yield (
-                    make_measurement_type(variant.overrides),
-                    Meson2ptScanner(variant_dir=variant.dir),
+                    make_measurement_type(variant.overrides, variant.quarks),
+                    Meson2ptScanner(variant_dir=variant.dir, quarks=variant.quarks),
                     Meson2ptParser(
                         creader_path=creader_path,
                         ensemble_physics=ensemble_physics,

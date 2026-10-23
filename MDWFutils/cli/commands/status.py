@@ -6,7 +6,7 @@ import sys
 
 from ..ensemble_utils import add_ensemble_argument, resolve_ensemble_from_args, get_backend_for_args
 from ..formatting import print_table, format_float, safe_float, safe_int
-from ...scanners.meson2pt import make_measurement_type, parse_variant_label
+from ...scanners.meson2pt import make_measurement_type, parse_variant_label, parse_variant_quarks
 from ...jobs.hmc import format_hmc_path_status_value, resolve_hmc_paths, HMC_PATH_STATUS_FIELDS
 
 
@@ -157,10 +157,11 @@ def do_status(args):
                 print("ERROR: --variant only applies to meson2pt", file=sys.stderr)
                 return 1
             overrides = parse_variant_label(f"meson2pt_{args.variant}")
-            if overrides is None:
+            quarks = parse_variant_quarks(f"meson2pt_{args.variant}")
+            if overrides is None or quarks is None:
                 print(f"ERROR: invalid --variant label '{args.variant}'; expected e.g. ml0.0004_mc0.1234", file=sys.stderr)
                 return 1
-            effective_variant = make_measurement_type(overrides)
+            effective_variant = make_measurement_type(overrides, quarks)
 
     # Measured configs in DB (one per line)
     if getattr(args, 'measured', None):

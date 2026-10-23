@@ -530,7 +530,7 @@ def prepare_meson2pt_data(
         masses = None
         if rank_names:
             doc_masses = (m.get('metadata') or {}).get('masses')
-            if doc_masses:
+            if doc_masses and all(k in doc_masses for k in ("ml", "ms", "mc")):
                 masses = doc_masses
                 if 'masses' not in result:
                     result['masses'] = dict(doc_masses)
