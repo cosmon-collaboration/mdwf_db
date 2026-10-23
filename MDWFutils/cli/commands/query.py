@@ -498,9 +498,10 @@ class QueryMeson2ptCommand(BaseQueryCommand):
         parser.add_argument(
             '--variant',
             metavar='LABEL',
-            default='unitary',
-            help="meson2pt measurement variant: 'unitary' (default), 'all', "
-                 "or a mass-variant label like 'ml0.0004_mc0.1234' or 'ls_ml0.004'",
+            default='ensemble',
+            help="meson2pt measurement variant: 'ensemble' (default, unmodified "
+                 "ensemble masses), 'all', or a mass-variant label like "
+                 "'ml0.0004_mc0.1234' or 'ls_ml0.004'",
         )
         parser.add_argument(
             '--content-names',
@@ -510,7 +511,8 @@ class QueryMeson2ptCommand(BaseQueryCommand):
         )
         parser.description += """
 VARIANTS: mass-variant folders (meson2pt_ml..._mc...) are stored under
-measurement_type 'meson2pt_ml..._mc...'. Default exports unitary only.
+measurement_type 'meson2pt_ml..._mc...'. Default exports only the plain
+meson2pt/ folder (unmodified ensemble masses).
 """
     
     def prepare_data(self, measurements, physics, fields, rank_names=False):
@@ -518,7 +520,7 @@ measurement_type 'meson2pt_ml..._mc...'. Default exports unitary only.
     
     def _resolve_types(self, backend, ens_id, variant):
         """Resolve the measurement types to export, or None for an invalid label."""
-        if variant == 'unitary':
+        if variant == 'ensemble':
             return ["meson2pt"]
         if variant == 'all':
             types = [
@@ -550,7 +552,7 @@ measurement_type 'meson2pt_ml..._mc...'. Default exports unitary only.
             print("No ensembles found", file=sys.stderr)
             return 1
         
-        variant = getattr(args, 'variant', 'unitary')
+        variant = getattr(args, 'variant', 'ensemble')
         fields = expand_fields(args.fields, self.measurement_type) if args.fields else None
         stride = getattr(args, 'cfg_inc', None)
         cfg_list = getattr(args, 'cfg_list', None)

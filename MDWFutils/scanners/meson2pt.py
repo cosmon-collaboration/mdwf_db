@@ -111,7 +111,7 @@ def discover_variants(ensemble_path: Path) -> List[Meson2ptVariant]:
 
 
 class Meson2ptScanner(BaseScanner):
-    """Scanner for meson 2pt measurement files (unitary or quark-subset runs).
+    """Scanner for meson 2pt measurement files (ensemble-mass or quark-subset runs).
     
     Finds files matching: {variant_dir or meson2pt}/DATA/Meson_2pt_{qq}ckn{cfg}.bin
     where {qq} is the quark pair code indexing the run-set positionally.
@@ -129,7 +129,7 @@ class Meson2ptScanner(BaseScanner):
         'eta_c': '22',   # charm-charm
     }
     
-    # Reverse mapping: code to name (full unitary run)
+    # Reverse mapping: code to name (full l,s,c run)
     CODE_TO_MESON = {v: k for k, v in MESONS.items()}
 
     # Canonical quark pair to meson name
@@ -149,7 +149,7 @@ class Meson2ptScanner(BaseScanner):
             variant_dir: Variant folder (e.g. meson2pt_ls_ml0.0004) whose
                 DATA/ subdirectory to scan; defaults to 'meson2pt'.
             quarks: Run-set ('l','s','c' subset) the pair codes index
-                positionally; defaults to the full unitary set.
+                positionally; defaults to the full l,s,c set.
         """
         self.variant_dir = variant_dir
         self.quarks = list(quarks) if quarks else list(QUARK_ORDER)

@@ -91,8 +91,10 @@ EXAMPLES:
     p.add_argument('--measurements', nargs='*', metavar='TYPE',
                    choices=['all', 'gauge_obs', 'mres', 'meson2pt'],
                    help='Show measurement counts table. Use "all" for all types, or specify: gauge_obs mres meson2pt. Use with -e to filter by ensemble(s).')
-    p.add_argument('--variant', metavar='LABEL', default='unitary',
-                   help="For meson2pt: 'unitary' (default) or a mass-variant label like 'ml0.0004_mc0.1234' or 'ls_ml0.004' (default: unitary)")
+    p.add_argument('--variant', metavar='LABEL', default='ensemble',
+                   help="For meson2pt: 'ensemble' (default, unmodified ensemble "
+                        "masses) or a mass-variant label like 'ml0.0004_mc0.1234' "
+                        "or 'ls_ml0.004' (default: ensemble)")
     p.set_defaults(func=do_status)
 
 
@@ -150,7 +152,7 @@ def do_status(args):
 
     # Effective measurement type for --measured/--missing (supports meson2pt variants)
     effective_variant = None
-    if getattr(args, 'variant', 'unitary') != 'unitary':
+    if getattr(args, 'variant', 'ensemble') != 'ensemble':
         if getattr(args, 'measured', None) or args.missing:
             target = getattr(args, 'measured', None) or args.missing
             if target != 'meson2pt':

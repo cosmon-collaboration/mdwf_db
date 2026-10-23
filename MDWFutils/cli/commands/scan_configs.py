@@ -154,7 +154,7 @@ def do_scan(args):
             measurement_stats.append(('mres', ingested, pending, pending_list))
             measurements_found = True
         
-        # Meson 2pt (unitary + mass-variant folders)
+        # Meson 2pt (ensemble-mass + mass-variant folders)
         meson2pt_files = {}
         for variant in discover_variants(ensemble_path):
             mtype = make_measurement_type(variant.overrides)
