@@ -92,7 +92,7 @@ EXAMPLES:
                    choices=['all', 'gauge_obs', 'mres', 'meson2pt'],
                    help='Show measurement counts table. Use "all" for all types, or specify: gauge_obs mres meson2pt. Use with -e to filter by ensemble(s).')
     p.add_argument('--variant', metavar='LABEL', default='unitary',
-                   help="For meson2pt: 'unitary' (default) or a mass-variant label like 'ml0.0004_mc0.1234' (default: unitary)")
+                   help="For meson2pt: 'unitary' (default) or a mass-variant label like 'ml0.0004_mc0.1234' or 'ls_ml0.004' (default: unitary)")
     p.set_defaults(func=do_status)
 
 
