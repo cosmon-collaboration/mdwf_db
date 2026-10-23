@@ -130,3 +130,37 @@ def test_ingest_meson2pt_no_variants_reports(monkeypatch, tmp_path, capsys):
 
     assert ingest_cmd.IngestMeson2ptCommand().execute(args) == 1
     assert "No meson2pt/DATA or meson2pt_* variant directories found" in capsys.readouterr().out
+
+
+def test_ingest_meson2pt_quark_subset_naming(monkeypatch, tmp_path):
+    v = tmp_path / "meson2pt_s" / "DATA"
+    v.mkdir(parents=True)
+    _write_meson_files(v, 100, ["00", "11"])  # only 00 is produced by a 1-prop run
+
+    backend = FakeBackend()
+    eid = backend.add_ensemble(str(tmp_path), {"ml": 0.02, "ms": 0.1, "mc": 0.85})
+
+    assert _run_ingest_meson2pt(monkeypatch, backend, eid) == 0
+
+    call = backend.upsert_calls[0]
+    assert call["measurement_type"] == "meson2pt_s"
+    assert set(call["data"]["mesons"]) == {"eta_s"}  # code 00 = s.s, not pion
+    assert call["metadata"]["masses"] == {"ml": 0.02, "ms": 0.1, "mc": 0.85}
+    assert call["metadata"]["variant"] == "meson2pt_s"
+
+
+def test_ingest_meson2pt_subset_unresolvable_run_mass(monkeypatch, tmp_path, capsys):
+    v = tmp_path / "meson2pt_lc" / "DATA"
+    v.mkdir(parents=True)
+    _write_meson_files(v, 100, ["00", "01", "11"])
+
+    backend = FakeBackend()
+    # run quarks l,c: mc missing from physics and from the label
+    eid = backend.add_ensemble(str(tmp_path), {"ml": 0.02})
+
+    assert _run_ingest_meson2pt(monkeypatch, backend, eid) == 0
+
+    out = capsys.readouterr().out
+    assert "Skipping meson2pt_lc" in out
+    assert "Cannot resolve mc" in out
+    assert backend.upsert_calls == []

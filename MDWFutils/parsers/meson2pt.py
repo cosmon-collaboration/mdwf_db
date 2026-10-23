@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .base import BaseParser
-from ..scanners.meson2pt import Meson2ptVariant
+from ..scanners.meson2pt import QUARK_TO_MASS_KEY, Meson2ptVariant
 
 
 class Meson2ptParser(BaseParser):
@@ -46,13 +46,15 @@ class Meson2ptParser(BaseParser):
 
         label = variant.name if variant else "meson2pt"
         overrides = variant.overrides if variant else {}
+        quarks = variant.quarks if variant else ["l", "s", "c"]
+        run_keys = {QUARK_TO_MASS_KEY[q] for q in quarks}
         self.masses = {}
         for k in ("ml", "ms", "mc"):
-            if overrides.get(k) is not None:
+            if k in run_keys and overrides.get(k) is not None:
                 self.masses[k] = float(overrides[k])
             elif self.ensemble_physics.get(k) is not None:
                 self.masses[k] = float(self.ensemble_physics[k])
-            else:
+            elif k in run_keys:
                 raise ValueError(
                     f"Cannot resolve {k} for variant '{label}': "
                     f"missing from folder label and ensemble physics"

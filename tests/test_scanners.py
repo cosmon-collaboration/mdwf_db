@@ -8,6 +8,7 @@ from MDWFutils.scanners.meson2pt import (
     discover_variants,
     make_measurement_type,
     parse_variant_label,
+    parse_variant_quarks,
 )
 from MDWFutils.scanners.mres import MresScanner
 
@@ -93,3 +94,57 @@ def test_meson2pt_scanner_variant_dir(tmp_path):
     results = Meson2ptScanner(variant_dir=variant).scan(tmp_path)
     assert [r.config_number for r in results] == [100]
     assert set(results[0].metadata["mesons_found"]) == {"pion", "D"}
+
+
+def test_parse_variant_quarks():
+    assert parse_variant_quarks("meson2pt") == ["l", "s", "c"]
+    assert parse_variant_quarks("meson2pt_l_ml0.004") == ["l"]
+    assert parse_variant_quarks("meson2pt_ls") == ["l", "s"]
+    assert parse_variant_quarks("meson2pt_sl") is None
+    assert parse_variant_quarks("meson2pt_lsc") is None
+
+
+def test_parse_variant_label_set_token_rules():
+    assert parse_variant_label("meson2pt_ls") == {}
+    assert parse_variant_label("meson2pt_l_ml0.004") == {"ml": 0.004}
+    assert parse_variant_label("meson2pt_ll") is None          # duplicate slot
+    assert parse_variant_label("meson2pt_l_ms0.1") is None     # override for unrun quark
+    assert parse_variant_label("meson2pt_ml0.1_l") is None     # set must precede masses
+
+
+def test_make_measurement_type_with_set_roundtrip():
+    for label in ("meson2pt_l_ml0.004", "meson2pt_ls", "meson2pt_c"):
+        assert make_measurement_type(
+            parse_variant_label(label), parse_variant_quarks(label)
+        ) == label
+
+
+def test_discover_variants_quark_subsets(tmp_path):
+    (tmp_path / "meson2pt_ls" / "DATA").mkdir(parents=True)
+    (tmp_path / "meson2pt_l_ml0.004" / "DATA").mkdir(parents=True)
+    (tmp_path / "meson2pt_sl" / "DATA").mkdir(parents=True)      # unordered set
+    (tmp_path / "meson2pt_l_ms0.1" / "DATA").mkdir(parents=True)  # override for unrun quark
+
+    variants = discover_variants(tmp_path)
+    assert [v.name for v in variants] == ["meson2pt_l_ml0.004", "meson2pt_ls"]
+    assert variants[0].quarks == ["l"]
+    assert variants[0].overrides == {"ml": 0.004}
+    assert variants[1].quarks == ["l", "s"]
+
+
+def test_meson2pt_scanner_subset_codes_use_run_set(tmp_path):
+    charm_only = tmp_path / "meson2pt_c"
+    (charm_only / "DATA").mkdir(parents=True)
+    (charm_only / "DATA" / "Meson_2pt_00ckn100.bin").write_bytes(b"")
+    (charm_only / "DATA" / "Meson_2pt_11ckn100.bin").write_bytes(b"")  # not produced by a 1-prop run
+
+    results = Meson2ptScanner(variant_dir=charm_only, quarks=["c"]).scan(tmp_path)
+    assert set(results[0].metadata["mesons_found"]) == {"eta_c"}
+
+    ls = tmp_path / "meson2pt_ls"
+    (ls / "DATA").mkdir(parents=True)
+    for code in ("00", "01", "11"):
+        (ls / "DATA" / f"Meson_2pt_{code}ckn100.bin").write_bytes(b"")
+
+    results = Meson2ptScanner(variant_dir=ls, quarks=["l", "s"]).scan(tmp_path)
+    assert set(results[0].metadata["mesons_found"]) == {"pion", "kaon", "eta_s"}

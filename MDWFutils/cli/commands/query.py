@@ -21,7 +21,7 @@ from ..writers import (
     MESON_ORDER,
     MESON_CORRELATORS,
 )
-from ...scanners.meson2pt import make_measurement_type, parse_variant_label
+from ...scanners.meson2pt import make_measurement_type, parse_variant_label, parse_variant_quarks
 
 
 # =============================================================================
@@ -500,7 +500,7 @@ class QueryMeson2ptCommand(BaseQueryCommand):
             metavar='LABEL',
             default='unitary',
             help="meson2pt measurement variant: 'unitary' (default), 'all', "
-                 "or a mass-variant label like 'ml0.0004_mc0.1234'",
+                 "or a mass-variant label like 'ml0.0004_mc0.1234' or 'ls_ml0.004'",
         )
         parser.add_argument(
             '--content-names',
@@ -527,9 +527,10 @@ measurement_type 'meson2pt_ml..._mc...'. Default exports unitary only.
             ]
             return ['meson2pt'] + sorted(t for t in types if t != 'meson2pt')
         overrides = parse_variant_label(f"meson2pt_{variant}")
-        if overrides is None:
+        quarks = parse_variant_quarks(f"meson2pt_{variant}")
+        if overrides is None or quarks is None:
             return None
-        return [make_measurement_type(overrides)]
+        return [make_measurement_type(overrides, quarks)]
     
     def execute(self, args) -> int:
         """Execute the meson2pt query with variant selection."""
@@ -554,7 +555,7 @@ measurement_type 'meson2pt_ml..._mc...'. Default exports unitary only.
         stride = getattr(args, 'cfg_inc', None)
         cfg_list = getattr(args, 'cfg_list', None)
         output_data = {}
-        
+
         for ens_id, ensemble in ensembles:
             mtypes = self._resolve_types(backend, ens_id, variant)
             if mtypes is None:

@@ -67,6 +67,14 @@ class WitContextBuilder(ContextBuilder):
         """Build WIT input. Schema params auto-merged."""
         effective_physics = _physics_with_job_mass_overrides(physics, job_params)
         unflattened = _unflatten_params(input_params)
+        if job_params.get("quarks") is not None:
+            selected = normalize_quarks(job_params["quarks"])
+            require_quark_overrides(selected, job_params)
+            from .utils import compute_kappa
+            for i, quark in enumerate(selected):
+                kappa = compute_kappa(float(effective_physics[QUARK_KEYS[quark]]))
+                unflattened.setdefault(f"Propagator {i}", {})["kappa"] = str(kappa)
+            unflattened.setdefault("Witness", {})["no_prop"] = str(len(selected))
         params = _build_parameters(effective_physics, unflattened)
         sections = _ordered_dict_to_sections(params)
         
@@ -146,6 +154,49 @@ def _physics_with_job_mass_overrides(physics: Dict, job_params: Dict) -> Dict:
             raise ValidationError(f"{key} must be positive, got {value}")
         effective[key] = value
     return effective
+
+
+QUARK_ORDER = ("l", "s", "c")
+QUARK_KEYS = {"l": "ml", "s": "ms", "c": "mc"}
+QUARK_ALIASES = {
+    "l": "l", "light": "l",
+    "s": "s", "strange": "s",
+    "c": "c", "charm": "c",
+}
+
+
+def normalize_quarks(raw) -> List[str]:
+    """Canonical run-set for a quarks job param: 'light,strange', 'l,s', or 'ls'."""
+    if raw is None:
+        return list(QUARK_ORDER)
+    text = str(raw).strip().lower()
+    selected: List[str] = []
+    for token in (t.strip() for t in text.split(",")):
+        if not token:
+            continue
+        if token in QUARK_ALIASES:
+            selected.append(QUARK_ALIASES[token])
+        elif all(ch in QUARK_KEYS for ch in token):
+            selected.extend(token)
+        else:
+            raise ValidationError(
+                f"quarks: unknown value '{token}'; use l/light, s/strange, c/charm"
+            )
+    selected = [q for q in QUARK_ORDER if q in set(selected)]
+    if not selected:
+        raise ValidationError("quarks must list at least one of l/s/c")
+    return selected
+
+
+def require_quark_overrides(selected: List[str], job_params: Dict) -> None:
+    """Reject ml/ms/mc overrides for quarks that are not being run."""
+    run_keys = {QUARK_KEYS[q] for q in selected}
+    for key in ("ml", "ms", "mc"):
+        if job_params.get(key) is not None and key not in run_keys:
+            raise ValidationError(
+                f"{key} override requires quarks to include "
+                f"{[k for k, v in QUARK_KEYS.items() if v == key][0]}"
+            )
 
 
 def _default_params() -> "OrderedDict[str, Dict[str, str]]":
