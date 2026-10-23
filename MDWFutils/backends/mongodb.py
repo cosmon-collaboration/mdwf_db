@@ -536,6 +536,11 @@ class MongoDBBackend(DatabaseBackend):
         return sorted(configs)
 
     @retry_on_error()
+    def list_measurement_types(self, ensemble_id: int) -> List[str]:
+        """Return distinct measurement type strings stored for an ensemble."""
+        return sorted(self.measurements.distinct("measurement_type", {"ensemble_id": ensemble_id}))
+
+    @retry_on_error()
     def upsert_measurement(
         self,
         ensemble_id: int,

@@ -6,7 +6,11 @@ import re
 from pathlib import Path
 
 from ...scanners.gauge_obs import GaugeObsScanner
-from ...scanners.meson2pt import Meson2ptScanner
+from ...scanners.meson2pt import (
+    Meson2ptScanner,
+    discover_variants,
+    make_measurement_type,
+)
 from ...scanners.mres import MresScanner
 from ..ensemble_utils import add_ensemble_argument, get_backend_for_args
 
@@ -150,19 +154,23 @@ def do_scan(args):
             measurement_stats.append(('mres', ingested, pending, pending_list))
             measurements_found = True
         
-        # Meson 2pt (unitary)
-        meson2pt_scanner = Meson2ptScanner()
-        meson2pt_files = meson2pt_scanner.scan(ensemble_path)
-        if meson2pt_files:
-            existing_meson2pt = set(backend.get_measured_configs(ens_id, 'meson2pt'))
-            found_configs = {r.config_number for r in meson2pt_files}
+        # Meson 2pt (unitary + mass-variant folders)
+        meson2pt_files = {}
+        for variant in discover_variants(ensemble_path):
+            mtype = make_measurement_type(variant.overrides)
+            variant_files = Meson2ptScanner(variant_dir=variant.dir).scan(ensemble_path)
+            if not variant_files:
+                continue
+            meson2pt_files[mtype] = variant_files
+            existing_meson2pt = set(backend.get_measured_configs(ens_id, mtype))
+            found_configs = {r.config_number for r in variant_files}
             # Filter to thermalized configs only
             thermalized_found = found_configs & thermalized_config_set
             thermalized_existing = existing_meson2pt & thermalized_config_set
             ingested = len(thermalized_found & thermalized_existing)
             pending = len(thermalized_found - thermalized_existing)
             pending_list = sorted(thermalized_found - thermalized_existing) if pending > 0 else []
-            measurement_stats.append(('meson2pt', ingested, pending, pending_list))
+            measurement_stats.append((mtype, ingested, pending, pending_list))
             measurements_found = True
         
         # Print measurements section
@@ -221,7 +229,7 @@ def _infer_increment(values):
     return inc
 
 
-def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list, gauge_files: list, mres_files: list, meson2pt_files: list):
+def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list, gauge_files: list, mres_files: list, meson2pt_files: dict):
     """Report missing measurements (DB-only comparison).
     
     Only reports "missing" for measurement types that have SOME files present,
@@ -270,17 +278,17 @@ def _report_missing(backend, ensemble_id: int, ensemble: dict, config_list: list
                 else:
                     warnings.append(f"mres: {len(missing_mres)} {config_label} have no files")
         
-        # Meson2pt missing (only if we found some meson2pt files)
-        if meson2pt_files:
-            measured_meson2pt = set(backend.get_measured_configs(ensemble_id, 'meson2pt'))
-            found_meson2pt = {r.config_number for r in meson2pt_files}
+        # Meson2pt missing (only for variants with some files found)
+        for mtype, files in meson2pt_files.items():
+            measured_meson2pt = set(backend.get_measured_configs(ensemble_id, mtype))
+            found_meson2pt = {r.config_number for r in files}
             missing_meson2pt = sorted(expected - measured_meson2pt - found_meson2pt)
-            
+
             if missing_meson2pt:
                 if len(missing_meson2pt) <= 8:
-                    warnings.append(f"meson2pt: {len(missing_meson2pt)} {config_label} have no files: {missing_meson2pt}")
+                    warnings.append(f"{mtype}: {len(missing_meson2pt)} {config_label} have no files: {missing_meson2pt}")
                 else:
-                    warnings.append(f"meson2pt: {len(missing_meson2pt)} {config_label} have no files")
+                    warnings.append(f"{mtype}: {len(missing_meson2pt)} {config_label} have no files")
         
         # Print warnings section if any
         if warnings:
